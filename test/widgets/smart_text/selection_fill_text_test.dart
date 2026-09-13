@@ -79,6 +79,141 @@ void _expectNoVerticalGaps(RenderParagraph paragraph, {double tolerance = 0}) {
 void main() {
   setUpAll(_loadFont);
 
+  for (final selectable in [false, true]) {
+    for (final boldText in [false, true]) {
+      testWidgets('טיפוגרפיית Text.rich נשמרת: '
+          'בחירה=$selectable, boldText=$boldText', (tester) async {
+        const span = TextSpan(
+          text: 'טקסט ',
+          children: [
+            TextSpan(text: 'נוסף', style: TextStyle(letterSpacing: 0.5)),
+          ],
+        );
+        const style = TextStyle(fontSize: 18, overflow: TextOverflow.ellipsis);
+        const strut = StrutStyle(fontSize: 18, height: 1.3);
+        const baselineKey = ValueKey('baseline');
+        const actualKey = ValueKey('actual');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                final media = MediaQuery.of(
+                  context,
+                ).copyWith(boldText: boldText);
+                final body = Column(
+                  children: [
+                    Text.rich(
+                      span,
+                      key: baselineKey,
+                      style: style,
+                      strutStyle: strut,
+                    ),
+                    const SelectionFillText.rich(
+                      span,
+                      key: actualKey,
+                      style: style,
+                      strutStyle: strut,
+                    ),
+                  ],
+                );
+                return MediaQuery(
+                  data: media,
+                  child: Scaffold(
+                    body: selectable ? SelectionArea(child: body) : body,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+
+        RenderParagraph paragraphFor(Key key) => tester.renderObject(
+          find
+              .descendant(
+                of: find.byKey(key),
+                matching: find.byWidgetPredicate(
+                  (widget) => widget is RichText,
+                ),
+              )
+              .first,
+        );
+        final baseline = paragraphFor(baselineKey);
+        final actual = paragraphFor(actualKey);
+        expect(actual.text.style, baseline.text.style);
+        expect(
+          actual.text.style!.fontWeight,
+          boldText ? FontWeight.bold : isNot(FontWeight.bold),
+        );
+        expect(actual.overflow, baseline.overflow);
+        expect(actual.strutStyle, baseline.strutStyle);
+      });
+    }
+  }
+
+  testWidgets('override של גובה וריווח אותיות/מילים נשמר גם בבחירה', (
+    tester,
+  ) async {
+    const span = TextSpan(
+      text: 'מילה ',
+      children: [TextSpan(text: 'נוספת', style: TextStyle(fontSize: 20))],
+    );
+    const strut = StrutStyle(fontSize: 18, height: 1.2);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            final media = MediaQuery.of(context).applyTextStyleOverrides(
+              lineHeightScaleFactorOverride: 1.5,
+              letterSpacingOverride: 2,
+              wordSpacingOverride: 3,
+              paragraphSpacingOverride: null,
+            );
+            return MediaQuery(
+              data: media,
+              child: Scaffold(
+                body: SelectionArea(
+                  child: Column(
+                    children: [
+                      const Text.rich(
+                        span,
+                        key: ValueKey('baseline'),
+                        strutStyle: strut,
+                      ),
+                      const SelectionFillText.rich(
+                        span,
+                        key: ValueKey('actual'),
+                        strutStyle: strut,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    RenderParagraph paragraphFor(String key) => tester.renderObject(
+      find
+          .descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byWidgetPredicate((widget) => widget is RichText),
+          )
+          .first,
+    );
+    final baseline = paragraphFor('baseline');
+    final actual = paragraphFor('actual');
+    final baselineSpan = baseline.text as TextSpan;
+    final actualSpan = actual.text as TextSpan;
+    expect(actualSpan.style, baselineSpan.style);
+    expect(
+      (actualSpan.children!.first as TextSpan).style,
+      (baselineSpan.children!.first as TextSpan).style,
+    );
+    expect(actual.strutStyle, baseline.strutStyle);
+  });
+
   group('הדגשת הבחירה ממלאת את גובה השורה', () {
     testWidgets('המסלול המהיר של SmartTextWidget', (tester) async {
       await tester.pumpWidget(

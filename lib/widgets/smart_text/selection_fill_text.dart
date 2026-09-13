@@ -75,21 +75,35 @@ class SelectionFillText extends Text {
 
     final defaultTextStyle = DefaultTextStyle.of(context);
     final selectionStyle = DefaultSelectionStyle.of(context);
+    TextStyle? effectiveStyle = style;
+    if (style == null || style!.inherit) {
+      effectiveStyle = defaultTextStyle.style.merge(style);
+    }
+    if (MediaQuery.boldTextOf(context)) {
+      effectiveStyle = effectiveStyle!.merge(
+        const TextStyle(fontWeight: FontWeight.bold),
+      );
+    }
+    final lineHeightScaleFactor =
+        MediaQuery.maybeLineHeightScaleFactorOverrideOf(context);
+    final text = _withTextSpacingOverrides(
+      TextSpan(style: effectiveStyle, children: [textSpan!]),
+      lineHeightScaleFactor: lineHeightScaleFactor,
+      letterSpacing: MediaQuery.maybeLetterSpacingOverrideOf(context),
+      wordSpacing: MediaQuery.maybeWordSpacingOverrideOf(context),
+    );
     return MouseRegion(
       cursor: selectionStyle.mouseCursor ?? SystemMouseCursors.text,
       child: SelectionFillRichText(
-        text: TextSpan(
-          style: style == null || style!.inherit
-              ? defaultTextStyle.style.merge(style)
-              : style,
-          children: [textSpan!],
-        ),
+        text: text,
         textAlign: textAlign ?? defaultTextStyle.textAlign ?? TextAlign.start,
         softWrap: defaultTextStyle.softWrap,
-        overflow: defaultTextStyle.overflow,
+        overflow: effectiveStyle?.overflow ?? defaultTextStyle.overflow,
         textScaler: MediaQuery.textScalerOf(context),
         maxLines: defaultTextStyle.maxLines,
-        strutStyle: strutStyle,
+        strutStyle: strutStyle?.merge(
+          StrutStyle(height: lineHeightScaleFactor),
+        ),
         textWidthBasis: defaultTextStyle.textWidthBasis,
         textHeightBehavior:
             defaultTextStyle.textHeightBehavior ??
@@ -100,6 +114,42 @@ class SelectionFillText extends Text {
       ),
     );
   }
+}
+
+TextSpan _withTextSpacingOverrides(
+  TextSpan span, {
+  required double? lineHeightScaleFactor,
+  required double? letterSpacing,
+  required double? wordSpacing,
+}) {
+  if (lineHeightScaleFactor == null &&
+      letterSpacing == null &&
+      wordSpacing == null) {
+    return span;
+  }
+  final override = TextStyle(
+    height: lineHeightScaleFactor,
+    letterSpacing: letterSpacing,
+    wordSpacing: wordSpacing,
+  );
+  TextSpan apply(TextSpan current) => TextSpan(
+    text: current.text,
+    children: current.children?.map((child) {
+      return child is TextSpan && child.runtimeType == TextSpan
+          ? apply(child)
+          : child;
+    }).toList(),
+    style: current.style?.merge(override) ?? override,
+    recognizer: current.recognizer,
+    mouseCursor: current.mouseCursor,
+    onEnter: current.onEnter,
+    onExit: current.onExit,
+    semanticsLabel: current.semanticsLabel,
+    semanticsIdentifier: current.semanticsIdentifier,
+    locale: current.locale,
+    spellOut: current.spellOut,
+  );
+  return apply(span);
 }
 
 /// מחזיר את [built] כשה-`RichText` שבשורשו נבנה מחדש עם [strutStyle] ועם מילוי
