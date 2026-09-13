@@ -216,6 +216,7 @@ markup מהמקור** — אין מסלול שבו תגית או מאפיין מ
 | זיהוי פורמט ו-registry | `test/utils/file/document_format_test.dart` |
 | עקביות ה-registry מול הצרכנים | `test/utils/file/format_registry_consistency_test.dart` |
 | Golden regression ל-Word (17 תרחישים) | `test/utils/file/docx_golden_test.dart` |
+| קישורי Word (OOXML, Flat OPC ו-WordML 2003) | `test/utils/file/docx_hyperlinks_test.dart` |
 | שקילות בין פורמטי OOXML | `test/utils/file/ooxml_formats_pipeline_test.dart` |
 | ODT | `test/utils/file/odt_to_otzaria_test.dart` |
 | RTF | `test/utils/file/rtf_to_otzaria_test.dart` |
@@ -227,6 +228,7 @@ markup מהמקור** — אין מסלול שבו תגית או מאפיין מ
 | קלט פגום/קטוע/זדוני | `test/utils/file/malformed_document_hardening_test.dart` |
 | מגבלות ZIP | `test/utils/file/zip_limits_test.dart` |
 | צימוד פלט↔גרסה | `test/utils/file/converter_versions_test.dart` |
+| פתיחה בטוחה של קישורים חיצוניים | `test/utils/text/html_link_handler_test.dart` |
 | קריאת ספר file-backed | `test/utils/file/read_file_backed_book_text_test.dart` |
 | עמידות סריקה לקובץ פגום | `test/migration/generator_corrupted_file_test.dart` |
 | אינטגרציה: סריקה → DB → פתיחה → זיהוי שינוי | `test/migration/sync/file_sync_document_formats_test.dart` |

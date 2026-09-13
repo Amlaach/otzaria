@@ -38,7 +38,9 @@ import 'package:xml/xml.dart' as xml;
 /// הזרקת תגיות לגוף הספר), גוף הערת שוליים רב-פסקתית מופרד ברווח,
 /// `w:customXml` שקוף, כל תיבות הטקסט בשייף מקובץ מרונדרות, `w:vMerge` בלי
 /// תא פותח אינו נמחק, וכותרת עוברת trim.
-const int kOoxmlWordConverterVersion = 14;
+/// v15: קישורי OOXML ו-WordML 2003 נשמרים כ-`<a href="…">` מאומתים,
+/// וסימניות יעד הופכות לעוגנים באותה שורת פלט — גם כשאינן כותרות.
+const int kOoxmlWordConverterVersion = 15;
 
 /// שם ותיק ל-[kOoxmlWordConverterVersion]. הערך משותף לכל פורמטי OOXML —
 /// הם חולקים מנוע אחד, ולכן שינוי בפלט פוסל את המטמון של כולם יחד.
@@ -113,6 +115,16 @@ class _DocxContext {
   /// `styleId` → רמת כותרת 1–6, מקובץ styles.xml.
   final Map<String, int> headingStyles;
 
+  /// `rId` → כתובת יעד, מיחסי `hyperlink` ב-document.xml.rels.
+  final Map<String, String> hyperlinkRels;
+
+  /// שמות הסימניות שקישור פנימי במסמך מפנה אליהן. רק אלה יוצאים כעוגנים,
+  /// כדי לא להוסיף markup חסר שימוש לכל שורה.
+  final Set<String> referencedAnchors;
+
+  /// עוגן מסוים נכתב פעם אחת בלבד, גם אם המסמך הפגום מכיל סימנייה כפולה.
+  final Set<String> emittedAnchors = {};
+
   final _FootnoteCounter footnoteCounter;
 
   /// מונים רצים לרשימות: `numId` → (`ilvl` → הערך הנוכחי).
@@ -124,6 +136,8 @@ class _DocxContext {
     this.numbering,
     this.headingStyles, {
     String footnoteNumFmt = 'decimal',
+    this.hyperlinkRels = const {},
+    this.referencedAnchors = const {},
   }) : footnoteCounter = _FootnoteCounter(footnoteNumFmt);
 
   /// מחזיר את תווית המספור/תבליט לפריט רשימה (למשל `1.`, `1.1.`, `א.`, `•`).
@@ -355,6 +369,55 @@ Map<String, String> _extractImages(Archive archive, {bool embedImages = true}) {
     }
   });
   return images;
+}
+
+/// בונה מפת `rId` → כתובת יעד עבור יחסי `hyperlink` ב-document.xml.rels.
+/// יחס חסר או פגום אינו גורם לכשל במסמך; תוכן הקישור נשמר כטקסט רגיל.
+Map<String, String> _extractHyperlinkRels(Archive archive) {
+  for (final file in archive) {
+    if (!file.isFile || file.name != 'word/_rels/document.xml.rels') {
+      continue;
+    }
+    try {
+      final doc = xml.XmlDocument.parse(
+        _decodeXmlBytes(readArchiveEntry(file, format: DocumentFormat.docx)),
+      );
+      final rels = <String, String>{};
+      for (final rel in doc.findAllElements('Relationship')) {
+        if ((rel.getAttribute('Type') ?? '').endsWith('/hyperlink')) {
+          final id = rel.getAttribute('Id');
+          final target = rel.getAttribute('Target');
+          if (id != null && target != null) rels[id] = target;
+        }
+      }
+      return rels;
+    } catch (_) {
+      return const {};
+    }
+  }
+  return const {};
+}
+
+/// שמות כל הסימניות שקישור פנימי מפנה אליהן.
+///
+/// OOXML משתמש ב-`w:hyperlink w:anchor`, ואילו WordprocessingML 2003 משתמש
+/// ב-`w:hlink w:bookmark`. התמיכה בשניהם כאן מונעת היסט על-פי דיאלקט בשלב
+/// הרינדור, שבו הפסקאות כבר חולקות מנוע אחד.
+Set<String> _collectReferencedAnchors(xml.XmlElement body) {
+  final anchors = <String>{};
+  for (final link in body.descendantElements) {
+    // ב-OOXML r:id גובר על w:anchor, לכן anchor נלווה אינו יעד בפועל ואסור
+    // שיגרום לפליטת id מת.
+    final name = link.name.qualified == 'w:hyperlink'
+        ? (link.getAttribute('r:id') == null
+              ? link.getAttribute('w:anchor')
+              : null)
+        : link.name.qualified == 'w:hlink'
+        ? link.getAttribute('w:bookmark')
+        : null;
+    if (name != null && name.isNotEmpty) anchors.add(name);
+  }
+  return anchors;
 }
 
 /// האם האלמנט הוא תוכן של תיבת-טקסט, בלי תלות בקידומת ה-namespace.
@@ -692,66 +755,50 @@ _Seg? _processRunSeg(xml.XmlElement node) {
   return _Seg(opens.reversed.join(), closes.join(), text);
 }
 
-/// מרנדר את תוכן הפסקה (כל ה-runs לפי הסדר) כולל הערות שוליים inline
-/// בפורמט שהקורא של אוצריא מציג כמפרש בצד:
-///   `<sup class="footnote-marker">N</sup><i class="footnote">גוף</i>`
-String _renderParagraphInline(xml.XmlElement paragraph, _DocxContext ctx) {
-  // runs של תיבת-טקסט ושל הערה inline מעובדים בתוך היחידה שלהם; בלי דילוג
-  // כאן `findAllElements` תופס אותם שוב והתוכן נפלט פעמיים.
-  final nestedRuns = <xml.XmlElement>{};
-  for (final tb in _textBoxContents(paragraph)) {
-    nestedRuns.addAll(tb.findAllElements('w:r'));
+/// מחזיר את תג הקישור העוטף [run], אם יש כזה בפסקה הנוכחית.
+///
+/// OOXML משתמש ב-`w:hyperlink`; WordML 2003 משתמש ב-`w:hlink`. אין לחפש
+/// צאצאים כאן: קישור יכול להכיל כמה runs, ואנו חייבים לאחד אותם לעוגן אחד.
+xml.XmlElement? _linkAncestor(xml.XmlElement run, xml.XmlElement paragraph) {
+  xml.XmlNode? node = run.parent;
+  while (node != null && node != paragraph) {
+    if (node is xml.XmlElement &&
+        (node.name.qualified == 'w:hyperlink' ||
+            node.name.qualified == 'w:hlink')) {
+      return node;
+    }
+    node = node.parent;
   }
-  for (final note in paragraph.findAllElements('w:footnote')) {
-    nestedRuns.addAll(note.findAllElements('w:r'));
-  }
+  return null;
+}
 
-  // שלב 1: איסוף מקטעים (segments) מכל ה-runs לפי הסדר.
-  final segs = <_Seg>[];
-  for (final run in paragraph.findAllElements('w:r')) {
-    if (nestedRuns.contains(run)) continue; // מעובד בתיבת-הטקסט / בהערה
-
-    final footnoteRef = run.getElement('w:footnoteReference');
-    if (footnoteRef != null) {
-      final id = footnoteRef.getAttribute('w:id');
-      if (id != null && ctx.footnotes.containsKey(id)) {
-        segs.add(
-          _Seg.raw(
-            otzariaFootnote(
-              ctx.footnoteCounter.next(),
-              escapeHtmlText(ctx.footnotes[id]!),
-            ),
-          ),
-        );
-      }
-      continue;
+/// יעד קישור בטוח, לפי הדיאלקט של Word.
+///
+/// ב-OOXML מזהה הקשר (`r:id`) מצביע על יעד חיצוני ו*גובר* על `w:anchor`.
+/// ב-WordML 2003 היעד החיצוני הוא `w:dest`, והפנימי הוא `w:bookmark`.
+String? _hrefForLink(xml.XmlElement link, _DocxContext ctx) {
+  if (link.name.qualified == 'w:hyperlink') {
+    final relationId = link.getAttribute('r:id');
+    if (relationId != null) {
+      final target = ctx.hyperlinkRels[relationId];
+      return target == null ? null : safeLinkTarget(target);
     }
-
-    // WordML 2003 אינו מפריד את ההערות לחלק משלהן — גוף ההערה יושב בתוך
-    // ה-run עצמו. בלי הטיפול כאן הוא היה זולג לגוף הפסקה כטקסט רגיל.
-    final inlineFootnote = run.getElement('w:footnote');
-    if (inlineFootnote != null) {
-      final body = escapeHtmlText(inlineFootnote.innerText).trim();
-      if (body.isNotEmpty) {
-        segs.add(_Seg.raw(otzariaFootnote(ctx.footnoteCounter.next(), body)));
-      }
-      continue;
-    }
-
-    // גרפיקה: תיבת-טקסט (במסגרת, אולי על תמונת-רקע) או תמונה — מקטע raw.
-    final drawingHtml = _drawingHtmlFromRun(run, ctx);
-    if (drawingHtml != null) {
-      segs.add(_Seg.raw(drawingHtml));
-      continue;
-    }
-
-    final seg = _processRunSeg(run);
-    if (seg != null) segs.add(seg);
+    final anchor = link.getAttribute('w:anchor');
+    return anchor == null || anchor.isEmpty ? null : safeLinkTarget('#$anchor');
   }
 
-  // שלב 2: בנייה עם מיזוג מקטעים סמוכים בעלי עטיפה זהה — תגיות העיצוב
-  // נכתבות פעם אחת לכל רצף, במקום לכל run בנפרד (מונע ניפוח HTML/זיכרון
-  // מ-runs מפוצלים של Word). מקטע raw (הערת שוליים) אינו ממוזג.
+  final destination = link.getAttribute('w:dest');
+  if (destination != null && destination.isNotEmpty) {
+    return safeLinkTarget(destination);
+  }
+  final bookmark = link.getAttribute('w:bookmark');
+  return bookmark == null || bookmark.isEmpty
+      ? null
+      : safeLinkTarget('#$bookmark');
+}
+
+/// בונה HTML ממקטעי run ומאחד רצפים בעלי אותו עיצוב.
+String _renderSegs(List<_Seg> segs) {
   final buf = StringBuffer();
   var i = 0;
   while (i < segs.length) {
@@ -771,9 +818,121 @@ String _renderParagraphInline(xml.XmlElement paragraph, _DocxContext ctx) {
     buf.write(s.close);
     i = j;
   }
-  // תגיות אוצריא שהוקלדו כטקסט במסמך (הדבקה מפורמט אוצריא) מופעלות כעיצוב.
-  return _unescapeOtzariaTags(buf.toString());
+  return buf.toString();
 }
+
+/// מרנדר את תוכן הפסקה (כל ה-runs לפי הסדר) כולל הערות שוליים inline
+/// בפורמט שהקורא של אוצריא מציג כמפרש בצד:
+///   `<sup class="footnote-marker">N</sup><i class="footnote">גוף</i>`
+String _renderParagraphInline(xml.XmlElement paragraph, _DocxContext ctx) {
+  // runs של תיבת-טקסט ושל הערה inline מעובדים בתוך היחידה שלהם; בלי דילוג
+  // כאן `findAllElements` תופס אותם שוב והתוכן נפלט פעמיים.
+  final nestedRuns = <xml.XmlElement>{};
+  for (final tb in _textBoxContents(paragraph)) {
+    nestedRuns.addAll(tb.findAllElements('w:r'));
+  }
+  for (final note in paragraph.findAllElements('w:footnote')) {
+    nestedRuns.addAll(note.findAllElements('w:r'));
+  }
+
+  // שלב 1: איסוף מקטעים (segments) מכל ה-runs לפי הסדר.
+  final segs = <_Seg>[];
+  final linkSegs = <_Seg>[];
+  xml.XmlElement? currentLink;
+
+  void flushLink() {
+    if (currentLink == null || linkSegs.isEmpty) return;
+    final content = _renderSegs(linkSegs);
+    final href = _hrefForLink(currentLink, ctx);
+    segs.add(
+      href == null
+          ? _Seg.raw(content)
+          : _Seg.raw('<a href="${escapeHtmlAttribute(href)}">$content</a>'),
+    );
+    linkSegs.clear();
+  }
+
+  for (final run in paragraph.findAllElements('w:r')) {
+    if (nestedRuns.contains(run)) continue; // מעובד בתיבת-הטקסט / בהערה
+
+    final link = _linkAncestor(run, paragraph);
+    if (link != currentLink) {
+      flushLink();
+      currentLink = link;
+    }
+    final target = currentLink == null ? segs : linkSegs;
+
+    final footnoteRef = run.getElement('w:footnoteReference');
+    if (footnoteRef != null) {
+      final id = footnoteRef.getAttribute('w:id');
+      if (id != null && ctx.footnotes.containsKey(id)) {
+        target.add(
+          _Seg.raw(
+            otzariaFootnote(
+              ctx.footnoteCounter.next(),
+              escapeHtmlText(ctx.footnotes[id]!),
+            ),
+          ),
+        );
+      }
+      continue;
+    }
+
+    // WordML 2003 אינו מפריד את ההערות לחלק משלהן — גוף ההערה יושב בתוך
+    // ה-run עצמו. בלי הטיפול כאן הוא היה זולג לגוף הפסקה כטקסט רגיל.
+    final inlineFootnote = run.getElement('w:footnote');
+    if (inlineFootnote != null) {
+      final body = escapeHtmlText(inlineFootnote.innerText).trim();
+      if (body.isNotEmpty) {
+        target.add(_Seg.raw(otzariaFootnote(ctx.footnoteCounter.next(), body)));
+      }
+      continue;
+    }
+
+    // גרפיקה: תיבת-טקסט (במסגרת, אולי על תמונת-רקע) או תמונה — מקטע raw.
+    final drawingHtml = _drawingHtmlFromRun(run, ctx);
+    if (drawingHtml != null) {
+      target.add(_Seg.raw(drawingHtml));
+      continue;
+    }
+
+    final seg = _processRunSeg(run);
+    if (seg != null) target.add(seg);
+  }
+  flushLink();
+  // תגיות אוצריא שהוקלדו כטקסט במסמך (הדבקה מפורמט אוצריא) מופעלות כעיצוב.
+  return _unescapeOtzariaTags(_renderSegs(segs));
+}
+
+/// עוגני Word שאליהם מפנה קישור במסמך זה.
+///
+/// המרה של כל סימנייה הייתה מנפחת את הפלט במיליוני מזהים במסמכים גדולים;
+/// לכן נפלטים רק יעדים ממשיים. WordML 2003 מסמן סימנייה עם `aml:annotation`.
+List<String> _referencedBookmarksIn(
+  xml.XmlElement paragraph,
+  _DocxContext ctx,
+) {
+  if (ctx.referencedAnchors.isEmpty) return const [];
+  final anchors = <String>[];
+  for (final element in paragraph.descendantElements) {
+    final isOoxml = element.name.qualified == 'w:bookmarkStart';
+    final isWordMl =
+        element.name.qualified == 'aml:annotation' &&
+        element.getAttribute('w:type') == 'Word.Bookmark.Start';
+    if (!isOoxml && !isWordMl) continue;
+    final name = element.getAttribute('w:name');
+    if (name != null &&
+        ctx.referencedAnchors.contains(name) &&
+        ctx.emittedAnchors.add(name)) {
+      anchors.add(name);
+    }
+  }
+  return anchors;
+}
+
+String _bookmarkAnchors(Iterable<String> bookmarks) => bookmarks
+    .map((bookmark) => '<a id="${escapeHtmlAttribute(bookmark)}"></a>')
+    .join();
 
 /// מעבד פסקה בודדת ומוסיף אותה ל-[output] (אם אינה ריקה).
 /// מטפל בכותרות (לפי שם הסגנון/outlineLvl) וברשימות (קידומת תבליט).
@@ -796,11 +955,18 @@ void _processParagraph(
       ? _headingLevelFromOutline(outlineVal)
       : _headingLevelFromStyleName(styleVal) ??
             (styleVal != null ? ctx.headingStyles[styleVal] : null);
+  final bookmarks = _referencedBookmarksIn(paragraph, ctx);
 
   if (level != null) {
     // trim: תווית תוכן העניינים נגזרת מטקסט הכותרת, ורווח מוביל/עוקב
     // (`xml:space="preserve"`) היה מייצר ערך TOC שונה לאותה כותרת בדיוק.
-    output.add('<h$level>${text.trim()}</h$level>');
+    final firstBookmark = bookmarks.isEmpty ? null : bookmarks.first;
+    final id = firstBookmark == null
+        ? ''
+        : ' id="${escapeHtmlAttribute(firstBookmark)}"';
+    output.add(
+      '<h$level$id>${_bookmarkAnchors(bookmarks.skip(1))}${text.trim()}</h$level>',
+    );
     return;
   }
 
@@ -834,6 +1000,8 @@ void _processParagraph(
   if (align != null) {
     text = '<div style="text-align: $align;">$text</div>';
   }
+
+  if (bookmarks.isNotEmpty) text = '${_bookmarkAnchors(bookmarks)}$text';
 
   output.add(text);
 }
@@ -1197,6 +1365,8 @@ String ooxmlWordArchiveToText(
         _sectionFootnoteNumFmt(body) ??
         _footnoteNumFmtIn(_archiveXmlRoot(archive, 'word/settings.xml')) ??
         'decimal',
+    hyperlinkRels: _extractHyperlinkRels(archive),
+    referencedAnchors: _collectReferencedAnchors(body),
   );
   _processBlockChildren(body.childElements, ctx, list);
 
@@ -1239,6 +1409,7 @@ String wordMl2003ToText(
     _headingStylesFrom(document),
     // ב-WordML 2003 הגדרות המסמך יושבות ב-`w:docPr`, ולא בקובץ נפרד.
     footnoteNumFmt: _footnoteNumFmtIn(root.getElement('w:docPr')) ?? 'decimal',
+    referencedAnchors: _collectReferencedAnchors(body),
   );
 
   final list = <String>[

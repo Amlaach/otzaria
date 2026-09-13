@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -14,6 +15,7 @@ import 'package:otzaria/text_book/bloc/text_book_state.dart';
 import 'package:otzaria/text_book/utils/reading_segment_navigation.dart';
 
 import 'package:otzaria/utils/text/heading_slug.dart';
+import 'package:otzaria/utils/text/otzaria_markup.dart';
 import 'package:path/path.dart' as p;
 
 /// מחלקה לטיפול בקישורי HTML בתוך הטקסט
@@ -126,6 +128,22 @@ class HtmlLinkHandler {
   static bool opensAnotherBook(String url) =>
       url.startsWith('otzaria://inline-link') || url.startsWith('book://');
 
+  /// יעד חיצוני שמותר לפתוח מחומר שהגיע מתוך מסמך.
+  @visibleForTesting
+  static Uri? externalUriFor(String url) {
+    final safeUrl = safeLinkTarget(url);
+    if (safeUrl == null || safeUrl.startsWith('#')) return null;
+    final uri = Uri.tryParse(safeUrl);
+    if (uri == null ||
+        !kAllowedLinkSchemes.contains(uri.scheme.toLowerCase())) {
+      return null;
+    }
+    if ((uri.scheme == 'http' || uri.scheme == 'https') && !uri.hasAuthority) {
+      return null;
+    }
+    return uri;
+  }
+
   /// פותח את יעד הקישור בכרטיסייה חדשה ברקע, בלי לעזוב את הטאב הנוכחי.
   static Future<void> openLinkInBackground(
     BuildContext context,
@@ -180,6 +198,16 @@ class HtmlLinkHandler {
               : _headerSegments(bookUrl.substring(separatorIndex + 1)),
           openBookCallback,
         );
+        return true;
+      }
+
+      final externalUri = externalUriFor(url);
+      if (externalUri != null) {
+        final launched = await launchUrl(
+          externalUri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) throw Exception('מערכת ההפעלה לא פתחה את הקישור');
         return true;
       }
 

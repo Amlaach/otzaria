@@ -2794,12 +2794,11 @@ class _CombinedViewState extends State<CombinedView> {
               if (line != null) _onInlineNoteTap(line);
               return true;
             }
-            await HtmlLinkHandler.handleLink(
+            return HtmlLinkHandler.handleLink(
               context,
               url,
               (tab) => widget.openBookCallback(tab),
             );
-            return true;
           },
           onAnchorHover: _handleAnchorHover,
           onAnchorExit: _handleAnchorHoverExit,
