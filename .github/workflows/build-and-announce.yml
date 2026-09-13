@@ -724,11 +724,12 @@ jobs:
       - name: Zip Windows ARM64 build
         shell: pwsh
         run: |
-          Compress-Archive -Path "build\windows\arm64\runner\Release\*" -DestinationPath otzaria-windows-arm64.zip
+          # "_" ולא "-": ממוין אחרי otzaria-windows.zip, שגרסאות עד 0.9.96 בוחרות לפי סדר.
+          Compress-Archive -Path "build\windows\arm64\runner\Release\*" -DestinationPath otzaria-windows_arm64.zip
           # portable.marker — ראה ההסבר בשלב המקביל ב-build_windows.
           $marker = Join-Path $env:RUNNER_TEMP 'portable.marker'
           New-Item -ItemType File -Path $marker -Force | Out-Null
-          Compress-Archive -Path $marker -Update -DestinationPath otzaria-windows-arm64.zip
+          Compress-Archive -Path $marker -Update -DestinationPath otzaria-windows_arm64.zip
 
       - name: Download bundled plugins for installer (ARM64)
         shell: pwsh
@@ -746,13 +747,13 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: otzaria-windows-arm64-installer
-          path: installer/otzaria-*-windows-arm64.exe
+          path: installer/otzaria-*-windows_arm64.exe
 
       - name: Upload Windows ARM64 ZIP
         uses: actions/upload-artifact@v7.0.1
         with:
           name: otzaria-windows-arm64-zip
-          path: otzaria-windows-arm64.zip
+          path: otzaria-windows_arm64.zip
 
   build_linux:
     name: Linux ${{ matrix.target }} ${{ matrix.arch }}
@@ -2444,7 +2445,7 @@ jobs:
               *windows-full*.exe)
                 windows_full+=("$file")
                 ;;
-              *windows-arm64*.exe)
+              *windows_arm64*.exe)
                 windows_arm64_installers+=("$file")
                 ;;
               *windows*.exe)

@@ -907,8 +907,10 @@ void main() {
       expect(script, contains('ArchitecturesAllowed=x64compatible'));
       expect(
         script,
-        contains('OutputBaseFilename=otzaria-{#MyAppVersion}-windows-arm64'),
-        reason: 'מנגנון העדכון מזהה את נכס ה-ARM לפי "arm64" בשם הקובץ',
+        contains('OutputBaseFilename=otzaria-{#MyAppVersion}-windows_arm64'),
+        reason:
+            'מנגנון העדכון מזהה ARM לפי "arm64"; "_" ממוין אחרי המתקין הרגיל, '
+            'כך שגרסאות ישנות שבוחרות את ה-exe הראשון לא מקבלות מתקין ARM',
       );
       expect(
         script,

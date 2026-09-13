@@ -52,7 +52,8 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=.\
 #if AppArch == "arm64"
-OutputBaseFilename=otzaria-{#MyAppVersion}-windows-arm64
+; "_" ולא "-": הוא ממוין אחרי "-windows.exe", וגרסאות עד 0.9.96 בוחרות את ה-exe הראשון בשם.
+OutputBaseFilename=otzaria-{#MyAppVersion}-windows_arm64
 #else
 OutputBaseFilename=otzaria-{#MyAppVersion}-windows
 #endif

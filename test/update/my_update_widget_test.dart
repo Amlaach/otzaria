@@ -322,10 +322,10 @@ void main() {
     // נכסי release מציאותיים, כפי שמועלים ע"י build-and-announce.yml.
     final fullReleaseAssets = [
       asset('otzaria-0.9.96-windows.exe'),
-      asset('otzaria-0.9.96-windows-arm64.exe'),
+      asset('otzaria-0.9.96-windows_arm64.exe'),
       asset('otzaria-0.9.96-windows-full.exe'),
       asset('otzaria-windows.zip'),
-      asset('otzaria-windows-arm64.zip'),
+      asset('otzaria-windows_arm64.zip'),
       asset('otzaria-0.9.96-linux.deb'),
       asset('otzaria-macos.dmg'),
     ];
@@ -396,8 +396,8 @@ void main() {
 
     test('an x64 machine never receives an arm64 asset', () {
       final assets = [
-        asset('otzaria-0.9.97-windows-arm64.exe'),
-        asset('otzaria-windows-arm64.zip'),
+        asset('otzaria-0.9.97-windows_arm64.exe'),
+        asset('otzaria-windows_arm64.zip'),
       ];
       expect(
         pickWindowsAssetUrl(
@@ -409,6 +409,22 @@ void main() {
       );
     });
 
+    // גרסאות עד 0.9.96 בוחרות את הנכס הראשון שאינו full, ו-GitHub מחזיר
+    // את הנכסים ממוינים לפי שם — נכס ה-ARM חייב להיות ממוין אחרי ה-x64.
+    test('legacy first-match pickers still receive the x64 assets', () {
+      String? legacyPick(String extension) {
+        final names = fullReleaseAssets.map((a) => a['name'] as String).toList()
+          ..sort();
+        return names.firstWhere(
+          (n) =>
+              n.contains('win') && !n.contains('full') && n.endsWith(extension),
+        );
+      }
+
+      expect(legacyPick('.exe'), 'otzaria-0.9.96-windows.exe');
+      expect(legacyPick('.zip'), 'otzaria-windows.zip');
+    });
+
     test('an ARM machine prefers the arm64 installer', () {
       expect(
         pickWindowsAssetUrl(
@@ -416,7 +432,7 @@ void main() {
           preferredFormat: 'exe',
           isArmMachine: true,
         ),
-        'https://example.com/otzaria-0.9.96-windows-arm64.exe',
+        'https://example.com/otzaria-0.9.96-windows_arm64.exe',
       );
       expect(
         pickWindowsAssetUrl(
@@ -424,7 +440,7 @@ void main() {
           preferredFormat: 'zip',
           isArmMachine: true,
         ),
-        'https://example.com/otzaria-windows-arm64.zip',
+        'https://example.com/otzaria-windows_arm64.zip',
       );
     });
 
