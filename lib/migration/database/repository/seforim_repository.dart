@@ -3044,12 +3044,28 @@ extension BookAcronymRepository on SeforimRepository {
     } else {
       // תוצאת ספר: אם יש כותרות פנימיות — אין קטע נבחר, מחזירים ריק.
       // אחרת — כל הספר (ספר ללא TOC פנימי, כל מפרשיו רלוונטיים).
-      final cache = await _buildTocCacheForBook(bookId, bookTitle);
       // כותרת אחת אינה מחלקת את הספר (לרוב הכותרת עצמה); שתיים ומעלה כן.
       // ספירה ולא `level >= 2` — שולחן ערוך מחלק ל-698 סימנים ברמה 1, וכל
       // הספר נסרק (130 אלף קישורים, ~2 שניות) בכל הקלדה.
-      final hasInnerToc = cache.all.length > 1;
-      if (hasInnerToc) return const [];
+      final cached = _tocCache[bookId];
+      final int tocCount;
+      if (cached != null) {
+        tocCount = cached.all.length;
+      } else {
+        final db = await _database.database;
+        tocCount = db
+            .select(
+              '''
+              SELECT 1 FROM tocEntry t
+              JOIN tocText tt ON tt.id = t.textId
+              WHERE t.bookId = ? AND t.level != 0
+              LIMIT 2
+              ''',
+              [bookId],
+            )
+            .length;
+      }
+      if (tocCount > 1) return const [];
       startIdx = 0;
       endIdx = maxLineIndex;
     }
