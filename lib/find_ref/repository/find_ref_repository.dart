@@ -40,10 +40,12 @@ final Object _searchGenerationZoneKey = Object();
 
 class FindRefRepository {
   int _searchGeneration = 0;
+  bool _disposed = false;
 
   /// Invalidates an in-flight search before the debounce starts. Worker work
   /// already running may finish, but its continuation must not submit more.
   void cancelPendingSearch() {
+    if (_disposed) return;
     _searchGeneration++;
     beginSearchEpoch?.call();
   }
@@ -55,13 +57,13 @@ class FindRefRepository {
   int get activeSearchGeneration => _searchGeneration;
 
   void throwIfSearchCancelled() {
-    if (currentSearchGeneration != _searchGeneration) {
+    if (_disposed || currentSearchGeneration != _searchGeneration) {
       throw const FindRefQueryCancelled();
     }
   }
 
   void throwIfSearchGenerationCancelled(int generation) {
-    if (generation != _searchGeneration) {
+    if (_disposed || generation != _searchGeneration) {
       throw const FindRefQueryCancelled();
     }
   }
@@ -186,6 +188,7 @@ class FindRefRepository {
   /// פותח מחזור שאילתה חדש ומורה ל-worker לזרוק את הבקשות הממתינות של
   /// המחזור הקודם. In production: [FindRefDbIsolate.cancelSearchScopeIfRunning].
   final void Function()? beginSearchEpoch;
+  final void Function()? releaseSearchScope;
 
   /// Injection for testing: חיפוש מצב "דור + נושא". In production:
   /// [ReferenceBooksCache.instance.searchByEraAndTopic].
@@ -261,6 +264,7 @@ class FindRefRepository {
     this.getBookEra,
     this.getCategoryPathSync,
     this.beginSearchEpoch,
+    this.releaseSearchScope,
     this.searchByEraAndTopic,
   }) {
     _liveInstances.add(this);
@@ -284,7 +288,10 @@ class FindRefRepository {
 
   /// מסיר את ה-instance מרשימת ה-repositories הפעילים.
   void dispose() {
+    if (_disposed) return;
     cancelPendingSearch();
+    _disposed = true;
+    releaseSearchScope?.call();
     _liveInstances.remove(this);
   }
 
@@ -611,6 +618,7 @@ class FindRefRepository {
     String ref, {
     bool includePersonalBooks = false,
   }) {
+    if (_disposed) return Future.error(const FindRefQueryCancelled());
     cancelPendingSearch();
     final generation = _searchGeneration;
     return runZoned(

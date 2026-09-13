@@ -444,6 +444,16 @@ class FindRefDbIsolate {
     }
   }
 
+  /// Called after the repository has invalidated its generation. All requests
+  /// already sent precede this message on the same port, so their cancellation
+  /// is processed before the worker forgets the scope's watermark.
+  static void releaseSearchScope(int scope) {
+    _pendingSearchEpochs.remove(scope);
+    final service = _instance;
+    if (service == null || service._disposed) return;
+    service._commandPort?.send({'method': 'releaseScope', 'scope': scope});
+  }
+
   /// בדיקות בלבד — סוגר את ה-isolate ומשחרר את ה-singleton, כדי שקובץ בדיקה
   /// לא ישאיר worker חי אחרי סיומו.
   @visibleForTesting
@@ -464,7 +474,7 @@ class FindRefDbIsolate {
     if (_disposed) {
       throw StateError('FindRefDbIsolate was disposed');
     }
-    await _readyCompleter.future;
+    if (!_readyCompleter.isCompleted) await _readyCompleter.future;
     final id = _nextId++;
     final completer = Completer<dynamic>();
     _pending[id] = completer;
@@ -859,6 +869,11 @@ void _workerMain(_Bootstrap bootstrap) {
         reply(queued['id'] as int, cancelled: true);
         return true;
       });
+      return;
+    }
+
+    if (message['method'] == 'releaseScope') {
+      minEpochByScope.remove(message['scope'] as int);
       return;
     }
 

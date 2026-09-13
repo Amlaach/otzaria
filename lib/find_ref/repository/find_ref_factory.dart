@@ -12,7 +12,6 @@ FindRefRepository buildFindRefRepository() {
   Future<({FindRefDbIsolate worker, int epoch})> searchWorker() async {
     final epoch = repository.currentSearchGeneration;
     final worker = await FindRefDbIsolate.instance();
-    repository.throwIfSearchGenerationCancelled(epoch);
     return (worker: worker, epoch: epoch);
   }
 
@@ -20,6 +19,7 @@ FindRefRepository buildFindRefRepository() {
     dataRepository: DataRepository.instance,
     getTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.getTocEntries(
         bookId,
         bookTitle,
@@ -30,6 +30,7 @@ FindRefRepository buildFindRefRepository() {
     },
     getAltTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.getAltTocEntries(
         bookId,
         bookTitle,
@@ -42,6 +43,7 @@ FindRefRepository buildFindRefRepository() {
         (await FindRefDbIsolate.instance()).getAllAltTocFlat(),
     searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.searchAltTocFlat(
         queryTokens,
         maxRefTokens: maxRefTokens,
@@ -53,6 +55,7 @@ FindRefRepository buildFindRefRepository() {
         (await FindRefDbIsolate.instance()).prewarmAltTocFlat(),
     getAltStructureBookIds: () async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.getAltStructureBookIds(
         searchScope: scope,
         searchEpoch: request.epoch,
@@ -60,6 +63,7 @@ FindRefRepository buildFindRefRepository() {
     },
     fetchCommentatorRows: (ref) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.getCommentatorRows(
         bookId: ref.bookId,
         bookTitle: ref.title,
@@ -74,6 +78,7 @@ FindRefRepository buildFindRefRepository() {
     },
     resolveLineRefs: (bookIds, refKey) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.resolveLineRefs(
         bookIds,
         refKey,
@@ -83,6 +88,7 @@ FindRefRepository buildFindRefRepository() {
     },
     getBookEra: (bookTitle) async {
       final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
       return request.worker.getBookEra(
         bookTitle,
         searchScope: scope,
@@ -93,6 +99,7 @@ FindRefRepository buildFindRefRepository() {
       scope,
       repository.activeSearchGeneration,
     ),
+    releaseSearchScope: () => FindRefDbIsolate.releaseSearchScope(scope),
   );
   return repository;
 }

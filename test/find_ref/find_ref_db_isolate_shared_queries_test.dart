@@ -318,4 +318,64 @@ void main() {
       isNotEmpty,
     );
   });
+
+  test('שחרור scope מסיר את סימן הביטול בלי להשפיע על חלון אחר', () async {
+    final dbPath = await seedDb('seforim', 'בראשית');
+    await Settings.setValue<String>(
+      SettingsRepository.keyDbEffectivePath,
+      dbPath,
+    );
+    final isolate = await FindRefDbIsolate.instance();
+    addTearDown(isolate.disposeForTesting);
+    final released = FindRefDbIsolate.allocateSearchScope();
+    final active = FindRefDbIsolate.allocateSearchScope();
+
+    FindRefDbIsolate.cancelSearchScopeIfRunning(released, 2);
+    FindRefDbIsolate.cancelSearchScopeIfRunning(active, 2);
+    await expectLater(
+      isolate.getTocEntries(1, 'בראשית', searchScope: released, searchEpoch: 1),
+      throwsA(isA<FindRefQueryCancelled>()),
+    );
+
+    FindRefDbIsolate.releaseSearchScope(released);
+    // A retired repository cannot send this in production. An explicit old
+    // epoch here proves the worker no longer retains its watermark.
+    expect(
+      await isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: released,
+        searchEpoch: 1,
+      ),
+      isNotEmpty,
+    );
+    await expectLater(
+      isolate.getTocEntries(1, 'בראשית', searchScope: active, searchEpoch: 1),
+      throwsA(isA<FindRefQueryCancelled>()),
+    );
+  });
+
+  test('שחרור scope במהלך spawn מנקה ביטול שהמתין לאתחול', () async {
+    final dbPath = await seedDb('seforim', 'בראשית');
+    await Settings.setValue<String>(
+      SettingsRepository.keyDbEffectivePath,
+      dbPath,
+    );
+    final scope = FindRefDbIsolate.allocateSearchScope();
+    final spawning = FindRefDbIsolate.instance();
+    FindRefDbIsolate.cancelSearchScopeIfRunning(scope, 2);
+    FindRefDbIsolate.releaseSearchScope(scope);
+    final isolate = await spawning;
+    addTearDown(isolate.disposeForTesting);
+
+    expect(
+      await isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: scope,
+        searchEpoch: 1,
+      ),
+      isNotEmpty,
+    );
+  });
 }

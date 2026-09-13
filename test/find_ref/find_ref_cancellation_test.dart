@@ -92,4 +92,46 @@ void main() {
       reason: 'אחרי הבקשה שכבר רצה אין עוד עבודה ישנה',
     );
   });
+
+  test(
+    'dispose מבטל המשך חיפוש, משחרר scope פעם אחת וחוסם שימוש נוסף',
+    () async {
+      seedLibrary(const [(id: 1, title: 'בראשית', acronyms: [])]);
+      final entered = Completer<void>();
+      final gate = Completer<List<int>?>();
+      var released = 0;
+      var tocCalls = 0;
+      final repo = FindRefRepository(
+        isReferenceBooksCacheLoaded: () => true,
+        getAltStructureBookIds: () {
+          entered.complete();
+          return gate.future;
+        },
+        getTocEntriesForReference: (id, title, {queryTokens}) async {
+          tocCalls++;
+          return const [];
+        },
+        getAltTocEntriesForReference: (id, title, {queryTokens}) async =>
+            const [],
+        releaseSearchScope: () => released++,
+      );
+
+      final pending = expectLater(
+        repo.findRefs('בראשית פרק'),
+        throwsA(isA<FindRefQueryCancelled>()),
+      );
+      await entered.future;
+      repo.dispose();
+      repo.dispose();
+      gate.complete(const []);
+      await pending;
+
+      expect(released, 1);
+      expect(tocCalls, 0);
+      await expectLater(
+        repo.findRefs('בראשית פרק'),
+        throwsA(isA<FindRefQueryCancelled>()),
+      );
+    },
+  );
 }
