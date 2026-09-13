@@ -774,6 +774,7 @@ class FindRefRepository {
     }
 
     final results = <DbReferenceResult>[];
+    final directMatches = <DbReferenceResult>{};
 
     // Single-word query: skip per-book TOC search, but still match short
     // AltToc headings globally ("נח" / "פרשת האזינו") — issue #983.
@@ -795,7 +796,9 @@ class FindRefRepository {
       }
 
       if (queryTokens.first.length >= 2) {
+        final start = results.length;
         await _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2);
+        directMatches.addAll(results.skip(start));
       }
 
       if (includePersonalBooks) {
@@ -807,6 +810,7 @@ class FindRefRepository {
         unique,
         queryTokens,
         bookMatchRanks: bookMatchRanks,
+        directMatches: directMatches,
         preserveSubstringTail: queryTokens.length == 1,
       );
       return await _enrichWithPaths(ranked);
@@ -1101,7 +1105,9 @@ class FindRefRepository {
       (r) => r.isAltToc || r.tocLevel >= 2,
     );
     if (!perBookHasSpecificMatch && queryTokens.length >= 2) {
+      final start = results.length;
       await _addGlobalAltTocMatches(results, queryTokens);
+      directMatches.addAll(results.skip(start));
     }
 
     if (includePersonalBooks) {
@@ -1114,6 +1120,7 @@ class FindRefRepository {
       pruned,
       queryTokens,
       bookMatchRanks: bookMatchRanks,
+      directMatches: directMatches,
     );
 
     return await _enrichWithPaths(ranked);
@@ -1678,6 +1685,7 @@ class FindRefRepository {
     List<DbReferenceResult> results,
     List<String> queryTokens, {
     Map<(int, String), int> bookMatchRanks = const {},
+    Set<DbReferenceResult> directMatches = const {},
     bool preserveSubstringTail = false,
   }) {
     if (results.length < 2) return results;
@@ -1721,6 +1729,8 @@ class FindRefRepository {
         normTitle: normTitle,
         fuzzyBookMatch:
             !r.isUserBook &&
+            !r.isSourceLine &&
+            !directMatches.contains(r) &&
             bookMatchRanks[(r.bookId, r.bookId > 0 ? '' : r.filePath)] ==
                 ReferenceBooksCache.fuzzyMatchRank,
         exactMatch: normTitle == query,

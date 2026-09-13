@@ -202,6 +202,81 @@ void main() {
     expect(results.first.filePath, '/alias.pdf');
   });
 
+  test('כותרת global AltToc אינה יורשת דירוג מקורב משם הספר שלה', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה ב'
+          ? [
+              _hit(
+                bookId: 1,
+                title: 'סדר תפילה',
+                matchRank: ReferenceBooksCache.fuzzyMatchRank,
+              ),
+              _hit(
+                bookId: 2,
+                title: 'ספר הכוונות',
+                matchRank: 3,
+                matchedTerm: query,
+                orderIndex: 100,
+              ),
+            ]
+          : const [],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+      searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async => [
+        {
+          'bookTitle': 'סדר תפילה',
+          'reference': 'תפלה ב',
+          'bookId': 1,
+          'bookOrderIndex': 0,
+          'segment': 4,
+          'level': 2,
+        },
+      ],
+    );
+
+    final results = await repo.findRefs('תפלה ב');
+    expect(results.first.isAltToc, isTrue);
+    expect(results.first.bookId, 1);
+  });
+
+  test('שורת מקור מדויקת אינה יורשת דירוג מקורב משם הספר', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה'
+          ? [
+              _hit(
+                bookId: 1,
+                title: 'סדר תפילה',
+                matchRank: ReferenceBooksCache.fuzzyMatchRank,
+              ),
+              _hit(
+                bookId: 2,
+                title: 'ספר הכוונות',
+                matchRank: 3,
+                matchedTerm: query,
+                orderIndex: 100,
+              ),
+            ]
+          : const [],
+      getTocEntriesForReference: (id, title, {queryTokens}) async => id == 2
+          ? [
+              {'reference': 'ספר הכוונות לב', 'segment': 10, 'level': 2},
+            ]
+          : const [],
+      resolveLineRefs: (bookIds, refKey) async => {
+        1: (lineIndex: 5, lineId: 6, heRef: 'סדר תפילה לב, יא'),
+      },
+    );
+
+    final results = await repo.findRefs('תפלה לב יא');
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.bookId, 1);
+  });
+
   test(
     'FindRef: acronym + suffix token searches TOC without the acronym token',
     () async {
