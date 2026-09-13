@@ -143,6 +143,181 @@ ReferenceBookHit _hit({
 );
 
 void main() {
+  test('כינוי מדויק קודם להתאמות מקורבות גם כשמופעלות תקרות התוצאות', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => [
+        for (var i = 0; i < 25; i++)
+          _hit(
+            bookId: i + 1,
+            title: 'סדר תפילה $i',
+            matchRank: ReferenceBooksCache.fuzzyMatchRank,
+            orderIndex: i.toDouble(),
+          ),
+        _hit(
+          bookId: 100,
+          title: 'ספר הכוונות',
+          matchRank: 3,
+          matchedTerm: 'תפלה',
+          orderIndex: 100,
+        ),
+      ],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+    );
+
+    final results = await repo.findRefs('תפלה');
+    expect(results.first.bookId, 100);
+    expect(results.map((result) => result.bookId), contains(100));
+  });
+
+  test('ספרי PDF מהדיסק נשארים נפרדים בדירוג לפי נתיב הקובץ', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => [
+        _hit(
+          bookId: -1,
+          title: 'סדר תפילה',
+          fileType: 'pdf',
+          filePath: '/fuzzy.pdf',
+          matchRank: ReferenceBooksCache.fuzzyMatchRank,
+        ),
+        _hit(
+          bookId: -1,
+          title: 'ספר הכוונות',
+          fileType: 'pdf',
+          filePath: '/alias.pdf',
+          matchRank: 3,
+          matchedTerm: 'תפלה',
+          orderIndex: 100,
+        ),
+      ],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+    );
+
+    final results = await repo.findRefs('תפלה');
+    expect(results.first.filePath, '/alias.pdf');
+  });
+
+  test('כותרת global AltToc אינה יורשת דירוג מקורב משם הספר שלה', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה ב'
+          ? [
+              _hit(
+                bookId: 1,
+                title: 'סדר תפילה',
+                matchRank: ReferenceBooksCache.fuzzyMatchRank,
+              ),
+              _hit(
+                bookId: 2,
+                title: 'ספר הכוונות',
+                matchRank: 3,
+                matchedTerm: query,
+                orderIndex: 100,
+              ),
+            ]
+          : const [],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+      searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async => [
+        {
+          'bookTitle': 'סדר תפילה',
+          'reference': 'תפלה ב',
+          'bookId': 1,
+          'bookOrderIndex': 0,
+          'segment': 4,
+          'level': 2,
+        },
+      ],
+    );
+
+    final results = await repo.findRefs('תפלה ב');
+    expect(results.first.isAltToc, isTrue);
+    expect(results.first.bookId, 1);
+  });
+
+  test(
+    'התאמת global AltToc במקטע אפס שורדת הסרת כפילות עם ספר מקורב',
+    () async {
+      final repo = FindRefRepository(
+        dataRepository: MockDataRepository(),
+        isReferenceBooksCacheLoaded: () => true,
+        warmUpReferenceBooksCache: () async {},
+        searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה ב'
+            ? [
+                _hit(
+                  bookId: 1,
+                  title: 'סדר תפילה',
+                  matchRank: ReferenceBooksCache.fuzzyMatchRank,
+                ),
+                _hit(
+                  bookId: 2,
+                  title: 'ספר הכוונות',
+                  matchRank: 3,
+                  matchedTerm: query,
+                  orderIndex: 100,
+                ),
+              ]
+            : const [],
+        getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+        searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async => [
+          {
+            'bookTitle': 'סדר תפילה',
+            'reference': 'תפלה ב',
+            'bookId': 1,
+            'bookOrderIndex': 0,
+            'segment': 0,
+            'level': 0,
+          },
+        ],
+      );
+
+      final results = await repo.findRefs('תפלה ב');
+      expect(results.first.bookId, 1);
+    },
+  );
+
+  test('שורת מקור מדויקת אינה יורשת דירוג מקורב משם הספר', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה'
+          ? [
+              _hit(
+                bookId: 1,
+                title: 'סדר תפילה',
+                matchRank: ReferenceBooksCache.fuzzyMatchRank,
+              ),
+              _hit(
+                bookId: 2,
+                title: 'ספר הכוונות',
+                matchRank: 3,
+                matchedTerm: query,
+                orderIndex: 100,
+              ),
+            ]
+          : const [],
+      getTocEntriesForReference: (id, title, {queryTokens}) async => id == 2
+          ? [
+              {'reference': 'ספר הכוונות לב', 'segment': 10, 'level': 2},
+            ]
+          : const [],
+      resolveLineRefs: (bookIds, refKey) async => {
+        1: (lineIndex: 5, lineId: 6, heRef: 'סדר תפילה לב, יא'),
+      },
+    );
+
+    final results = await repo.findRefs('תפלה לב יא');
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.bookId, 1);
+  });
+
   test(
     'FindRef: acronym + suffix token searches TOC without the acronym token',
     () async {

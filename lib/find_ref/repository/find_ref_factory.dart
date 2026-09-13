@@ -6,44 +6,100 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 /// הכבדות (TOC/AltToc/מפרשים/דור), כך שלא יקפיאו את ה-UI.
 /// משותף בין דיאלוג "איתור מקורות" לבין פתיחת ספר במיקום מתוך תוספים.
 FindRefRepository buildFindRefRepository() {
-  return FindRefRepository(
+  final scope = FindRefDbIsolate.allocateSearchScope();
+  late final FindRefRepository repository;
+
+  Future<({FindRefDbIsolate worker, int epoch})> searchWorker() async {
+    final epoch = repository.currentSearchGeneration;
+    final worker = await FindRefDbIsolate.instance();
+    return (worker: worker, epoch: epoch);
+  }
+
+  repository = FindRefRepository(
     dataRepository: DataRepository.instance,
-    getTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async =>
-        (await FindRefDbIsolate.instance()).getTocEntries(
-          bookId,
-          bookTitle,
-          queryTokens: queryTokens,
-        ),
-    getAltTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async =>
-        (await FindRefDbIsolate.instance()).getAltTocEntries(
-          bookId,
-          bookTitle,
-          queryTokens: queryTokens,
-        ),
+    getTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.getTocEntries(
+        bookId,
+        bookTitle,
+        queryTokens: queryTokens,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
+    getAltTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.getAltTocEntries(
+        bookId,
+        bookTitle,
+        queryTokens: queryTokens,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
     getAllAltTocFlatEntries: () async =>
         (await FindRefDbIsolate.instance()).getAllAltTocFlat(),
-    searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async =>
-        (await FindRefDbIsolate.instance()).searchAltTocFlat(
-          queryTokens,
-          maxRefTokens: maxRefTokens,
-        ),
+    searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.searchAltTocFlat(
+        queryTokens,
+        maxRefTokens: maxRefTokens,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
     prewarmAltTocFlatEntries: () async =>
         (await FindRefDbIsolate.instance()).prewarmAltTocFlat(),
-    getAltStructureBookIds: () async =>
-        (await FindRefDbIsolate.instance()).getAltStructureBookIds(),
-    fetchCommentatorRows: (ref) async =>
-        (await FindRefDbIsolate.instance()).getCommentatorRows(
-          bookId: ref.bookId,
-          bookTitle: ref.title,
-          sourceLineId: ref.sourceLineId,
-          startLineIndex: ref.segment.toInt(),
-          level: ref.tocLevel,
-          isAltToc: ref.isAltToc,
-          isSourceLine: ref.isSourceLine,
-        ),
-    resolveLineRefs: (bookIds, refKey) async =>
-        (await FindRefDbIsolate.instance()).resolveLineRefs(bookIds, refKey),
-    getBookEra: (bookTitle) async =>
-        (await FindRefDbIsolate.instance()).getBookEra(bookTitle),
+    getAltStructureBookIds: () async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.getAltStructureBookIds(
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
+    fetchCommentatorRows: (ref) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.getCommentatorRows(
+        bookId: ref.bookId,
+        bookTitle: ref.title,
+        sourceLineId: ref.sourceLineId,
+        startLineIndex: ref.segment.toInt(),
+        level: ref.tocLevel,
+        isAltToc: ref.isAltToc,
+        isSourceLine: ref.isSourceLine,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
+    resolveLineRefs: (bookIds, refKey) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.resolveLineRefs(
+        bookIds,
+        refKey,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
+    getBookEra: (bookTitle) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.getBookEra(
+        bookTitle,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
+    beginSearchEpoch: () => FindRefDbIsolate.cancelSearchScopeIfRunning(
+      scope,
+      repository.activeSearchGeneration,
+    ),
+    releaseSearchScope: () => FindRefDbIsolate.releaseSearchScope(scope),
   );
+  return repository;
 }

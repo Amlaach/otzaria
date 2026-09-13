@@ -156,6 +156,15 @@ class IndexingRepository {
     return library.getAllBooks().isEmpty;
   }
 
+  /// האם ריצה שבוטלה צריכה לבצע commit למה שכבר נכתב.
+  ///
+  /// רק כשל כתיבה מצדיק זניחה: שם החוצץ הושלך במכוון.
+  @visibleForTesting
+  static bool shouldCommitCancelledRun({
+    required int pendingBooks,
+    required bool writeBufferDiscarded,
+  }) => pendingBooks > 0 && !writeBufferDiscarded;
+
   @visibleForTesting
   static bool areAllIndexableBooksIndexed(
     Iterable<Book> books,
@@ -317,6 +326,8 @@ class IndexingRepository {
 
     _tantivyDataProvider.isIndexing.value = true;
     bool cancelled = false;
+    // כשל כתיבה מרוקן את חוצץ ה-writer; commit אחריו היה חותם מצב חלקי.
+    bool writeBufferDiscarded = false;
     var didStartActualIndexing = false;
 
     // חילוץ ה-PDF איטי בסדר גודל מאינדוקס ספר טקסט, ולכן חילוצי ה-PDF הבאים
@@ -390,6 +401,9 @@ class IndexingRepository {
               },
             );
             if (!_tantivyDataProvider.isIndexing.value) {
+              writeBufferDiscarded = !await _discardCancelledBookWrites(
+                readyBook,
+              );
               cancelled = true;
               break bookLoop;
             }
@@ -416,6 +430,7 @@ class IndexingRepository {
                 !await _discardPartialBookWrites(readyBook)) {
               await _recoverEngineAfterWriteFailure();
               cancelled = true;
+              writeBufferDiscarded = true;
               break bookLoop;
             }
           }
@@ -446,6 +461,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -486,6 +502,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -553,6 +570,7 @@ class IndexingRepository {
             // ועוצרים בלי commit — מה שלא נחתם ינוסה שוב בריצה הבאה.
             await _recoverEngineAfterWriteFailure();
             cancelled = true;
+            writeBufferDiscarded = true;
             break;
           }
         }
@@ -579,6 +597,16 @@ class IndexingRepository {
         await optimizeIndexBestEffort(index.optimize);
         debugPrint('⚙️ optimize: ${optimizeStopwatch.elapsedMilliseconds}ms');
         debugPrint('⏱️ סה"כ אינדוקס: ${totalStopwatch.elapsed}');
+      } else if (shouldCommitCancelledRun(
+        pendingBooks: indexedSinceCommit,
+        writeBufferDiscarded: writeBufferDiscarded,
+      )) {
+        // בלי commit בביטול, כל מה שאונדקס מאז ה-commit האחרון אבד,
+        // וההתקדמות נעצרת במכפלות של סף ה-commit.
+        final index = await _tantivyDataProvider.engine;
+        await index.commit();
+        debugPrint('💾 commit אחרי ביטול: $indexedSinceCommit ספרים');
+        _stampCatalogueOrderAfterCommit();
       }
     } finally {
       prefetcher.dispose();
@@ -893,6 +921,14 @@ class IndexingRepository {
       debugPrint('⚠️ מחיקת מסמכים חלקיים של ${book.title} נכשלה: $e');
       return false;
     }
+  }
+
+  /// ביטול עשוי להגיע אחרי שהמנוע כתב ספר אך לפני שנרשם במעקב. אין לחתום
+  /// אותו יחד עם הספרים הקודמים; מחיקה לפי מפתח הספר בטוחה גם אם טרם נכתב.
+  Future<bool> _discardCancelledBookWrites(Book book) async {
+    if (await _discardPartialBookWrites(book)) return true;
+    await _recoverEngineAfterWriteFailure();
+    return false;
   }
 
   /// שחזור בטוח אחרי כשל כתיבה/commit, כשמצב המנוע אינו ידוע: commit עלול
@@ -1567,6 +1603,8 @@ class IndexingRepository {
     int actuallyIndexed = 0;
     int errors = 0;
     bool cancelled = false;
+    // כשל כתיבה מרוקן את חוצץ ה-writer; commit אחריו היה חותם מצב חלקי.
+    bool writeBufferDiscarded = false;
     var didStartActualIndexing = false;
     final failures = <IndexingFailure>[];
 
@@ -1596,6 +1634,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -1618,6 +1657,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -1651,6 +1691,7 @@ class IndexingRepository {
             // ועוצרים בלי commit — מה שלא נחתם ינוסה שוב בריצה הבאה.
             await _recoverEngineAfterWriteFailure();
             cancelled = true;
+            writeBufferDiscarded = true;
             break;
           }
         }
@@ -1666,6 +1707,15 @@ class IndexingRepository {
         final commitStopwatch = Stopwatch()..start();
         await index.commit();
         debugPrint('💾 commit: ${commitStopwatch.elapsedMilliseconds}ms');
+        _stampCatalogueOrderAfterCommit();
+      } else if (shouldCommitCancelledRun(
+        pendingBooks: actuallyIndexed,
+        writeBufferDiscarded: writeBufferDiscarded,
+      )) {
+        // בלי commit בביטול, כל הספרים שבריצה הזו אבדים ויאונדקסו מאפס.
+        final index = await _tantivyDataProvider.engine;
+        await index.commit();
+        debugPrint('💾 commit אחרי ביטול: $actuallyIndexed ספרים');
         _stampCatalogueOrderAfterCommit();
       }
     } finally {
@@ -1803,8 +1853,7 @@ class IndexingRepository {
     // מפתחות `uid:` של ספר קיים מאותה תיקייה נשמרים; מפתח של ספר שנמחק
     // באמת אינו מופיע במסד ולכן ממשיך להימחק כיתום.
     final hiddenUserBookKeys =
-        preservedHiddenUserBookKeys ??
-        await _hiddenUserBookIndexKeys(folders);
+        preservedHiddenUserBookKeys ?? await _hiddenUserBookIndexKeys(folders);
 
     final orphans = <String>{};
     // snapshot — הלולאה מכילה await ואסור שהסט החי ישתנה תחתיה.
@@ -1854,7 +1903,9 @@ class IndexingRepository {
       final books = await repository.getAllBooksLean();
       final sourceNames = <int, String?>{};
       for (final sourceId in books.map((book) => book.sourceId).toSet()) {
-        sourceNames[sourceId] = (await repository.getSourceById(sourceId))?.name;
+        sourceNames[sourceId] = (await repository.getSourceById(
+          sourceId,
+        ))?.name;
       }
 
       return {

@@ -21,6 +21,13 @@ class _RecordingRepo extends FindRefRepository {
   _RecordingRepo();
 
   final List<String> calls = <String>[];
+  int cancellations = 0;
+
+  @override
+  void cancelPendingSearch() {
+    cancellations++;
+    super.cancelPendingSearch();
+  }
 
   @override
   Future<List<DbReferenceResult>> findRefs(
@@ -155,6 +162,93 @@ void main() {
 
       await bloc.close();
     });
+
+    test('כל הקלדה מבטלת עבודה קיימת לפני 250ms של debounce', () async {
+      final repo = _RecordingRepo();
+      final bloc = FindRefBloc(findRefRepository: repo);
+
+      bloc.add(const SearchRefRequested('אבג'));
+      await Future.delayed(const Duration(milliseconds: 20));
+      expect(repo.cancellations, 1);
+      bloc.add(const SearchRefRequested('אבגד'));
+      await Future.delayed(const Duration(milliseconds: 20));
+      expect(repo.cancellations, 2);
+      expect(repo.calls, isEmpty, reason: 'החיפוש החדש עדיין ב-debounce');
+
+      await Future.delayed(_kPastDebounce);
+      expect(repo.calls, ['אבגד']);
+      await bloc.close();
+    });
+
+    test('ניקוי בזמן fetch מבטל אותו ומשאיר FindRefInitial', () async {
+      final gate = Completer<void>();
+      final repo = _SequentialGateRepo(gates: [gate.future], onCall: (_) {});
+      final bloc = FindRefBloc(findRefRepository: repo);
+      bloc.add(const SearchRefRequested('אבג'));
+      await Future.delayed(_kPastDebounce);
+      expect(repo.cancellations, 1);
+
+      bloc.add(ClearSearchRequested());
+      await Future.delayed(const Duration(milliseconds: 20));
+      expect(bloc.state, isA<FindRefInitial>());
+      final afterClear = repo.cancellations;
+      gate.complete();
+      await Future.delayed(const Duration(milliseconds: 20));
+      expect(bloc.state, isA<FindRefInitial>());
+      expect(afterClear, 2);
+      await bloc.close();
+    });
+
+    test('רווח נגרר אינו מריץ חיפוש מחדש ואינו מהבהב ספינר', () async {
+      final repo = _RecordingRepo();
+      final bloc = FindRefBloc(findRefRepository: repo);
+      final states = <FindRefState>[];
+      final sub = bloc.stream.listen(states.add);
+
+      bloc.add(const SearchRefRequested('שולחן'));
+      await Future.delayed(_kPastDebounce);
+      expect(repo.calls, ['שולחן']);
+      expect(states.whereType<FindRefLoading>(), hasLength(1));
+
+      // רווח, גרשיים ופיסוק נעלמים בנרמול — אותה שאילתה בדיוק.
+      bloc.add(const SearchRefRequested('שולחן '));
+      bloc.add(const SearchRefRequested('שולחן  '));
+      bloc.add(const SearchRefRequested('שולחן",'));
+      await Future.delayed(_kPastDebounce);
+
+      expect(repo.calls, ['שולחן'], reason: 'אין fetch נוסף');
+      expect(
+        states.whereType<FindRefLoading>(),
+        hasLength(1),
+        reason: 'אין ספינר שני על אותן תוצאות',
+      );
+
+      // שינוי אמיתי כן מריץ.
+      bloc.add(const SearchRefRequested('שולחן ערוך'));
+      await Future.delayed(_kPastDebounce);
+      expect(repo.calls, ['שולחן', 'שולחן ערוך']);
+
+      await sub.cancel();
+      await bloc.close();
+    });
+
+    test('אותה שאילתה כן רצה שוב כשהמצב אינו תוצאות', () async {
+      final repo = _RecordingRepo();
+      final bloc = FindRefBloc(findRefRepository: repo);
+
+      bloc.add(const SearchRefRequested('שולחן'));
+      await Future.delayed(_kPastDebounce);
+      expect(repo.calls, ['שולחן']);
+
+      // ניקוי מחזיר את המצב ל-Initial — הקלדה חוזרת חייבת לטעון מחדש.
+      bloc.add(ClearSearchRequested());
+      await Future.delayed(const Duration(milliseconds: 20));
+      bloc.add(const SearchRefRequested('שולחן'));
+      await Future.delayed(_kPastDebounce);
+      expect(repo.calls, ['שולחן', 'שולחן']);
+
+      await bloc.close();
+    });
   });
 }
 
@@ -166,6 +260,13 @@ class _SequentialGateRepo extends FindRefRepository {
   final List<Future<void>> gates;
   final void Function(String query) onCall;
   int _index = 0;
+  int cancellations = 0;
+
+  @override
+  void cancelPendingSearch() {
+    cancellations++;
+    super.cancelPendingSearch();
+  }
 
   @override
   Future<List<DbReferenceResult>> findRefs(

@@ -15,6 +15,9 @@ class _FakeRepository implements FindRefRepository {
   final Object _error;
 
   @override
+  void cancelPendingSearch() {}
+
+  @override
   Future<List<DbReferenceResult>> findRefs(
     String ref, {
     bool includePersonalBooks = false,

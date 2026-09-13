@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/data/constants/database_constants.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
@@ -34,7 +36,44 @@ typedef _UserBookRecord = ({
   List<String> folderTitles,
 });
 
+final Object _searchGenerationZoneKey = Object();
+
 class FindRefRepository {
+  int _searchGeneration = 0;
+  bool _disposed = false;
+
+  /// Invalidates an in-flight search before the debounce starts. Worker work
+  /// already running may finish, but its continuation must not submit more.
+  void cancelPendingSearch() {
+    if (_disposed) return;
+    _searchGeneration++;
+    beginSearchEpoch?.call();
+  }
+
+  /// The immutable generation captured by the current findRefs invocation.
+  int get currentSearchGeneration =>
+      Zone.current[_searchGenerationZoneKey] as int? ?? _searchGeneration;
+
+  int get activeSearchGeneration => _searchGeneration;
+
+  void throwIfSearchCancelled() {
+    if (_disposed || currentSearchGeneration != _searchGeneration) {
+      throw const FindRefQueryCancelled();
+    }
+  }
+
+  void throwIfSearchGenerationCancelled(int generation) {
+    if (_disposed || generation != _searchGeneration) {
+      throw const FindRefQueryCancelled();
+    }
+  }
+
+  Future<T> _awaitCurrent<T>(Future<T> future) async {
+    final value = await future;
+    throwIfSearchCancelled();
+    return value;
+  }
+
   /// שמור לצורך תאימות לאחור עם call-sites קיימים.
   /// אינו בשימוש בפועל בקוד ה-repository.
   final DataRepository? dataRepository;
@@ -146,6 +185,11 @@ class FindRefRepository {
   /// קטגוריית הספר. In production: [ReferenceBooksCache.instance.getCategoryPathForBookSync].
   final String? Function(int bookId)? getCategoryPathSync;
 
+  /// פותח מחזור שאילתה חדש ומורה ל-worker לזרוק את הבקשות הממתינות של
+  /// המחזור הקודם. In production: [FindRefDbIsolate.cancelSearchScopeIfRunning].
+  final void Function()? beginSearchEpoch;
+  final void Function()? releaseSearchScope;
+
   /// Injection for testing: חיפוש מצב "דור + נושא". In production:
   /// [ReferenceBooksCache.instance.searchByEraAndTopic].
   final List<ReferenceBookHit> Function(
@@ -219,6 +263,8 @@ class FindRefRepository {
     this.resolveLineRefs,
     this.getBookEra,
     this.getCategoryPathSync,
+    this.beginSearchEpoch,
+    this.releaseSearchScope,
     this.searchByEraAndTopic,
   }) {
     _liveInstances.add(this);
@@ -242,6 +288,10 @@ class FindRefRepository {
 
   /// מסיר את ה-instance מרשימת ה-repositories הפעילים.
   void dispose() {
+    if (_disposed) return;
+    cancelPendingSearch();
+    _disposed = true;
+    releaseSearchScope?.call();
     _liveInstances.remove(this);
   }
 
@@ -290,6 +340,8 @@ class FindRefRepository {
       final ids = await fn();
       if (ids == null) return null;
       return _altBookIdsCache = ids.toSet();
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e) {
       debugPrint('[FindRef] alt book ids fetch failed: $e');
       return null;
@@ -306,13 +358,19 @@ class FindRefRepository {
 
     final List<_UserBookRecord> list;
     if (getAllUserBooks != null) {
-      list = await getAllUserBooks!();
+      list = await _awaitCurrent(getAllUserBooks!());
     } else {
-      final userRepo = await UserBooksDatabaseHolder.instance.repository;
-      final raw = await userRepo.database.bookDao.getAllLocalBooks();
+      final userRepo = await _awaitCurrent(
+        UserBooksDatabaseHolder.instance.repository,
+      );
+      final raw = await _awaitCurrent(
+        userRepo.database.bookDao.getAllLocalBooks(),
+      );
       // שרשרת התיקיות של כל ספר — בספרים אישיים שם הספר יושב לרוב על
       // התיקייה ('חלק א' בתוך 'שות פלוני'), והיא חלק מהתאמת הכותרת.
-      final categories = await userRepo.database.categoryDao.getAllCategories();
+      final categories = await _awaitCurrent(
+        userRepo.database.categoryDao.getAllCategories(),
+      );
       final byId = {for (final c in categories) c.id: c};
       List<String> chainOf(int categoryId) {
         final titles = <String>[];
@@ -382,6 +440,8 @@ class FindRefRepository {
       }
       _altTocFlatCache = list;
       return list;
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e, st) {
       debugPrint('[FindRef] AltToc flat cache build failed: $e\n$st');
       // אל **תקבע** את הקאש לריק במקרה כשל — אם הסיבה הייתה זמנית
@@ -455,6 +515,8 @@ class FindRefRepository {
           ),
         );
       }
+    } on FindRefQueryCancelled {
+      rethrow; // הקלדה חדשה — התוצאה החלקית הזו כבר לא רלוונטית.
     } catch (e, st) {
       debugPrint('[FindRef] Global AltToc fallback failed: $e\n$st');
     }
@@ -555,6 +617,19 @@ class FindRefRepository {
   Future<List<DbReferenceResult>> findRefs(
     String ref, {
     bool includePersonalBooks = false,
+  }) {
+    if (_disposed) return Future.error(const FindRefQueryCancelled());
+    cancelPendingSearch();
+    final generation = _searchGeneration;
+    return runZoned(
+      () => _findRefs(ref, includePersonalBooks: includePersonalBooks),
+      zoneValues: {_searchGenerationZoneKey: generation},
+    );
+  }
+
+  Future<List<DbReferenceResult>> _findRefs(
+    String ref, {
+    bool includePersonalBooks = false,
   }) async {
     final cleanedQuery = _normalizeForMatch(ref);
     if (cleanedQuery.isEmpty) {
@@ -612,8 +687,10 @@ class FindRefRepository {
         isReferenceBooksCacheLoaded?.call() ??
         ReferenceBooksCache.instance.isLoaded;
     if (!cacheLoaded()) {
-      await (warmUpReferenceBooksCache?.call() ??
-          ReferenceBooksCache.instance.warmUp());
+      await _awaitCurrent(
+        warmUpReferenceBooksCache?.call() ??
+            ReferenceBooksCache.instance.warmUp(),
+      );
       // ה-warmUp חוזר בלי לזרוק גם כשהוא נכשל (DB נעול, יציאה ממצב שינה).
       // בלי הבדיקה השנייה נחפש על מטמון ריק ונדווח "לא נמצא ספר".
       if (!cacheLoaded()) throw const ReferenceLibraryNotReadyException();
@@ -624,7 +701,9 @@ class FindRefRepository {
     // הרגיל כדי שהשאילתה תמיד תעשה משהו סביר.
     final eraQuery = _detectEraQuery(queryTokens);
     if (eraQuery != null) {
-      final eraResults = await _findByEra(eraQuery.era, eraQuery.topicTokens);
+      final eraResults = await _awaitCurrent(
+        _findByEra(eraQuery.era, eraQuery.topicTokens),
+      );
       if (eraResults.isNotEmpty) return eraResults;
     }
 
@@ -695,6 +774,14 @@ class FindRefRepository {
           primaryHits.add(hit);
           continue;
         }
+        // התאמה מקורבת מצטרפת כמשנית בלבד, ובלי דרישת רצף-הטוקנים שהיא
+        // נכשלת בה מעצם היותה מקורבת. אסור שתכריע אילו טוקנים הם שם הספר —
+        // "חדושי הלכות" היה מקצץ אז את הטוקנים הלא-נכונים.
+        if (hit.matchRank == ReferenceBooksCache.fuzzyMatchRank) {
+          secondaryHits.add(hit);
+          secondaryPhraseTokenCount[hit] = n;
+          continue;
+        }
         if (hit.matchRank >= 4) {
           if (hit.matchRank == 4 && hit.acronymTailIsTitleWords) {
             joinablePrefixHits.add(hit);
@@ -741,7 +828,21 @@ class FindRefRepository {
       bookHits = [...bookHits, ...secondaryHits];
     }
 
+    // דרגת ההתאמה של שם הספר חייבת לשרוד עד למיון הסופי: תוצאה מקורבת
+    // אינה רשאית לדחוק כינוי מדויק רק בגלל סדר הספרייה או תקרת התוצאות.
+    final bookMatchRanks = <(int, String), int>{};
+    for (final hit in bookHits) {
+      if (hit.bookId > 0 || hit.filePath.isNotEmpty) {
+        final key = (hit.bookId, hit.bookId > 0 ? '' : hit.filePath);
+        final previous = bookMatchRanks[key];
+        if (previous == null || hit.matchRank < previous) {
+          bookMatchRanks[key] = hit.matchRank;
+        }
+      }
+    }
+
     final results = <DbReferenceResult>[];
+    final directMatches = <DbReferenceResult>{};
 
     // Single-word query: skip per-book TOC search, but still match short
     // AltToc headings globally ("נח" / "פרשת האזינו") — issue #983.
@@ -763,20 +864,26 @@ class FindRefRepository {
       }
 
       if (queryTokens.first.length >= 2) {
-        await _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2);
+        final start = results.length;
+        await _awaitCurrent(
+          _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2),
+        );
+        directMatches.addAll(results.skip(start));
       }
 
       if (includePersonalBooks) {
-        results.addAll(await _searchPersonalBooks(queryTokens));
+        results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
       }
 
       final unique = _dedupeRefs(results);
       final ranked = _rankResults(
         unique,
         queryTokens,
+        bookMatchRanks: bookMatchRanks,
+        directMatches: directMatches,
         preserveSubstringTail: queryTokens.length == 1,
       );
-      return await _enrichWithPaths(ranked);
+      return await _awaitCurrent(_enrichWithPaths(ranked));
     }
 
     // If the *next* token after the matched book-phrase is an exact book match,
@@ -806,7 +913,7 @@ class FindRefRepository {
 
     // רק ~5% מהספרים הם בעלי מבנה AltToc — הסט מאפשר לדלג על שאילתת AltToc
     // עבור כל השאר (חוסך עד ~50 קריאות isolate בכל הקלדה).
-    final altBookIds = await _getAltBookIds();
+    final altBookIds = await _awaitCurrent(_getAltBookIds());
 
     // אורך ה-phrase שזיהה כל hit: זה שנקבע בלולאה, או קצר יותר ל-hits שנאספו
     // בפירוש חלופי — חיתוך לפי האורך הגלובלי היה בולע להם טוקן-קטע.
@@ -821,10 +928,12 @@ class FindRefRepository {
         prefixMatchTokensCount: hit.matchRank >= 3 ? 0 : phraseTokenCount,
       );
     }
-    final exactLines = await _resolveExactLines(
-      bookHits,
-      remainingByHit,
-      tokensAfterRange: _tokensAfterRange(ref, queryTokens),
+    final exactLines = await _awaitCurrent(
+      _resolveExactLines(
+        bookHits,
+        remainingByHit,
+        tokensAfterRange: _tokensAfterRange(ref, queryTokens),
+      ),
     );
 
     for (final hit in bookHits) {
@@ -880,7 +989,7 @@ class FindRefRepository {
         final outlineFn =
             getPdfOutlineEntries ??
             ReferenceBooksCache.instance.getPdfOutlineEntries;
-        final outlineEntries = await outlineFn(hit.filePath);
+        final outlineEntries = await _awaitCurrent(outlineFn(hit.filePath));
         final normalizedBookTitle = _normalizeForMatch(title);
 
         // ציטוט דף: התאמה מיקומית (מספר מול מספר, עמוד מול עמוד) — כדי ש-"ב"
@@ -954,18 +1063,23 @@ class FindRefRepository {
         if (tocLookups >= maxTocLookups) continue;
         tocLookups++;
 
-        var tocEntries = await fetchTocEntries(
-          bookId,
-          title,
-          queryTokens: [...sectionTokens, ...remainingTokens],
+        final resultsBeforeToc = results.length;
+        var tocEntries = await _awaitCurrent(
+          fetchTocEntries(
+            bookId,
+            title,
+            queryTokens: [...sectionTokens, ...remainingTokens],
+          ),
         );
         // הזנב אינו בהכרח חלק פנימי ("חזקוני על התורה") — נסיגה לחיפוש בלעדיו
         // כדי שראש-תיבות כזה ימשיך להחזיר את מה שהחזיר.
         if (tocEntries.isEmpty && sectionTokens.isNotEmpty) {
-          tocEntries = await fetchTocEntries(
-            bookId,
-            title,
-            queryTokens: remainingTokens,
+          tocEntries = await _awaitCurrent(
+            fetchTocEntries(
+              bookId,
+              title,
+              queryTokens: remainingTokens,
+            ),
           );
         }
 
@@ -994,10 +1108,12 @@ class FindRefRepository {
         final altTocEntries =
             (altBookIds != null && !altBookIds.contains(bookId))
             ? const <Map<String, dynamic>>[]
-            : await fetchAltTocEntries(
-                bookId,
-                title,
-                queryTokens: remainingTokens,
+            : await _awaitCurrent(
+                fetchAltTocEntries(
+                  bookId,
+                  title,
+                  queryTokens: remainingTokens,
+                ),
               );
         for (final entry in altTocEntries) {
           final ref = entry['reference'] as String;
@@ -1019,6 +1135,24 @@ class FindRefRepository {
               isAltToc: true,
               bookId: bookId,
               sourceLineId: entry['dbLineId'] as int? ?? 0,
+            ),
+          );
+        }
+
+        // מפלט אחרון: הזנב הוא שם הקטגוריה שהספר יושב בה ("רמבם המדע" —
+        // "מדע" אינו בשום כותרת או ראש-תיבות, רק בקטגוריה "ספר מדע"). רק
+        // כשה-TOC לא החזיר כלום, כדי שכותרת פנימית תמיד תגבר.
+        if (results.length == resultsBeforeToc &&
+            _remainingTokensAreLeafCategory(bookId, remainingTokens)) {
+          results.add(
+            DbReferenceResult(
+              title: title,
+              reference: title,
+              segment: 0,
+              isPdf: isPdf,
+              filePath: hit.filePath,
+              orderIndex: hit.orderIndex,
+              bookId: bookId,
             ),
           );
         }
@@ -1049,18 +1183,25 @@ class FindRefRepository {
       (r) => r.isAltToc || r.tocLevel >= 2,
     );
     if (!perBookHasSpecificMatch && queryTokens.length >= 2) {
-      await _addGlobalAltTocMatches(results, queryTokens);
+      final start = results.length;
+      await _awaitCurrent(_addGlobalAltTocMatches(results, queryTokens));
+      directMatches.addAll(results.skip(start));
     }
 
     if (includePersonalBooks) {
-      results.addAll(await _searchPersonalBooks(queryTokens));
+      results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
     }
 
     final unique = _dedupeRefs(results);
     final pruned = _suppressDeeperVariants(unique);
-    final ranked = _rankResults(pruned, queryTokens);
+    final ranked = _rankResults(
+      pruned,
+      queryTokens,
+      bookMatchRanks: bookMatchRanks,
+      directMatches: directMatches,
+    );
 
-    return await _enrichWithPaths(ranked);
+    return await _awaitCurrent(_enrichWithPaths(ranked));
   }
 
   /// תוצאות PDF של תלמוד בבלי אינן מוצגות באיתור — מהדורת הטקסט מייצגת את
@@ -1193,7 +1334,7 @@ class FindRefRepository {
     try {
       // רשימת הספרים האישיים נטענת מקאש בזיכרון (ראה [_loadUserBooks]) — כך
       // אין שאילתת DB לכל הקלדה, רק בחיפוש הראשון אחרי רענון.
-      final allBooks = await _loadUserBooks();
+      final allBooks = await _awaitCurrent(_loadUserBooks());
       SeforimRepository? userRepo;
 
       if (allBooks.isEmpty) return out;
@@ -1211,7 +1352,9 @@ class FindRefRepository {
         // `UserBooksDatabaseHolder.instance.repository` הוא `Future<SeforimRepository>`,
         // לכן נדרש `await` ולא cast — הקאסט הקודם היה זורק TypeError כש-userRepo
         // לא הוזרק מראש (תרחיש שטחי בטסטים, אך bug רדום שראוי לתקן).
-        userRepo ??= await UserBooksDatabaseHolder.instance.repository;
+        userRepo ??= await _awaitCurrent(
+          UserBooksDatabaseHolder.instance.repository,
+        );
         return userRepo!.getTocEntriesForReference(
           bookId,
           bookTitle,
@@ -1314,10 +1457,12 @@ class FindRefRepository {
           );
         } else {
           // Only TOC entries matching remainingTokens
-          final toc = await fetchUserToc(
-            book.id,
-            book.title,
-            qt: remainingTokens,
+          final toc = await _awaitCurrent(
+            fetchUserToc(
+              book.id,
+              book.title,
+              qt: remainingTokens,
+            ),
           );
           for (final entry in toc) {
             out.add(
@@ -1340,6 +1485,8 @@ class FindRefRepository {
           }
         }
       }
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e) {
       debugPrint('[FindRef] Personal books search failed: $e');
     }
@@ -1485,7 +1632,7 @@ class FindRefRepository {
 
     final resolved = <int, ({int lineIndex, int lineId, String? heRef})>{};
     for (final entry in bookIdsByKey.entries) {
-      resolved.addAll(await resolve(entry.value, entry.key));
+      resolved.addAll(await _awaitCurrent(resolve(entry.value, entry.key)));
     }
     return resolved;
   }
@@ -1511,6 +1658,31 @@ class FindRefRepository {
     if (r.isSourceLine) return 0;
     if (r.isAltToc) return 4;
     return r.tocLevel <= 2 ? r.tocLevel + 1 : r.tocLevel + 2;
+  }
+
+  /// האם כל [remainingTokens] הם מילים בשם הקטגוריה *הישירה* של הספר. רק
+  /// העלה נבדק — segment אב ("הלכה", "מפרשים") משותף לאלפי ספרים והיה מחזיר
+  /// כל אחד מהם. טוקן בן אות-שתיים הוא טוקן מיקום ולא שם קטגוריה.
+  bool _remainingTokensAreLeafCategory(
+    int bookId,
+    List<String> remainingTokens,
+  ) {
+    if (remainingTokens.isEmpty) return false;
+    if (remainingTokens.any((t) => t.length < 3)) return false;
+
+    final resolver =
+        getCategoryPathSync ??
+        ReferenceBooksCache.instance.getCategoryPathForBookSync;
+    final path = resolver(bookId);
+    if (path == null || path.isEmpty) return false;
+
+    final leaf = path.split(', ').last;
+    final leafTokens = titleMatchTokens(_normalizeForMatch(leaf));
+    return remainingTokens.every((qt) {
+      if (leafTokens.contains(qt)) return true;
+      final bare = titleTokenWithoutConjunction(qt, allowVav: true);
+      return bare != null && leafTokens.contains(bare);
+    });
   }
 
   List<String> _getRemainingTokens(
@@ -1596,12 +1768,24 @@ class FindRefRepository {
   List<DbReferenceResult> _rankResults(
     List<DbReferenceResult> results,
     List<String> queryTokens, {
+    Map<(int, String), int> bookMatchRanks = const {},
+    Set<DbReferenceResult> directMatches = const {},
     bool preserveSubstringTail = false,
   }) {
     if (results.length < 2) return results;
 
     final query = queryTokens.join(' ');
     final needsTokenWiseRanking = queryTokens.length >= 2;
+    // ה-dedupe עשוי לשמור תוצאת ספר שהופיעה לפני AltToc גלובלי באותו מקטע.
+    // גם במקרה הזה התוצאה ששרדה מייצגת התאמה ישירה, ולא שם ספר מקורב בלבד.
+    final directSegments = {
+      for (final r in directMatches)
+        (r.bookId, r.isUserBook, r.title, r.isPdf, r.segment),
+    };
+    final directReferences = {
+      for (final r in directMatches)
+        (r.bookId, r.isUserBook, r.title, r.isPdf, r.reference),
+    };
 
     // זיהוי סגנון ציון גמרא: הטוקן האחרון הוא "א" או "ב" + לפחות עוד טוקן.
     // כשמזוהה — ערכים שה-reference שלהם מכיל "דף" יקבלו עדיפות על פני ערכים
@@ -1637,6 +1821,26 @@ class FindRefRepository {
       return _RankKey(
         result: r,
         normTitle: normTitle,
+        fuzzyBookMatch:
+            !r.isUserBook &&
+            !r.isSourceLine &&
+            !directMatches.contains(r) &&
+            !directSegments.contains((
+              r.bookId,
+              r.isUserBook,
+              r.title,
+              r.isPdf,
+              r.segment,
+            )) &&
+            !directReferences.contains((
+              r.bookId,
+              r.isUserBook,
+              r.title,
+              r.isPdf,
+              r.reference,
+            )) &&
+            bookMatchRanks[(r.bookId, r.bookId > 0 ? '' : r.filePath)] ==
+                ReferenceBooksCache.fuzzyMatchRank,
         exactMatch: normTitle == query,
         startsWithMatch: normTitle.startsWith(query),
         titleTokens: needsTokenWiseRanking ? _tokenize(normTitle) : const [],
@@ -1650,6 +1854,11 @@ class FindRefRepository {
     // האלפביתי/אורך-ה-reference אינו רלוונטיות אלא סדר-תצוגה, ולכן אינו כאן —
     // כך ה-cap המודע-רלוונטיות לא יחתוך באמצע קבוצת תוצאות שווֹת-רלוונטיות.
     int compareRelevance(_RankKey a, _RankKey b) {
+      // התאמה מקורבת בשם הספר תמיד מתחת להתאמה מילולית או לכינוי מדויק.
+      if (a.fuzzyBookMatch != b.fuzzyBookMatch) {
+        return a.fuzzyBookMatch ? 1 : -1;
+      }
+
       // 1. התאמה מלאה של שם הספר
       if (a.exactMatch != b.exactMatch) return a.exactMatch ? -1 : 1;
 
@@ -1859,6 +2068,7 @@ class FindRefRepository {
 class _RankKey {
   final DbReferenceResult result;
   final String normTitle;
+  final bool fuzzyBookMatch;
   final bool exactMatch;
   final bool startsWithMatch;
   final List<String> titleTokens;
@@ -1877,6 +2087,7 @@ class _RankKey {
   const _RankKey({
     required this.result,
     required this.normTitle,
+    required this.fuzzyBookMatch,
     required this.exactMatch,
     required this.startsWithMatch,
     required this.titleTokens,

@@ -22,6 +22,40 @@ import 'package:otzaria_search_engine/otzaria_search_engine.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 void main() {
+  group('IndexingRepository.shouldCommitCancelledRun', () {
+    test('ביטול רגיל — הספרים שכבר נכתבו נחתמים', () {
+      // רגרסיה: בלי commit בביטול, כל ריצה שנקטעה התחילה מה-commit
+      // האחרון ואינדקסה מאפס עד מאות ספרים.
+      expect(
+        IndexingRepository.shouldCommitCancelledRun(
+          pendingBooks: 42,
+          writeBufferDiscarded: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('כשל כתיבה — החוצץ הושלך ואסור לחתום מצב חלקי', () {
+      expect(
+        IndexingRepository.shouldCommitCancelledRun(
+          pendingBooks: 42,
+          writeBufferDiscarded: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('אין מה לחתום — לא נוגעים במנוע', () {
+      expect(
+        IndexingRepository.shouldCommitCancelledRun(
+          pendingBooks: 0,
+          writeBufferDiscarded: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('IndexingRepository.shouldSkipManualReindexCheck', () {
     test('מחזיר true עבור ספרייה ריקה - מונע דיאלוג איפוס בלי ספרים', () {
       expect(
@@ -2002,6 +2036,169 @@ void main() {
     });
   });
 
+  group('IndexingRepository — ביטול אחרי כתיבת הספר הנוכחי', () {
+    test('indexBooks: שומר את הקודם, מסיר את הנוכחי ומנסה אותו שוב', () async {
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(provider);
+      final first = TextBook(id: 101, title: 'ראשון');
+      final second = TextBook(id: 102, title: 'שני');
+      final library = Library(categories: [])..books.addAll([first, second]);
+      final firstKey = IndexingRepository.buildIndexedBookFilePath(first);
+      final secondKey = IndexingRepository.buildIndexedBookFilePath(second);
+      engine.onTextAdded = (title) {
+        if (title == second.title) provider.isIndexing.value = false;
+      };
+
+      final cancelled = await repository.indexBooks(
+        [first, second],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(cancelled.completed, isFalse);
+      expect(cancelled.indexedBooks, 1);
+      expect(engine.committedCounts, {firstKey: 1});
+      expect(provider.indexedFilePaths, {firstKey});
+      expect(engine.removedFilePaths, contains(secondKey));
+
+      engine.onTextAdded = null;
+      final resumed = await repository.indexBooks(
+        [second],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(resumed.completed, isTrue);
+      expect(engine.committedCounts, {firstKey: 1, secondKey: 1});
+    });
+
+    test('כשל בניקוי הספר שבוטל מונע commit של כל החוצץ', () async {
+      final engine = _CancellationRecordingEngine()..failDeleteFilePaths = true;
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(provider);
+      final first = TextBook(id: 109, title: 'ראשון');
+      final second = TextBook(id: 110, title: 'שני');
+      final library = Library(categories: [])..books.addAll([first, second]);
+      engine.onTextAdded = (title) {
+        if (title == second.title) provider.isIndexing.value = false;
+      };
+
+      final result = await repository.indexBooks(
+        [first, second],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(result.completed, isFalse);
+      expect(engine.commitCount, 0);
+      expect(engine.rollbackCount, 1);
+      expect(provider.indexedFilePaths, isEmpty);
+    });
+
+    test('indexBooks: ביטול בזמן כתיבת PDF אינו חותם אותו', () async {
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(provider);
+      final first = TextBook(id: 103, title: 'ראשון');
+      final pdf = PdfBook(title: 'שני', path: r'C:\pdfs\second.pdf');
+      final library = Library(categories: [])..books.addAll([first, pdf]);
+      final firstKey = IndexingRepository.buildIndexedBookFilePath(first);
+      final pdfKey = IndexingRepository.buildIndexedBookFilePath(pdf);
+      engine.onPdfAdded = (_) => provider.isIndexing.value = false;
+
+      final cancelled = await repository.indexBooks(
+        [first, pdf],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(cancelled.completed, isFalse);
+      expect(engine.committedCounts, {firstKey: 1});
+      expect(provider.indexedFilePaths, {firstKey});
+      expect(engine.removedFilePaths, contains(pdfKey));
+
+      engine.onPdfAdded = null;
+      await repository.indexBooks([pdf], library, onProgress: (_, _) {});
+      expect(engine.committedCounts, {firstKey: 1, pdfKey: 1});
+    });
+
+    test('indexAllBooks: ביטול בכתיבת טקסט שומר רק ספרים קודמים', () async {
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(provider);
+      final first = TextBook(id: 104, title: 'ראשון');
+      final second = TextBook(id: 105, title: 'שני');
+      final library = Library(categories: [])..books.addAll([first, second]);
+      final firstKey = IndexingRepository.buildIndexedBookFilePath(first);
+      final secondKey = IndexingRepository.buildIndexedBookFilePath(second);
+      engine.onTextAdded = (title) {
+        if (title == second.title) provider.isIndexing.value = false;
+      };
+
+      final result = await repository.indexAllBooks(
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(result.completed, isFalse);
+      expect(engine.committedCounts, {firstKey: 1});
+      expect(provider.indexedFilePaths, {firstKey});
+      expect(engine.removedFilePaths, contains(secondKey));
+    });
+
+    test('indexAllBooks: ביטול בכתיבת PDF במסלול הרגיל', () async {
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(provider);
+      final first = TextBook(id: 106, title: 'ראשון');
+      final pdf = PdfBook(title: 'שני', path: r'C:\pdfs\second.pdf');
+      final library = Library(categories: [])..books.addAll([first, pdf]);
+      final firstKey = IndexingRepository.buildIndexedBookFilePath(first);
+      final pdfKey = IndexingRepository.buildIndexedBookFilePath(pdf);
+      engine.onPdfAdded = (_) => provider.isIndexing.value = false;
+
+      final result = await repository.indexAllBooks(
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(result.completed, isFalse);
+      expect(engine.committedCounts, {firstKey: 1});
+      expect(provider.indexedFilePaths, {firstKey});
+      expect(engine.removedFilePaths, contains(pdfKey));
+    });
+
+    test('indexAllBooks: ביטול בכתיבת PDF שנוקז מוקדם', () async {
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final releasePdfExtraction = Completer<void>();
+      final repository = _GatedPdfExtractionRepository(
+        provider,
+        releasePdfExtraction.future,
+      );
+      final first = TextBook(id: 107, title: 'ראשון');
+      final middle = TextBook(id: 108, title: 'מדולג');
+      final pdf = PdfBook(title: 'שלישי', path: r'C:\pdfs\third.pdf');
+      final library = Library(categories: [])
+        ..books.addAll([
+          first,
+          middle,
+          pdf,
+        ]);
+      final firstKey = IndexingRepository.buildIndexedBookFilePath(first);
+      final middleKey = IndexingRepository.buildIndexedBookFilePath(middle);
+      final pdfKey = IndexingRepository.buildIndexedBookFilePath(pdf);
+      provider.indexedFilePaths.add(middleKey);
+      engine.onTextAdded = (_) => releasePdfExtraction.complete();
+      engine.onPdfAdded = (_) => provider.isIndexing.value = false;
+
+      final result = await repository.indexAllBooks(
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(result.completed, isFalse);
+      expect(result.indexedBooks, 1);
+      expect(engine.committedCounts, {firstKey: 1});
+      expect(provider.indexedFilePaths, {firstKey, middleKey});
+      expect(engine.removedFilePaths, contains(pdfKey));
+    });
+  });
+
   group('IndexingRepository.orderBooksForIndexing', () {
     test('ספרי PDF נדחפים לסוף, סדר שאר הספרים נשמר', () {
       final t1 = TextBook(title: 'א');
@@ -2539,6 +2736,82 @@ class _FakeExtractionRepository extends IndexingRepository {
       droppedPages: droppedPagesByTitle[book.title] ?? 0,
     );
     return extraction;
+  }
+}
+
+class _GatedPdfExtractionRepository extends _FakeExtractionRepository {
+  _GatedPdfExtractionRepository(super.provider, this.extractionGate);
+
+  final Future<void> extractionGate;
+
+  @override
+  Future<PdfExtraction> extractPdfPagesGuarded(PdfBook book) async {
+    await extractionGate;
+    return super.extractPdfPagesGuarded(book);
+  }
+}
+
+/// מדמה חוצץ writer: commit חותם רק מסמכים שלא נמחקו עד לאותה נקודה.
+class _CancellationRecordingEngine extends _RecordingSearchEngine {
+  final pendingCounts = <String, int>{};
+  final committedCounts = <String, int>{};
+  void Function(String title)? onTextAdded;
+
+  void _add(String key) =>
+      pendingCounts.update(key, (n) => n + 1, ifAbsent: () => 1);
+
+  @override
+  Future<int> addTextBook({
+    required String title,
+    required String topics,
+    required String filePath,
+    required int catalogueOrder,
+    required int generationOrder,
+    required String text,
+    List<String>? extraFacets,
+  }) async {
+    _add(filePath);
+    onTextAdded?.call(title);
+    return 1;
+  }
+
+  @override
+  Future<int> addPdfBook({
+    required String title,
+    required String topics,
+    required String filePath,
+    required int catalogueOrder,
+    required int generationOrder,
+    required List<PdfPageInput> pages,
+    List<String>? extraFacets,
+  }) async {
+    _add(filePath);
+    addedPdfTitles.add(title);
+    onPdfAdded?.call(title);
+    return pages.length;
+  }
+
+  @override
+  Future<void> deleteDocumentsByFilePaths({
+    required List<String> filePaths,
+  }) async {
+    await super.deleteDocumentsByFilePaths(filePaths: filePaths);
+    for (final key in filePaths) {
+      pendingCounts.remove(key);
+    }
+  }
+
+  @override
+  Future<void> commit() async {
+    await super.commit();
+    for (final entry in pendingCounts.entries) {
+      committedCounts.update(
+        entry.key,
+        (n) => n + entry.value,
+        ifAbsent: () => entry.value,
+      );
+    }
+    pendingCounts.clear();
   }
 }
 

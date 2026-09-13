@@ -378,6 +378,81 @@ void main() {
       },
     );
 
+    test(
+      'כותרות רמה 1 בלבד (שולחן ערוך) + sourceLineId=0 → ריק',
+      () async {
+        final catId = await createCategory();
+        final bookId = await createBook(catId, 'שולחן ערוך, אורח חיים');
+        final lines = await insertLinesAndGetIds(bookId, [
+          'סימן א',
+          'סימן ב',
+        ]);
+        await insertToc(
+          bookId: bookId,
+          lineIndex: 0,
+          text: 'סימן א',
+          level: 1,
+        );
+        await insertToc(
+          bookId: bookId,
+          lineIndex: 1,
+          text: 'סימן ב',
+          level: 1,
+        );
+        final rashi = await buildRashiBook();
+        await insertCommentaryLink(
+          sourceBookId: bookId,
+          sourceLineId: lines[0],
+          targetBookId: rashi.bookId,
+          targetLineId: rashi.lineIds[0],
+        );
+
+        final rows = await repository.getCommentatorsForReference(
+          bookId: bookId,
+          bookTitle: 'שולחן ערוך, אורח חיים',
+          sourceLineId: 0,
+          startLineIndex: 0,
+          level: 1,
+        );
+
+        expect(
+          rows,
+          isEmpty,
+          reason: 'סימנים ברמה 1 הם כותרות פנימיות — אין לסרוק את כל הספר',
+        );
+      },
+    );
+
+    test('כותרת פנימית אחת + sourceLineId=0 → כל מפרשי הספר', () async {
+      final catId = await createCategory();
+      final bookId = await createBook(catId, 'מסילת ישרים');
+      final lines = await insertLinesAndGetIds(bookId, ['פתיחה', 'פרק']);
+      await insertToc(
+        bookId: bookId,
+        lineIndex: 0,
+        text: 'מסילת ישרים',
+        level: 1,
+      );
+      final rashi = await buildRashiBook();
+      await insertCommentaryLink(
+        sourceBookId: bookId,
+        sourceLineId: lines[1],
+        targetBookId: rashi.bookId,
+        targetLineId: rashi.lineIds[1],
+      );
+
+      final rows = await repository.getCommentatorsForReference(
+        bookId: bookId,
+        bookTitle: 'מסילת ישרים',
+        sourceLineId: 0,
+        startLineIndex: 0,
+        level: 1,
+      );
+
+      expect(rows, hasLength(1));
+      expect(rows.first['targetBookTitle'], 'רש"י על ברכות');
+    });
+
     test('ספר ללא כותרות פנימיות + sourceLineId=0 → כל מפרשי הספר', () async {
       // ספר מקור קצר ללא TOC פנימי.
       final catId = await createCategory();
@@ -411,6 +486,95 @@ void main() {
       expect(rows, hasLength(1), reason: 'ספר ללא TOC פנימי מציג את כל מפרשיו');
       expect(rows.first['targetBookTitle'], 'רש"י על ברכות');
       expect(rows.first['targetLineIndex'], 1);
+    });
+
+    for (final headingCount in [0, 1, 2]) {
+      for (final warmCache in [false, true]) {
+        test('תוצאת ספר עם $headingCount כותרות ורמה 0 '
+            '(מטמון ${warmCache ? 'חם' : 'קר'})', () async {
+          final catId = await createCategory();
+          final bookId = await createBook(catId, 'ספר מקור');
+          final lineIds = await insertLinesAndGetIds(bookId, ['שורה']);
+          final rootId = await insertToc(
+            bookId: bookId,
+            lineIndex: 0,
+            text: 'ספר מקור',
+            level: 0,
+          );
+          for (var i = 0; i < headingCount; i++) {
+            await insertToc(
+              bookId: bookId,
+              lineIndex: 0,
+              text: 'פרק ${i + 1}',
+              level: 1,
+              parentId: rootId,
+            );
+          }
+          final commentator = await buildRashiBook();
+          await insertCommentaryLink(
+            sourceBookId: bookId,
+            sourceLineId: lineIds.single,
+            targetBookId: commentator.bookId,
+            targetLineId: commentator.lineIds.first,
+          );
+          if (warmCache) {
+            final toc = await repository.getTocEntriesForReference(
+              bookId,
+              'ספר מקור',
+            );
+            expect(toc, hasLength(headingCount));
+          }
+
+          final rows = await repository.getCommentatorsForReference(
+            bookId: bookId,
+            bookTitle: 'ספר מקור',
+            sourceLineId: 0,
+            startLineIndex: 0,
+            level: 1,
+          );
+          expect(rows, hasLength(headingCount > 1 ? 0 : 1));
+        });
+      }
+    }
+
+    test('הוספת כותרת שנייה מבטלת את המטמון החם', () async {
+      final catId = await createCategory();
+      final bookId = await createBook(catId, 'ספר מקור');
+      final lineIds = await insertLinesAndGetIds(bookId, ['שורה']);
+      await insertToc(
+        bookId: bookId,
+        lineIndex: 0,
+        text: 'פרק א',
+        level: 1,
+      );
+      final commentator = await buildRashiBook();
+      await insertCommentaryLink(
+        sourceBookId: bookId,
+        sourceLineId: lineIds.single,
+        targetBookId: commentator.bookId,
+        targetLineId: commentator.lineIds.first,
+      );
+      expect(
+        await repository.getTocEntriesForReference(bookId, 'ספר מקור'),
+        hasLength(1),
+      );
+
+      Future<List<Map<String, dynamic>>> commentators() =>
+          repository.getCommentatorsForReference(
+            bookId: bookId,
+            bookTitle: 'ספר מקור',
+            sourceLineId: 0,
+            startLineIndex: 0,
+            level: 1,
+          );
+      expect(await commentators(), hasLength(1));
+      await insertToc(
+        bookId: bookId,
+        lineIndex: 0,
+        text: 'פרק ב',
+        level: 1,
+      );
+      expect(await commentators(), isEmpty);
     });
   });
 
