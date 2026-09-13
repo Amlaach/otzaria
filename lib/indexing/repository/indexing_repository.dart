@@ -401,6 +401,9 @@ class IndexingRepository {
               },
             );
             if (!_tantivyDataProvider.isIndexing.value) {
+              writeBufferDiscarded = !await _discardCancelledBookWrites(
+                readyBook,
+              );
               cancelled = true;
               break bookLoop;
             }
@@ -458,6 +461,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -498,6 +502,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -916,6 +921,14 @@ class IndexingRepository {
       debugPrint('⚠️ מחיקת מסמכים חלקיים של ${book.title} נכשלה: $e');
       return false;
     }
+  }
+
+  /// ביטול עשוי להגיע אחרי שהמנוע כתב ספר אך לפני שנרשם במעקב. אין לחתום
+  /// אותו יחד עם הספרים הקודמים; מחיקה לפי מפתח הספר בטוחה גם אם טרם נכתב.
+  Future<bool> _discardCancelledBookWrites(Book book) async {
+    if (await _discardPartialBookWrites(book)) return true;
+    await _recoverEngineAfterWriteFailure();
+    return false;
   }
 
   /// שחזור בטוח אחרי כשל כתיבה/commit, כשמצב המנוע אינו ידוע: commit עלול
@@ -1621,6 +1634,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
@@ -1643,6 +1657,7 @@ class IndexingRepository {
                 },
               );
               if (!_tantivyDataProvider.isIndexing.value) {
+                writeBufferDiscarded = !await _discardCancelledBookWrites(book);
                 cancelled = true;
                 break;
               }
