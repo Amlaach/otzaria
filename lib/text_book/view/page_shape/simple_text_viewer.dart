@@ -3264,12 +3264,11 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
               if (line != null) _onInlineNoteTap(line);
               return true;
             }
-            await HtmlLinkHandler.handleLink(
+            return HtmlLinkHandler.handleLink(
               context,
               url,
               (tab) => widget.openBookCallback(tab),
             );
-            return true;
           },
           onAnchorHover: widget.isMainText ? _handlePreviewHover : null,
           onAnchorExit: widget.isMainText ? _handlePreviewHoverExit : null,

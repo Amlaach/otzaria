@@ -1,7 +1,28 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/utils/text/html_link_handler.dart';
+// ignore: depend_on_referenced_packages
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+// ignore: depend_on_referenced_packages
+import 'package:url_launcher_platform_interface/link.dart';
+// ignore: depend_on_referenced_packages
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+
+class _RecordingUrlLauncher extends UrlLauncherPlatform
+    with MockPlatformInterfaceMixin {
+  final List<String> launched = [];
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) async {
+    launched.add(url);
+    return true;
+  }
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+}
 
 Library _libraryWith(List<Book> books) => Library(
   categories: [
@@ -141,6 +162,51 @@ void main() {
         ),
         1,
       );
+    });
+  });
+
+  group('קישורים חיצוניים ממסמך', () {
+    test('מתיר רק http, https ו-mailto תקינים', () {
+      expect(
+        HtmlLinkHandler.externalUriFor('https://example.test/דף')?.scheme,
+        'https',
+      );
+      expect(
+        HtmlLinkHandler.externalUriFor('mailto:test@example.test')?.scheme,
+        'mailto',
+      );
+      expect(HtmlLinkHandler.externalUriFor('javascript:alert(1)'), isNull);
+      expect(HtmlLinkHandler.externalUriFor('file:///secret'), isNull);
+      expect(HtmlLinkHandler.externalUriFor('//example.test'), isNull);
+      expect(HtmlLinkHandler.externalUriFor('https:בלי-מארח'), isNull);
+    });
+
+    testWidgets('פותח יעד מאומת באפליקציה חיצונית', (tester) async {
+      final launcher = _RecordingUrlLauncher();
+      final previousLauncher = UrlLauncherPlatform.instance;
+      UrlLauncherPlatform.instance = launcher;
+      addTearDown(() => UrlLauncherPlatform.instance = previousLauncher);
+
+      late BuildContext context;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (builderContext) {
+              context = builderContext;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+
+      final handled = await HtmlLinkHandler.handleLink(
+        context,
+        'https://example.test/word-link',
+        (_) {},
+      );
+
+      expect(handled, isTrue);
+      expect(launcher.launched, ['https://example.test/word-link']);
     });
   });
 }

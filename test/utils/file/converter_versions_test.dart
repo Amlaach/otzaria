@@ -28,8 +28,8 @@ import 'package:otzaria/utils/text/inline_style.dart';
 /// ‎`ooxml`‎ ו-‎`word-xml`‎ חולקים טביעה — Flat OPC מגיע לאותו מנוע ומייצר פלט
 /// זהה בייט-בבייט. אי-שוויון ביניהם הוא סימן שהמנוע הותקף מכיוון אחד בלבד.
 const Map<String, ({int version, String fingerprint})> _pinned = {
-  'ooxml': (version: 14, fingerprint: 'f6749e468f69bdcc'),
-  'word-xml': (version: 1014, fingerprint: 'f6749e468f69bdcc'),
+  'ooxml': (version: 15, fingerprint: 'd810aa9cf47cbdef'),
+  'word-xml': (version: 1015, fingerprint: 'd810aa9cf47cbdef'),
   'odt': (version: 7, fingerprint: 'e7114c864beedc1d'),
   'rtf': (version: 6, fingerprint: 'cfa322a43935a572'),
   'legacy-word': (version: 9, fingerprint: 'e39829bc7e2dd94f'),
@@ -64,6 +64,10 @@ const _ooxmlBody =
     '<w:t>מעוצב</w:t></w:r>'
     '<w:r><w:footnoteReference w:id="2"/></w:r></w:p>'
     '<w:p><w:r><w:rPr><w:vanish/></w:rPr><w:t>מוסתר</w:t></w:r></w:p>'
+    '<w:p><w:bookmarkStart w:id="1" w:name="יעד"/>'
+    '<w:r><w:t>יעד</w:t></w:r></w:p>'
+    '<w:p><w:hyperlink r:id="rIdLink"><w:r><w:t>קישור</w:t></w:r>'
+    '</w:hyperlink></w:p>'
     // עטיפה שקופה: תוכנה חייב להישמר.
     '<w:customXml><w:p><w:r><w:t>בעטיפה</w:t></w:r></w:p></w:customXml>'
     '<w:tbl><w:tr><w:trPr><w:tblHeader/></w:trPr>'
@@ -84,7 +88,15 @@ const _ooxmlFootnotes =
 String _wordDocument(String body) =>
     '<?xml version="1.0" encoding="UTF-8"?>'
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/'
-    '2006/main"><w:body>$body</w:body></w:document>';
+    '2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/'
+    '2006/relationships"><w:body>$body</w:body></w:document>';
+
+const _ooxmlRels =
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+    'relationships"><Relationship Id="rIdLink" Target="https://example.test/'
+    'converter-version" Type="http://schemas.openxmlformats.org/'
+    'officeDocument/2006/relationships/hyperlink" TargetMode="External"/>'
+    '</Relationships>';
 
 const _ooxmlStyles =
     '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/'
@@ -95,6 +107,7 @@ Uint8List _sampleOoxml() => _zip({
   'word/document.xml': _wordDocument(_ooxmlBody),
   'word/styles.xml': _ooxmlStyles,
   'word/footnotes.xml': _ooxmlFootnotes,
+  'word/_rels/document.xml.rels': _ooxmlRels,
 });
 
 Uint8List _sampleWordXml() => _utf8(
@@ -111,6 +124,9 @@ Uint8List _sampleWordXml() => _utf8(
   '<pkg:part pkg:name="/word/footnotes.xml" '
   'pkg:contentType="application/xml">'
   '<pkg:xmlData>$_ooxmlFootnotes</pkg:xmlData></pkg:part>'
+  '<pkg:part pkg:name="/word/_rels/document.xml.rels" '
+  'pkg:contentType="application/xml">'
+  '<pkg:xmlData>$_ooxmlRels</pkg:xmlData></pkg:part>'
   '</pkg:package>',
 );
 
