@@ -1768,6 +1768,16 @@ class FindRefRepository {
 
     final query = queryTokens.join(' ');
     final needsTokenWiseRanking = queryTokens.length >= 2;
+    // ה-dedupe עשוי לשמור תוצאת ספר שהופיעה לפני AltToc גלובלי באותו מקטע.
+    // גם במקרה הזה התוצאה ששרדה מייצגת התאמה ישירה, ולא שם ספר מקורב בלבד.
+    final directSegments = {
+      for (final r in directMatches)
+        (r.bookId, r.isUserBook, r.title, r.isPdf, r.segment),
+    };
+    final directReferences = {
+      for (final r in directMatches)
+        (r.bookId, r.isUserBook, r.title, r.isPdf, r.reference),
+    };
 
     // זיהוי סגנון ציון גמרא: הטוקן האחרון הוא "א" או "ב" + לפחות עוד טוקן.
     // כשמזוהה — ערכים שה-reference שלהם מכיל "דף" יקבלו עדיפות על פני ערכים
@@ -1807,6 +1817,20 @@ class FindRefRepository {
             !r.isUserBook &&
             !r.isSourceLine &&
             !directMatches.contains(r) &&
+            !directSegments.contains((
+              r.bookId,
+              r.isUserBook,
+              r.title,
+              r.isPdf,
+              r.segment,
+            )) &&
+            !directReferences.contains((
+              r.bookId,
+              r.isUserBook,
+              r.title,
+              r.isPdf,
+              r.reference,
+            )) &&
             bookMatchRanks[(r.bookId, r.bookId > 0 ? '' : r.filePath)] ==
                 ReferenceBooksCache.fuzzyMatchRank,
         exactMatch: normTitle == query,

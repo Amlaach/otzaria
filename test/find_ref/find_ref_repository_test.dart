@@ -241,6 +241,47 @@ void main() {
     expect(results.first.bookId, 1);
   });
 
+  test(
+    'התאמת global AltToc במקטע אפס שורדת הסרת כפילות עם ספר מקורב',
+    () async {
+      final repo = FindRefRepository(
+        dataRepository: MockDataRepository(),
+        isReferenceBooksCacheLoaded: () => true,
+        warmUpReferenceBooksCache: () async {},
+        searchReferenceBooks: (query, {int limit = 50}) => query == 'תפלה ב'
+            ? [
+                _hit(
+                  bookId: 1,
+                  title: 'סדר תפילה',
+                  matchRank: ReferenceBooksCache.fuzzyMatchRank,
+                ),
+                _hit(
+                  bookId: 2,
+                  title: 'ספר הכוונות',
+                  matchRank: 3,
+                  matchedTerm: query,
+                  orderIndex: 100,
+                ),
+              ]
+            : const [],
+        getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+        searchAltTocFlatEntries: (queryTokens, {maxRefTokens}) async => [
+          {
+            'bookTitle': 'סדר תפילה',
+            'reference': 'תפלה ב',
+            'bookId': 1,
+            'bookOrderIndex': 0,
+            'segment': 0,
+            'level': 0,
+          },
+        ],
+      );
+
+      final results = await repo.findRefs('תפלה ב');
+      expect(results.first.bookId, 1);
+    },
+  );
+
   test('שורת מקור מדויקת אינה יורשת דירוג מקורב משם הספר', () async {
     final repo = FindRefRepository(
       dataRepository: MockDataRepository(),
