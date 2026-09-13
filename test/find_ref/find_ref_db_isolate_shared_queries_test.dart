@@ -249,4 +249,73 @@ void main() {
     isolate.beginSearchEpoch();
     expect(await shared, hasLength(1));
   });
+
+  test('ביטול בחלון אחד אינו מבטל בקשות בחלון אחר', () async {
+    final dbPath = await seedDb('seforim', 'בראשית');
+    await Settings.setValue<String>(
+      SettingsRepository.keyDbEffectivePath,
+      dbPath,
+    );
+    final isolate = await FindRefDbIsolate.instance();
+    addTearDown(isolate.disposeForTesting);
+    final firstScope = FindRefDbIsolate.allocateSearchScope();
+    final secondScope = FindRefDbIsolate.allocateSearchScope();
+
+    FindRefDbIsolate.cancelSearchScopeIfRunning(firstScope, 2);
+    await expectLater(
+      isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: firstScope,
+        searchEpoch: 1,
+      ),
+      throwsA(isA<FindRefQueryCancelled>()),
+    );
+    expect(
+      await isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: secondScope,
+        searchEpoch: 1,
+      ),
+      isNotEmpty,
+    );
+    expect(
+      await isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: firstScope,
+        searchEpoch: 2,
+      ),
+      isNotEmpty,
+    );
+    expect(await isolate.getAllLocalBooksSlim(), hasLength(1));
+  });
+
+  test('ביטול במהלך spawn חוסם בקשה ישנה שמגיעה לאחר האתחול', () async {
+    final dbPath = await seedDb('seforim', 'בראשית');
+    await Settings.setValue<String>(
+      SettingsRepository.keyDbEffectivePath,
+      dbPath,
+    );
+    final scope = FindRefDbIsolate.allocateSearchScope();
+    final spawning = FindRefDbIsolate.instance();
+    FindRefDbIsolate.cancelSearchScopeIfRunning(scope, 2);
+    final isolate = await spawning;
+    addTearDown(isolate.disposeForTesting);
+
+    await expectLater(
+      isolate.getTocEntries(1, 'בראשית', searchScope: scope, searchEpoch: 1),
+      throwsA(isA<FindRefQueryCancelled>()),
+    );
+    expect(
+      await isolate.getTocEntries(
+        1,
+        'בראשית',
+        searchScope: scope,
+        searchEpoch: 2,
+      ),
+      isNotEmpty,
+    );
+  });
 }

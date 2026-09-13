@@ -26,6 +26,9 @@ class _FakeRepository implements FindRefRepository {
   final Object? error;
 
   @override
+  void cancelPendingSearch() {}
+
+  @override
   Future<List<DbReferenceResult>> findRefs(
     String ref, {
     bool includePersonalBooks = false,
@@ -58,6 +61,9 @@ class _GatedRepository implements FindRefRepository {
   final List<DbReferenceResult> second;
   final Completer<void> gate = Completer<void>();
   int calls = 0;
+
+  @override
+  void cancelPendingSearch() {}
 
   @override
   Future<List<DbReferenceResult>> findRefs(

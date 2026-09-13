@@ -48,6 +48,11 @@ class FindRefDbIsolate {
 
   static FindRefDbIsolate? _instance;
   static Future<FindRefDbIsolate>? _spawnFuture;
+  static final Map<int, int> _pendingSearchEpochs = {};
+  static int _nextSearchScope = 1;
+
+  /// Each dialog/repository owns a scope so one window cannot cancel another.
+  static int allocateSearchScope() => _nextSearchScope++;
 
   /// נתיב reset שהתבקש בזמן ש-spawn עדיין רץ. מוחל כפקודה הראשונה ברגע
   /// שה-isolate מוכן (ראה [instance]) — לפני כל בקשת חיפוש שכבר ממתינה ל-
@@ -81,6 +86,10 @@ class FindRefDbIsolate {
         if (_suspendedForExternalWrite) {
           service._request('suspend', const {}).ignore();
         }
+        for (final entry in _pendingSearchEpochs.entries) {
+          service._cancelSearchScope(entry.key, entry.value);
+        }
+        _pendingSearchEpochs.clear();
         return service;
       },
       onError: (Object error, StackTrace st) {
@@ -88,6 +97,7 @@ class FindRefDbIsolate {
         // spawn נכשל — מנקים את ה-reset הממתין כדי שלא יוחל בטעות על spawn
         // עתידי שכבר לכד את הנתיב העדכני בעצמו.
         _pendingResetPath = null;
+        _pendingSearchEpochs.clear();
         throw error;
       },
     );
@@ -146,12 +156,20 @@ class FindRefDbIsolate {
     int bookId,
     String bookTitle, {
     List<String>? queryTokens,
+    int searchScope = 0,
+    int? searchEpoch,
   }) async {
-    final res = await _request('toc', {
-      'bookId': bookId,
-      'bookTitle': bookTitle,
-      'queryTokens': queryTokens,
-    }, cancellable: true);
+    final res = await _request(
+      'toc',
+      {
+        'bookId': bookId,
+        'bookTitle': bookTitle,
+        'queryTokens': queryTokens,
+      },
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     return _castRows(res);
   }
 
@@ -159,12 +177,20 @@ class FindRefDbIsolate {
     int bookId,
     String bookTitle, {
     List<String>? queryTokens,
+    int searchScope = 0,
+    int? searchEpoch,
   }) async {
-    final res = await _request('altToc', {
-      'bookId': bookId,
-      'bookTitle': bookTitle,
-      'queryTokens': queryTokens,
-    }, cancellable: true);
+    final res = await _request(
+      'altToc',
+      {
+        'bookId': bookId,
+        'bookTitle': bookTitle,
+        'queryTokens': queryTokens,
+      },
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     return _castRows(res);
   }
 
@@ -178,11 +204,19 @@ class FindRefDbIsolate {
   Future<List<Map<String, dynamic>>> searchAltTocFlat(
     List<String> queryTokens, {
     int? maxRefTokens,
+    int searchScope = 0,
+    int? searchEpoch,
   }) async {
-    final res = await _request('searchAltTocFlat', {
-      'queryTokens': queryTokens,
-      'maxRefTokens': maxRefTokens,
-    }, cancellable: true);
+    final res = await _request(
+      'searchAltTocFlat',
+      {
+        'queryTokens': queryTokens,
+        'maxRefTokens': maxRefTokens,
+      },
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     return _castRows(res);
   }
 
@@ -194,8 +228,17 @@ class FindRefDbIsolate {
 
   /// מזהי הספרים שיש להם מבנה AltToc — מאפשר לדלג על שאילתות AltToc
   /// עבור ~95% מהספרים שאין להם כזה.
-  Future<List<int>?> getAltStructureBookIds() async {
-    final res = await _request('altBookIds', const {});
+  Future<List<int>?> getAltStructureBookIds({
+    int searchScope = 0,
+    int? searchEpoch,
+  }) async {
+    final res = await _request(
+      'altBookIds',
+      const {},
+      cancellable: searchEpoch != null,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     if (res == null) return null;
     return (res as List).cast<int>();
   }
@@ -203,11 +246,22 @@ class FindRefDbIsolate {
   /// פותר מפתח הפניה קנוני מול אינדקס `line_ref` עבור כל הספרים המועמדים
   /// בשאילתה מאוגדת אחת. מפתח התוצאה הוא ה-bookId.
   Future<Map<int, ({int lineIndex, int lineId, String? heRef})>>
-  resolveLineRefs(List<int> bookIds, String refKey) async {
-    final res = await _request('lineRefs', {
-      'bookIds': bookIds,
-      'refKey': refKey,
-    }, cancellable: true);
+  resolveLineRefs(
+    List<int> bookIds,
+    String refKey, {
+    int searchScope = 0,
+    int? searchEpoch,
+  }) async {
+    final res = await _request(
+      'lineRefs',
+      {
+        'bookIds': bookIds,
+        'refKey': refKey,
+      },
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     return {
       for (final row in _castRows(res))
         row['bookId'] as int: (
@@ -226,27 +280,41 @@ class FindRefDbIsolate {
     required int level,
     required bool isAltToc,
     required bool isSourceLine,
+    int searchScope = 0,
+    int? searchEpoch,
   }) async {
-    final res = await _request('commentators', {
-      'bookId': bookId,
-      'bookTitle': bookTitle,
-      'sourceLineId': sourceLineId,
-      'startLineIndex': startLineIndex,
-      'level': level,
-      'isAltToc': isAltToc,
-      'isSourceLine': isSourceLine,
-    }, cancellable: true);
+    final res = await _request(
+      'commentators',
+      {
+        'bookId': bookId,
+        'bookTitle': bookTitle,
+        'sourceLineId': sourceLineId,
+        'startLineIndex': startLineIndex,
+        'level': level,
+        'isAltToc': isAltToc,
+        'isSourceLine': isSourceLine,
+      },
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
     return _castRows(res);
   }
 
   /// מחזיר את דור המפרש לפי שמו. הזיהוי מתבצע בתוך ה-isolate מול ה-DB שלו,
   /// וחוזר כ-`order` (int); ההמרה חזרה ל-[CommentaryEra] נעשית כאן.
-  Future<CommentaryEra> getBookEra(String bookTitle) async {
+  Future<CommentaryEra> getBookEra(
+    String bookTitle, {
+    int searchScope = 0,
+    int? searchEpoch,
+  }) async {
     final order =
         await _request(
               'era',
               {'bookTitle': bookTitle},
               cancellable: true,
+              searchScope: searchScope,
+              searchEpoch: searchEpoch,
             )
             as int;
     return CommentaryEra.values.firstWhere(
@@ -367,12 +435,13 @@ class FindRefDbIsolate {
     }
   }
 
-  /// גרסה סטטית של [beginSearchEpoch] — בטוחה לקריאה סינכרונית גם כשה-worker
-  /// עוד לא נוצר (אין אז דבר בתור).
-  static void beginSearchEpochIfRunning() {
+  static void cancelSearchScopeIfRunning(int scope, int epoch) {
     final service = _instance;
-    if (service == null || service._disposed) return;
-    service.beginSearchEpoch();
+    if (service != null && !service._disposed) {
+      service._cancelSearchScope(scope, epoch);
+    } else if (_spawnFuture != null) {
+      _pendingSearchEpochs[scope] = epoch;
+    }
   }
 
   /// בדיקות בלבד — סוגר את ה-isolate ומשחרר את ה-singleton, כדי שקובץ בדיקה
@@ -380,14 +449,17 @@ class FindRefDbIsolate {
   @visibleForTesting
   void disposeForTesting() => _tearDown();
 
-  /// שולח בקשה ל-worker. [cancellable] מסמן אותה כשייכת לשאילתת ההקלדה
-  /// הנוכחית ([_epoch]) — ההקלדה הבאה תזרוק אותה מהתור דרך [beginSearchEpoch].
+  /// שולח בקשה ל-worker. [cancellable] מסמן אותה כשייכת למחזור חיפוש;
+  /// ה-proxy מעביר [searchEpoch] שנלכד לפני await של ה-spawn, כך שבקשה
+  /// ישנה לא תיחתום בטעות על המחזור החדש.
   /// בקשות שאינן שייכות לאיתור מקורות (קאש הספרים, TOC בפתיחת ספר) נשלחות
   /// בלי epoch ולעולם אינן מבוטלות.
   Future<dynamic> _request(
     String method,
     Map<String, Object?> args, {
     bool cancellable = false,
+    int searchScope = 0,
+    int? searchEpoch,
   }) async {
     if (_disposed) {
       throw StateError('FindRefDbIsolate was disposed');
@@ -400,9 +472,10 @@ class FindRefDbIsolate {
       'id': id,
       'method': method,
       'args': args,
-      // ה-epoch נקרא בזמן השליחה ולא בזמן הקריאה: בקשות שנשלחות אחרי שההקלדה
-      // התקדמה שייכות ממילא לשאילתה החדשה.
-      if (cancellable) 'epoch': _epoch,
+      // בקריאות של repository ה-epoch נלכד בתחילת הפעולה ומועבר במפורש.
+      // קריאות ישירות ממשיכות להשתמש ב-_epoch המקומי לצורך תאימות.
+      if (cancellable) 'epoch': searchEpoch ?? _epoch,
+      if (cancellable) 'scope': searchScope,
     });
     return completer.future;
   }
@@ -414,9 +487,13 @@ class FindRefDbIsolate {
   /// נקרא בתחילת כל חיפוש. בטוח לקריאה גם לפני ש-spawn הסתיים.
   void beginSearchEpoch() {
     _epoch++;
+    _cancelSearchScope(0, _epoch);
+  }
+
+  void _cancelSearchScope(int scope, int epoch) {
     final port = _commandPort;
     if (port == null || _disposed) return;
-    port.send({'method': 'cancel', 'epoch': _epoch});
+    port.send({'method': 'cancel', 'scope': scope, 'epoch': epoch});
   }
 
   void _handleMessage(dynamic message) {
@@ -717,7 +794,7 @@ void _workerMain(_Bootstrap bootstrap) {
 
   // בקשות שנשלחו עם `epoch` קטן מזה נזרקות מהתור. הבקשה שכבר רצה אינה
   // ניתנת לקטיעה — sqlite3 סינכרוני.
-  var minEpoch = 0;
+  final minEpochByScope = <int, int>{};
 
   void reply(int id, {Object? result, String? error, bool cancelled = false}) {
     bootstrap.mainSendPort.send({
@@ -742,7 +819,8 @@ void _workerMain(_Bootstrap bootstrap) {
         final message = queue.removeAt(0);
         final id = message['id'] as int;
         final epoch = message['epoch'] as int?;
-        if (epoch != null && epoch < minEpoch) {
+        final scope = message['scope'] as int? ?? 0;
+        if (epoch != null && epoch < (minEpochByScope[scope] ?? 0)) {
           reply(id, cancelled: true);
           continue;
         }
@@ -767,10 +845,17 @@ void _workerMain(_Bootstrap bootstrap) {
     // מאחורי העבודה שהיא באה לבטל.
     if (message['method'] == 'cancel') {
       final epoch = message['epoch'] as int? ?? 0;
-      if (epoch > minEpoch) minEpoch = epoch;
+      final scope = message['scope'] as int? ?? 0;
+      if (epoch > (minEpochByScope[scope] ?? 0)) {
+        minEpochByScope[scope] = epoch;
+      }
       queue.removeWhere((queued) {
         final queuedEpoch = queued['epoch'] as int?;
-        if (queuedEpoch == null || queuedEpoch >= minEpoch) return false;
+        if ((queued['scope'] as int? ?? 0) != scope ||
+            queuedEpoch == null ||
+            queuedEpoch >= minEpochByScope[scope]!) {
+          return false;
+        }
         reply(queued['id'] as int, cancelled: true);
         return true;
       });
@@ -785,6 +870,7 @@ void _workerMain(_Bootstrap bootstrap) {
       'method': method,
       'args': message['args'],
       'epoch': message['epoch'],
+      'scope': message['scope'],
     });
     drain();
   });

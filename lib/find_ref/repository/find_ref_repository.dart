@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/data/constants/database_constants.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
@@ -34,7 +36,42 @@ typedef _UserBookRecord = ({
   List<String> folderTitles,
 });
 
+final Object _searchGenerationZoneKey = Object();
+
 class FindRefRepository {
+  int _searchGeneration = 0;
+
+  /// Invalidates an in-flight search before the debounce starts. Worker work
+  /// already running may finish, but its continuation must not submit more.
+  void cancelPendingSearch() {
+    _searchGeneration++;
+    beginSearchEpoch?.call();
+  }
+
+  /// The immutable generation captured by the current findRefs invocation.
+  int get currentSearchGeneration =>
+      Zone.current[_searchGenerationZoneKey] as int? ?? _searchGeneration;
+
+  int get activeSearchGeneration => _searchGeneration;
+
+  void throwIfSearchCancelled() {
+    if (currentSearchGeneration != _searchGeneration) {
+      throw const FindRefQueryCancelled();
+    }
+  }
+
+  void throwIfSearchGenerationCancelled(int generation) {
+    if (generation != _searchGeneration) {
+      throw const FindRefQueryCancelled();
+    }
+  }
+
+  Future<T> _awaitCurrent<T>(Future<T> future) async {
+    final value = await future;
+    throwIfSearchCancelled();
+    return value;
+  }
+
   /// שמור לצורך תאימות לאחור עם call-sites קיימים.
   /// אינו בשימוש בפועל בקוד ה-repository.
   final DataRepository? dataRepository;
@@ -147,7 +184,7 @@ class FindRefRepository {
   final String? Function(int bookId)? getCategoryPathSync;
 
   /// פותח מחזור שאילתה חדש ומורה ל-worker לזרוק את הבקשות הממתינות של
-  /// המחזור הקודם. In production: [FindRefDbIsolate.beginSearchEpoch].
+  /// המחזור הקודם. In production: [FindRefDbIsolate.cancelSearchScopeIfRunning].
   final void Function()? beginSearchEpoch;
 
   /// Injection for testing: חיפוש מצב "דור + נושא". In production:
@@ -247,6 +284,7 @@ class FindRefRepository {
 
   /// מסיר את ה-instance מרשימת ה-repositories הפעילים.
   void dispose() {
+    cancelPendingSearch();
     _liveInstances.remove(this);
   }
 
@@ -295,6 +333,8 @@ class FindRefRepository {
       final ids = await fn();
       if (ids == null) return null;
       return _altBookIdsCache = ids.toSet();
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e) {
       debugPrint('[FindRef] alt book ids fetch failed: $e');
       return null;
@@ -311,13 +351,19 @@ class FindRefRepository {
 
     final List<_UserBookRecord> list;
     if (getAllUserBooks != null) {
-      list = await getAllUserBooks!();
+      list = await _awaitCurrent(getAllUserBooks!());
     } else {
-      final userRepo = await UserBooksDatabaseHolder.instance.repository;
-      final raw = await userRepo.database.bookDao.getAllLocalBooks();
+      final userRepo = await _awaitCurrent(
+        UserBooksDatabaseHolder.instance.repository,
+      );
+      final raw = await _awaitCurrent(
+        userRepo.database.bookDao.getAllLocalBooks(),
+      );
       // שרשרת התיקיות של כל ספר — בספרים אישיים שם הספר יושב לרוב על
       // התיקייה ('חלק א' בתוך 'שות פלוני'), והיא חלק מהתאמת הכותרת.
-      final categories = await userRepo.database.categoryDao.getAllCategories();
+      final categories = await _awaitCurrent(
+        userRepo.database.categoryDao.getAllCategories(),
+      );
       final byId = {for (final c in categories) c.id: c};
       List<String> chainOf(int categoryId) {
         final titles = <String>[];
@@ -387,6 +433,8 @@ class FindRefRepository {
       }
       _altTocFlatCache = list;
       return list;
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e, st) {
       debugPrint('[FindRef] AltToc flat cache build failed: $e\n$st');
       // אל **תקבע** את הקאש לריק במקרה כשל — אם הסיבה הייתה זמנית
@@ -562,11 +610,19 @@ class FindRefRepository {
   Future<List<DbReferenceResult>> findRefs(
     String ref, {
     bool includePersonalBooks = false,
-  }) async {
-    // ההקלדה הזו מבטלת את מה שנשאר בתור מההקלדה הקודמת — אחרת שאילתה חדשה
-    // ממתינה מאחורי עשרות שאילתות TOC/מפרשים שתוצאותיהן כבר לא רלוונטיות.
-    beginSearchEpoch?.call();
+  }) {
+    cancelPendingSearch();
+    final generation = _searchGeneration;
+    return runZoned(
+      () => _findRefs(ref, includePersonalBooks: includePersonalBooks),
+      zoneValues: {_searchGenerationZoneKey: generation},
+    );
+  }
 
+  Future<List<DbReferenceResult>> _findRefs(
+    String ref, {
+    bool includePersonalBooks = false,
+  }) async {
     final cleanedQuery = _normalizeForMatch(ref);
     if (cleanedQuery.isEmpty) {
       return const [];
@@ -623,8 +679,10 @@ class FindRefRepository {
         isReferenceBooksCacheLoaded?.call() ??
         ReferenceBooksCache.instance.isLoaded;
     if (!cacheLoaded()) {
-      await (warmUpReferenceBooksCache?.call() ??
-          ReferenceBooksCache.instance.warmUp());
+      await _awaitCurrent(
+        warmUpReferenceBooksCache?.call() ??
+            ReferenceBooksCache.instance.warmUp(),
+      );
       // ה-warmUp חוזר בלי לזרוק גם כשהוא נכשל (DB נעול, יציאה ממצב שינה).
       // בלי הבדיקה השנייה נחפש על מטמון ריק ונדווח "לא נמצא ספר".
       if (!cacheLoaded()) throw const ReferenceLibraryNotReadyException();
@@ -635,7 +693,9 @@ class FindRefRepository {
     // הרגיל כדי שהשאילתה תמיד תעשה משהו סביר.
     final eraQuery = _detectEraQuery(queryTokens);
     if (eraQuery != null) {
-      final eraResults = await _findByEra(eraQuery.era, eraQuery.topicTokens);
+      final eraResults = await _awaitCurrent(
+        _findByEra(eraQuery.era, eraQuery.topicTokens),
+      );
       if (eraResults.isNotEmpty) return eraResults;
     }
 
@@ -797,12 +857,14 @@ class FindRefRepository {
 
       if (queryTokens.first.length >= 2) {
         final start = results.length;
-        await _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2);
+        await _awaitCurrent(
+          _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2),
+        );
         directMatches.addAll(results.skip(start));
       }
 
       if (includePersonalBooks) {
-        results.addAll(await _searchPersonalBooks(queryTokens));
+        results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
       }
 
       final unique = _dedupeRefs(results);
@@ -813,7 +875,7 @@ class FindRefRepository {
         directMatches: directMatches,
         preserveSubstringTail: queryTokens.length == 1,
       );
-      return await _enrichWithPaths(ranked);
+      return await _awaitCurrent(_enrichWithPaths(ranked));
     }
 
     // If the *next* token after the matched book-phrase is an exact book match,
@@ -843,7 +905,7 @@ class FindRefRepository {
 
     // רק ~5% מהספרים הם בעלי מבנה AltToc — הסט מאפשר לדלג על שאילתת AltToc
     // עבור כל השאר (חוסך עד ~50 קריאות isolate בכל הקלדה).
-    final altBookIds = await _getAltBookIds();
+    final altBookIds = await _awaitCurrent(_getAltBookIds());
 
     // אורך ה-phrase שזיהה כל hit: זה שנקבע בלולאה, או קצר יותר ל-hits שנאספו
     // בפירוש חלופי — חיתוך לפי האורך הגלובלי היה בולע להם טוקן-קטע.
@@ -858,10 +920,12 @@ class FindRefRepository {
         prefixMatchTokensCount: hit.matchRank >= 3 ? 0 : phraseTokenCount,
       );
     }
-    final exactLines = await _resolveExactLines(
-      bookHits,
-      remainingByHit,
-      tokensAfterRange: _tokensAfterRange(ref, queryTokens),
+    final exactLines = await _awaitCurrent(
+      _resolveExactLines(
+        bookHits,
+        remainingByHit,
+        tokensAfterRange: _tokensAfterRange(ref, queryTokens),
+      ),
     );
 
     for (final hit in bookHits) {
@@ -917,7 +981,7 @@ class FindRefRepository {
         final outlineFn =
             getPdfOutlineEntries ??
             ReferenceBooksCache.instance.getPdfOutlineEntries;
-        final outlineEntries = await outlineFn(hit.filePath);
+        final outlineEntries = await _awaitCurrent(outlineFn(hit.filePath));
         final normalizedBookTitle = _normalizeForMatch(title);
 
         // ציטוט דף: התאמה מיקומית (מספר מול מספר, עמוד מול עמוד) — כדי ש-"ב"
@@ -992,18 +1056,22 @@ class FindRefRepository {
         tocLookups++;
 
         final resultsBeforeToc = results.length;
-        var tocEntries = await fetchTocEntries(
-          bookId,
-          title,
-          queryTokens: [...sectionTokens, ...remainingTokens],
+        var tocEntries = await _awaitCurrent(
+          fetchTocEntries(
+            bookId,
+            title,
+            queryTokens: [...sectionTokens, ...remainingTokens],
+          ),
         );
         // הזנב אינו בהכרח חלק פנימי ("חזקוני על התורה") — נסיגה לחיפוש בלעדיו
         // כדי שראש-תיבות כזה ימשיך להחזיר את מה שהחזיר.
         if (tocEntries.isEmpty && sectionTokens.isNotEmpty) {
-          tocEntries = await fetchTocEntries(
-            bookId,
-            title,
-            queryTokens: remainingTokens,
+          tocEntries = await _awaitCurrent(
+            fetchTocEntries(
+              bookId,
+              title,
+              queryTokens: remainingTokens,
+            ),
           );
         }
 
@@ -1032,10 +1100,12 @@ class FindRefRepository {
         final altTocEntries =
             (altBookIds != null && !altBookIds.contains(bookId))
             ? const <Map<String, dynamic>>[]
-            : await fetchAltTocEntries(
-                bookId,
-                title,
-                queryTokens: remainingTokens,
+            : await _awaitCurrent(
+                fetchAltTocEntries(
+                  bookId,
+                  title,
+                  queryTokens: remainingTokens,
+                ),
               );
         for (final entry in altTocEntries) {
           final ref = entry['reference'] as String;
@@ -1106,12 +1176,12 @@ class FindRefRepository {
     );
     if (!perBookHasSpecificMatch && queryTokens.length >= 2) {
       final start = results.length;
-      await _addGlobalAltTocMatches(results, queryTokens);
+      await _awaitCurrent(_addGlobalAltTocMatches(results, queryTokens));
       directMatches.addAll(results.skip(start));
     }
 
     if (includePersonalBooks) {
-      results.addAll(await _searchPersonalBooks(queryTokens));
+      results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
     }
 
     final unique = _dedupeRefs(results);
@@ -1123,7 +1193,7 @@ class FindRefRepository {
       directMatches: directMatches,
     );
 
-    return await _enrichWithPaths(ranked);
+    return await _awaitCurrent(_enrichWithPaths(ranked));
   }
 
   /// תוצאות PDF של תלמוד בבלי אינן מוצגות באיתור — מהדורת הטקסט מייצגת את
@@ -1256,7 +1326,7 @@ class FindRefRepository {
     try {
       // רשימת הספרים האישיים נטענת מקאש בזיכרון (ראה [_loadUserBooks]) — כך
       // אין שאילתת DB לכל הקלדה, רק בחיפוש הראשון אחרי רענון.
-      final allBooks = await _loadUserBooks();
+      final allBooks = await _awaitCurrent(_loadUserBooks());
       SeforimRepository? userRepo;
 
       if (allBooks.isEmpty) return out;
@@ -1274,7 +1344,9 @@ class FindRefRepository {
         // `UserBooksDatabaseHolder.instance.repository` הוא `Future<SeforimRepository>`,
         // לכן נדרש `await` ולא cast — הקאסט הקודם היה זורק TypeError כש-userRepo
         // לא הוזרק מראש (תרחיש שטחי בטסטים, אך bug רדום שראוי לתקן).
-        userRepo ??= await UserBooksDatabaseHolder.instance.repository;
+        userRepo ??= await _awaitCurrent(
+          UserBooksDatabaseHolder.instance.repository,
+        );
         return userRepo!.getTocEntriesForReference(
           bookId,
           bookTitle,
@@ -1377,10 +1449,12 @@ class FindRefRepository {
           );
         } else {
           // Only TOC entries matching remainingTokens
-          final toc = await fetchUserToc(
-            book.id,
-            book.title,
-            qt: remainingTokens,
+          final toc = await _awaitCurrent(
+            fetchUserToc(
+              book.id,
+              book.title,
+              qt: remainingTokens,
+            ),
           );
           for (final entry in toc) {
             out.add(
@@ -1403,6 +1477,8 @@ class FindRefRepository {
           }
         }
       }
+    } on FindRefQueryCancelled {
+      rethrow;
     } catch (e) {
       debugPrint('[FindRef] Personal books search failed: $e');
     }
@@ -1548,7 +1624,7 @@ class FindRefRepository {
 
     final resolved = <int, ({int lineIndex, int lineId, String? heRef})>{};
     for (final entry in bookIdsByKey.entries) {
-      resolved.addAll(await resolve(entry.value, entry.key));
+      resolved.addAll(await _awaitCurrent(resolve(entry.value, entry.key)));
     }
     return resolved;
   }
