@@ -41,13 +41,18 @@ void main() {
     );
   }
 
-  for (final language in [SettingsLanguage.hebrew, SettingsLanguage.english]) {
-    testWidgets('כרטיס הפתיחה ברוחב 320 אינו גולש (${language.name})', (
-      tester,
-    ) async {
-      await pumpNarrow(tester, language: language);
-      expect(tester.takeException(), isNull);
-      expect(find.byType(FilledButton), findsWidgets);
-    });
-  }
+  group('כרטיס הפתיחה של הסיור במסך צר (issue #1318)', () {
+    for (final language in [
+      SettingsLanguage.hebrew,
+      SettingsLanguage.english,
+    ]) {
+      testWidgets('כרטיס הפתיחה ברוחב 320 אינו גולש (${language.name})', (
+        tester,
+      ) async {
+        await pumpNarrow(tester, language: language);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(FilledButton), findsWidgets);
+      });
+    }
+  });
 }
