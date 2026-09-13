@@ -760,6 +760,19 @@ class FindRefRepository {
       bookHits = [...bookHits, ...secondaryHits];
     }
 
+    // דרגת ההתאמה של שם הספר חייבת לשרוד עד למיון הסופי: תוצאה מקורבת
+    // אינה רשאית לדחוק כינוי מדויק רק בגלל סדר הספרייה או תקרת התוצאות.
+    final bookMatchRanks = <(int, String), int>{};
+    for (final hit in bookHits) {
+      if (hit.bookId > 0 || hit.filePath.isNotEmpty) {
+        final key = (hit.bookId, hit.bookId > 0 ? '' : hit.filePath);
+        final previous = bookMatchRanks[key];
+        if (previous == null || hit.matchRank < previous) {
+          bookMatchRanks[key] = hit.matchRank;
+        }
+      }
+    }
+
     final results = <DbReferenceResult>[];
 
     // Single-word query: skip per-book TOC search, but still match short
@@ -793,6 +806,7 @@ class FindRefRepository {
       final ranked = _rankResults(
         unique,
         queryTokens,
+        bookMatchRanks: bookMatchRanks,
         preserveSubstringTail: queryTokens.length == 1,
       );
       return await _enrichWithPaths(ranked);
@@ -1096,7 +1110,11 @@ class FindRefRepository {
 
     final unique = _dedupeRefs(results);
     final pruned = _suppressDeeperVariants(unique);
-    final ranked = _rankResults(pruned, queryTokens);
+    final ranked = _rankResults(
+      pruned,
+      queryTokens,
+      bookMatchRanks: bookMatchRanks,
+    );
 
     return await _enrichWithPaths(ranked);
   }
@@ -1659,6 +1677,7 @@ class FindRefRepository {
   List<DbReferenceResult> _rankResults(
     List<DbReferenceResult> results,
     List<String> queryTokens, {
+    Map<(int, String), int> bookMatchRanks = const {},
     bool preserveSubstringTail = false,
   }) {
     if (results.length < 2) return results;
@@ -1700,6 +1719,10 @@ class FindRefRepository {
       return _RankKey(
         result: r,
         normTitle: normTitle,
+        fuzzyBookMatch:
+            !r.isUserBook &&
+            bookMatchRanks[(r.bookId, r.bookId > 0 ? '' : r.filePath)] ==
+                ReferenceBooksCache.fuzzyMatchRank,
         exactMatch: normTitle == query,
         startsWithMatch: normTitle.startsWith(query),
         titleTokens: needsTokenWiseRanking ? _tokenize(normTitle) : const [],
@@ -1713,6 +1736,11 @@ class FindRefRepository {
     // האלפביתי/אורך-ה-reference אינו רלוונטיות אלא סדר-תצוגה, ולכן אינו כאן —
     // כך ה-cap המודע-רלוונטיות לא יחתוך באמצע קבוצת תוצאות שווֹת-רלוונטיות.
     int compareRelevance(_RankKey a, _RankKey b) {
+      // התאמה מקורבת בשם הספר תמיד מתחת להתאמה מילולית או לכינוי מדויק.
+      if (a.fuzzyBookMatch != b.fuzzyBookMatch) {
+        return a.fuzzyBookMatch ? 1 : -1;
+      }
+
       // 1. התאמה מלאה של שם הספר
       if (a.exactMatch != b.exactMatch) return a.exactMatch ? -1 : 1;
 
@@ -1922,6 +1950,7 @@ class FindRefRepository {
 class _RankKey {
   final DbReferenceResult result;
   final String normTitle;
+  final bool fuzzyBookMatch;
   final bool exactMatch;
   final bool startsWithMatch;
   final List<String> titleTokens;
@@ -1940,6 +1969,7 @@ class _RankKey {
   const _RankKey({
     required this.result,
     required this.normTitle,
+    required this.fuzzyBookMatch,
     required this.exactMatch,
     required this.startsWithMatch,
     required this.titleTokens,

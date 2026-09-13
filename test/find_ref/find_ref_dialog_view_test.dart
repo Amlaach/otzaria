@@ -498,6 +498,59 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
+    testWidgets('תוצאה ישנה נראית אך אינה נפתחת בלחיצה בזמן טעינה', (
+      tester,
+    ) async {
+      final repo = _GatedRepository(
+        first: [_ref('בראשית פרק א')],
+        second: [_ref('בראשית פרק ב')],
+      );
+      await _pumpDialog(tester, repository: repo);
+      await tester.enterText(find.byType(TextField), 'בראשית');
+      await tester.pump(_pastDebounce);
+      await tester.enterText(find.byType(TextField), 'בראשית פרק');
+      await tester.pump(_pastDebounce);
+
+      final oldTile = find.ancestor(
+        of: find.text('בראשית פרק א'),
+        matching: find.byType(ListTile),
+      );
+      expect(oldTile, findsOneWidget);
+      expect(tester.widget<ListTile>(oldTile).onTap, isNull);
+      await tester.tap(find.text('בראשית פרק א'));
+      await tester.pump();
+      expect(find.text('בראשית פרק א'), findsOneWidget);
+
+      repo.gate.complete();
+      await tester.pump(_pastDebounce);
+      final newTile = find.ancestor(
+        of: find.text('בראשית פרק ב'),
+        matching: find.byType(ListTile),
+      );
+      expect(tester.widget<ListTile>(newTile).onTap, isNotNull);
+    });
+
+    testWidgets('Enter אינו פותח תוצאה ישנה בזמן טעינה', (tester) async {
+      final repo = _GatedRepository(
+        first: [_ref('בראשית פרק א')],
+        second: [_ref('בראשית פרק ב')],
+      );
+      await _pumpDialog(tester, repository: repo);
+      await tester.enterText(find.byType(TextField), 'בראשית');
+      await tester.pump(_pastDebounce);
+      await tester.enterText(find.byType(TextField), 'בראשית פרק');
+      await tester.pump(_pastDebounce);
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(find.text('בראשית פרק א'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      repo.gate.complete();
+      await tester.pump(_pastDebounce);
+      expect(find.text('בראשית פרק ב'), findsOneWidget);
+    });
+
     testWidgets('מקום כפתור המפרשים שמור מהפריים הראשון', (tester) async {
       await _pumpDialog(tester, results: [_ref('בראשית פרק א')]);
       await tester.enterText(find.byType(TextField), 'בראשית');

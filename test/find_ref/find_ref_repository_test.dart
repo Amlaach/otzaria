@@ -143,6 +143,65 @@ ReferenceBookHit _hit({
 );
 
 void main() {
+  test('כינוי מדויק קודם להתאמות מקורבות גם כשמופעלות תקרות התוצאות', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => [
+        for (var i = 0; i < 25; i++)
+          _hit(
+            bookId: i + 1,
+            title: 'סדר תפילה $i',
+            matchRank: ReferenceBooksCache.fuzzyMatchRank,
+            orderIndex: i.toDouble(),
+          ),
+        _hit(
+          bookId: 100,
+          title: 'ספר הכוונות',
+          matchRank: 3,
+          matchedTerm: 'תפלה',
+          orderIndex: 100,
+        ),
+      ],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+    );
+
+    final results = await repo.findRefs('תפלה');
+    expect(results.first.bookId, 100);
+    expect(results.map((result) => result.bookId), contains(100));
+  });
+
+  test('ספרי PDF מהדיסק נשארים נפרדים בדירוג לפי נתיב הקובץ', () async {
+    final repo = FindRefRepository(
+      dataRepository: MockDataRepository(),
+      isReferenceBooksCacheLoaded: () => true,
+      warmUpReferenceBooksCache: () async {},
+      searchReferenceBooks: (query, {int limit = 50}) => [
+        _hit(
+          bookId: -1,
+          title: 'סדר תפילה',
+          fileType: 'pdf',
+          filePath: '/fuzzy.pdf',
+          matchRank: ReferenceBooksCache.fuzzyMatchRank,
+        ),
+        _hit(
+          bookId: -1,
+          title: 'ספר הכוונות',
+          fileType: 'pdf',
+          filePath: '/alias.pdf',
+          matchRank: 3,
+          matchedTerm: 'תפלה',
+          orderIndex: 100,
+        ),
+      ],
+      getTocEntriesForReference: (_, _, {queryTokens}) async => const [],
+    );
+
+    final results = await repo.findRefs('תפלה');
+    expect(results.first.filePath, '/alias.pdf');
+  });
+
   test(
     'FindRef: acronym + suffix token searches TOC without the acronym token',
     () async {

@@ -820,7 +820,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
             _sectionLabel(context.settingsText('מה לאתר')),
             const SizedBox(height: 8),
           ],
-          _buildQueryField(refs),
+          _buildQueryField(isLoading ? const <DbReferenceResult>[] : refs),
           TypingLayoutFixSuggestion(
             controller: context.read<FocusRepository>().findRefSearchController,
             fieldFocusNode: context
@@ -1050,7 +1050,11 @@ class _FindRefDialogState extends State<FindRefDialog> {
       builder: (context, state) {
         if (state is FindRefLoading) {
           if (_shownRefs.isNotEmpty) {
-            return _buildResultsList(_shownRefs, horizontalPadding);
+            return _buildResultsList(
+              _shownRefs,
+              horizontalPadding,
+              interactive: false,
+            );
           }
           return const _DelayedLoader();
         }
@@ -1077,8 +1081,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
 
   Widget _buildResultsList(
     List<DbReferenceResult> refs,
-    double horizontalPadding,
-  ) {
+    double horizontalPadding, {
+    bool interactive = true,
+  }) {
     return NotificationListener<ScrollMetricsNotification>(
       // תופס את החיבור הראשון של ה-ListView וכל שינוי maxScrollExtent; העדכון
       // נדחה לסוף ה-frame כדי לא לשנות ValueNotifier בזמן build.
@@ -1097,12 +1102,17 @@ class _FindRefDialogState extends State<FindRefDialog> {
           8,
         ),
         itemCount: refs.length,
-        itemBuilder: (context, index) => _buildResultTile(refs[index], index),
+        itemBuilder: (context, index) =>
+            _buildResultTile(refs[index], index, interactive: interactive),
       ),
     );
   }
 
-  Widget _buildResultTile(DbReferenceResult ref, int index) {
+  Widget _buildResultTile(
+    DbReferenceResult ref,
+    int index, {
+    required bool interactive,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSelected = index == _selectedIndex;
     final eligible = !ref.isPdf && ref.bookId > 0 && !ref.isUserBook;
@@ -1185,15 +1195,13 @@ class _FindRefDialogState extends State<FindRefDialog> {
                     key: menuButtonKey,
                     icon: const Icon(FluentIcons.library_24_regular),
                     tooltip: context.settingsText('הצג מפרשים זמינים'),
-                    onPressed: showButton
+                    onPressed: interactive && showButton
                         ? () => _showCommentatorsMenu(menuButtonKey, cached)
                         : null,
                   ),
                 )
               : null,
-          onTap: () {
-            _openRef(ref);
-          },
+          onTap: interactive ? () => _openRef(ref) : null,
         ),
       ),
     );
