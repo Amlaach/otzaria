@@ -111,6 +111,7 @@ class LibrarySettingsTab extends StatefulWidget {
         'מוזג',
         'ממוזג',
         'ספריה',
+        'ספרייה',
         'עץ',
       ],
     ),
@@ -297,7 +298,7 @@ class _LibrarySettingsTabState extends State<LibrarySettingsTab> {
           ),
           actions: [
             ActionButton.recommended(
-              text: context.settingsText('הגדרת ספריה'),
+              text: context.settingsText('הגדרת ספרייה'),
               onPressed: () => _openLibraryDialog(''),
             ),
           ],

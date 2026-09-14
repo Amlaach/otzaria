@@ -110,7 +110,7 @@ class _LibrarySetupViewState extends State<LibrarySetupView> {
             SizedBox(
               width: double.infinity,
               child: ActionButton.recommended(
-                text: 'בחר מיקום או הורד ספריה',
+                text: 'בחר מיקום או הורד ספרייה',
                 onPressed: _openSetupDialog,
                 iconWidget: const Icon(FluentIcons.folder_add_24_regular),
                 textAlign: TextAlign.center,

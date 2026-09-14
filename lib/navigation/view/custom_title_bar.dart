@@ -474,7 +474,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
           context,
           // הקשר 'titleBar' — כאן זה שם המסך ("Library" כמו בסרגל), ולא
           // לשונית ההגדרות שמתורגמת "Seforim Library".
-          context.settingsText('ספריה', context: 'titleBar'),
+          context.settingsText('ספרייה', context: 'titleBar'),
           subtitle: isRoot ? null : category.title,
         );
       },

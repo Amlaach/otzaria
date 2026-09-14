@@ -306,7 +306,7 @@ String _tabLabel(SettingsTab tab) {
     case SettingsTab.text:
       return 'כתב';
     case SettingsTab.library:
-      return 'ספריה';
+      return 'ספרייה';
     case SettingsTab.tools:
       return 'כלים';
     case SettingsTab.shortcuts:
