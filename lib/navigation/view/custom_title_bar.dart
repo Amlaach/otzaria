@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:otzaria/core/windowing/app_window_scope.dart';
-import 'package:otzaria/core/windowing/system_window_buttons.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -276,7 +275,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                 children: [
                   Container(
                     clipBehavior: Clip.none,
-                    padding: systemWindowButtonsPadding,
                     decoration: BoxDecoration(
                       color: useReaderStyle
                           ? AppSurfaces.readerBackground(context)
@@ -354,8 +352,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                           context,
                                         ).close(),
                                   ),
-                                if (!settingsState.isFullscreen &&
-                                    !useSystemWindowButtons)
+                                if (!settingsState.isFullscreen)
                                   SizedBox(
                                     width: _kWindowCaptionButtonsWidth,
                                     height: 50,

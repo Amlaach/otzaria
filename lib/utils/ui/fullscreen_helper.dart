@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:window_manager/window_manager.dart' show TitleBarStyle;
-import 'package:otzaria/core/windowing/system_window_buttons.dart';
 import 'package:otzaria/core/windowing/app_window_scope.dart';
 import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
 import 'package:otzaria/navigation/bloc/navigation_state.dart';
@@ -90,7 +89,7 @@ class FullscreenHelper {
     if (isFullscreen) {
       await geometry.setTitleBarStyle(
         TitleBarStyle.hidden,
-        windowButtonVisibility: useSystemWindowButtons,
+        windowButtonVisibility: false,
       );
       await geometry.setFullScreen(true);
     } else {
@@ -98,7 +97,7 @@ class FullscreenHelper {
       // אנחנו משתמשים ב-CustomTitleBar ולכן תמיד רוצים להסתיר את הכותרת המקורית
       await geometry.setTitleBarStyle(
         TitleBarStyle.hidden,
-        windowButtonVisibility: useSystemWindowButtons,
+        windowButtonVisibility: false,
       );
     }
   }

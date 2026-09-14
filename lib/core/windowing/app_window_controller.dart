@@ -63,10 +63,10 @@ abstract interface class AppWindowGeometry {
 
   /// ⚠️ [windowButtonVisibility] הוא חלק מהחוזה, לא פרמטר אופציונלי.
   ///
-  /// שלושת אתרי הקריאה באפליקציה (`main.dart`, ושניים ב-
-  /// `fullscreen_helper.dart`) מעבירים את `useSystemWindowButtons` במפורש:
-  /// במק מציגים את כפתורי המערכת, ובשאר הפלטפורמות מציירים כפתורים משלנו.
-  /// ברירת מחדל שתשמיט אותו הייתה מכריעה את זה בשקט, לכיוון אחד או אחר.
+  /// שלושת אתרי הקריאה באפליקציה מעבירים `false` במפורש
+  /// (`main.dart`, ושניים ב-`fullscreen_helper.dart`), משום שהאפליקציה
+  /// מציירת סרגל כותרת משלה. ברירת מחדל שתשמיט אותו הייתה מחזירה בשקט
+  /// את כפתורי המערכת של macOS לצד הכפתורים המותאמים.
   Future<void> setTitleBarStyle(
     TitleBarStyle style, {
     required bool windowButtonVisibility,

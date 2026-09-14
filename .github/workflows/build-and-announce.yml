@@ -26,10 +26,6 @@ on:
         description: בניית גרסת macOS
         type: boolean
         default: true
-      build_macos_full:
-        description: "חבילת FULL ניידת למק (zstd על ~2.6GB — מכפיל את זמן הבנייה; כבה בבנייה לבדיקה)"
-        type: boolean
-        default: true
       create_release:
         description: יצירת release ב-GitHub
         type: boolean
@@ -2059,7 +2055,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" otzaria-macos.zip
 
       - name: Create macOS FULL portable bundle
-        if: github.event_name != 'workflow_dispatch' || inputs.build_macos_full
+        if: true
         shell: bash
         run: |
           set -euo pipefail
@@ -2127,7 +2123,7 @@ jobs:
           path: otzaria-macos.zip
 
       - name: Upload macOS FULL bundle
-        if: github.event_name != 'workflow_dispatch' || inputs.build_macos_full
+        if: true
         uses: actions/upload-artifact@v7.0.1
         with:
           name: otzaria-macos-full
