@@ -6,7 +6,9 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:otzaria/core/windowing/app_window_scope.dart';
+import 'package:otzaria/core/windowing/system_window_buttons.dart';
 import 'package:otzaria/core/windowing/window_manager_app_window_controller.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
@@ -2276,6 +2278,54 @@ void main() {
         neighborBefore,
         reason: 'מקום הפס שמור גם כשאינו נצבע — התוכן לא זז',
       );
+    });
+  });
+
+  group('כפתורי החלון', () {
+    testWidgets('במק שומרים מקום לכפתורי המערכת, אחרת מציירים כפתורים', (
+      tester,
+    ) async {
+      final tab = _makeTextTab('ספר א');
+      final tabsBloc = _TestTabsBloc(
+        TabsState(tabs: [tab], currentTabIndex: 0),
+      );
+      final navigationBloc = _TestNavigationBloc(
+        const NavigationState(currentScreen: Screen.reading),
+      );
+      final settingsBloc = _TestSettingsBloc(SettingsState.initial());
+
+      addTearDown(() async {
+        tab.dispose();
+        await tabsBloc.close();
+        await navigationBloc.close();
+        await settingsBloc.close();
+      });
+
+      await _setSurfaceSize(tester, const Size(1200, 800));
+      await _pumpTitleBar(
+        tester,
+        tabsBloc: tabsBloc,
+        navigationBloc: navigationBloc,
+        settingsBloc: settingsBloc,
+      );
+
+      if (useSystemWindowButtons) {
+        expect(find.byType(WindowCaption), findsNothing);
+        // ה-traffic lights יושבים בפינה השמאלית הפיזית בכל כיווניות, ולכן
+        // שום תוכן של הסרגל אינו רשאי להתחיל לפניהם.
+        final contents = find.byType(IconButton);
+        expect(contents, findsWidgets);
+        final leftmost = tester
+            .widgetList<IconButton>(contents)
+            .toList()
+            .asMap()
+            .keys
+            .map((i) => tester.getTopLeft(contents.at(i)).dx)
+            .reduce((a, b) => a < b ? a : b);
+        expect(leftmost, greaterThanOrEqualTo(kSystemWindowButtonsWidth));
+      } else {
+        expect(find.byType(WindowCaption), findsOneWidget);
+      }
     });
   });
 }

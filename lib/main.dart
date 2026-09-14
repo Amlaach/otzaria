@@ -89,6 +89,7 @@ import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/window_bus_host.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
+import 'package:otzaria/core/windowing/system_window_buttons.dart';
 import 'package:otzaria/core/windowing/window_manager_app_window_controller.dart';
 import 'package:otzaria/tools/shamor_zachor/providers/shamor_zachor_data_provider.dart';
 import 'package:otzaria/tools/shamor_zachor/providers/shamor_zachor_progress_provider.dart';
@@ -673,12 +674,11 @@ Future<void> _initializeProcessSingletons() async {
       // שנייה עד שפריים חדש הספיק להתרסטר. כאן השינוי קורה לפני שפריים התוכן
       // הראשון מצויר בכלל — והוא נצבע ישר במסגרת ובגודל הסופיים.
       await _appWindow.setMinimumSize(WindowPersistence.minSize);
-      // windowButtonVisibility ברירת מחדל true — חובה false מפורש כדי להסתיר
-      // את כפתורי המערכת של macOS (traffic lights) שאחרת יופיעו כפול לצד
-      // הכפתורים המותאמים.
+      // במק מציגים את ה-traffic lights הנייטיביים ואין מציירים כפתורים
+      // מותאמים; בשאר הפלטפורמות הפוך, אחרת הכפתורים יופיעו כפול.
       await _appWindow.setTitleBarStyle(
         TitleBarStyle.hidden,
-        windowButtonVisibility: false,
+        windowButtonVisibility: useSystemWindowButtons,
       );
     }
   }
