@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/core/startup_timeline.dart';
+import 'package:otzaria/core/windowing/dock_progress_listener.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:otzaria/navigation/view/main_window_screen.dart';
@@ -101,6 +102,8 @@ class App extends StatelessWidget {
             // גלילה אוטומטית בלחיצת גלגל העכבר — עטיפה אחת לכל האפליקציה,
             // מתחת למסגרת החלון כדי שכפתורי המסגרת יישארו לחיצים.
             content = MiddleClickAutoScroll(child: content);
+
+            content = DockProgressListener(child: content);
 
             if (!useVirtualWindowFrame) {
               return content;

@@ -114,6 +114,8 @@ class _FakeWindow implements AppWindowController, AppWindowGeometry {
   @override
   Future<void> setMinimumSize(Size size) async {}
   @override
+  Future<void> setProgressBar(double progress) async {}
+  @override
   Future<void> setSize(Size size) async {}
   @override
   Future<void> setTitleBarStyle(
