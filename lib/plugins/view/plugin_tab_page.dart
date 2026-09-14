@@ -46,6 +46,7 @@ import 'package:otzaria/plugins/view/plugin_dev_error_view.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
+import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/services/plugin_crash_guard.dart';
 import 'package:otzaria/plugins/services/plugin_deep_link_policy.dart';
 import 'package:otzaria/plugins/services/plugin_host_shortcuts.dart';
@@ -196,6 +197,9 @@ InAppWebViewSettings buildPluginTabWebViewSettings({
     pinchZoomEnabled: false,
     cacheEnabled: !isDevelopment,
     isInspectable: isDevelopment || kDebugMode,
+    resourceCustomSchemes: pluginAssetSchemeEnabled
+        ? const [pluginAssetScheme]
+        : const [],
   );
 }
 
@@ -566,7 +570,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
       }
 
       await webViewController?.loadUrl(
-        urlRequest: URLRequest(url: WebUri.uri(Uri.file(localHtmlPath))),
+        urlRequest: URLRequest(url: _entrypointUri),
       );
     } catch (e) {
       webViewController = null;
@@ -604,10 +608,20 @@ class _PluginTabPageState extends State<PluginTabPage> {
     setState(() => _creationFailure = failure.error.toString());
   }
 
+  /// ה-URI של נקודת הכניסה — `file://` ברוב הפלטפורמות, ובמק דרך
+  /// [pluginAssetScheme] (ראה [pluginAssetSchemeEnabled]).
+  WebUri get _entrypointUri => widget.plugin.isLocalhostDev
+      ? WebUri(localHtmlPath)
+      : pluginAssetSchemeEnabled
+      ? pluginAssetUri(
+          pluginId: widget.plugin.pluginId,
+          rootPath: widget.plugin.resolvedRootPath,
+          filePath: localHtmlPath,
+        )
+      : WebUri.uri(Uri.file(localHtmlPath));
+
   /// ה-URL שהטאב הזה ביקש ליצור — מפתח ההתאמה מול אירוע כשל.
-  String _expectedCreationUrl() => widget.plugin.isLocalhostDev
-      ? WebUri(localHtmlPath).toString()
-      : WebUri.uri(Uri.file(localHtmlPath)).toString();
+  String _expectedCreationUrl() => _entrypointUri.toString();
 
   Future<void> _ensurePackageInfo() async {
     _cachedPackageInfo ??= await PackageInfo.fromPlatform();
@@ -854,14 +868,15 @@ class _PluginTabPageState extends State<PluginTabPage> {
         _onCreationFailure,
       );
     }
-    final initialUrl = widget.plugin.isLocalhostDev
-        ? WebUri(localHtmlPath)
-        : WebUri.uri(Uri.file(localHtmlPath));
-
     final webView = InAppWebView(
       key: _webViewKey,
       webViewEnvironment: WebViewEnvironmentHolder.environment,
-      initialUrlRequest: URLRequest(url: initialUrl),
+      initialUrlRequest: URLRequest(url: _entrypointUri),
+      onLoadResourceWithCustomScheme: (controller, request) => servePluginAsset(
+        url: request.url,
+        pluginId: widget.plugin.pluginId,
+        rootPath: widget.plugin.resolvedRootPath,
+      ),
       initialSettings: buildPluginTabWebViewSettings(
         isDevelopment: widget.plugin.isDevelopment,
       ),
@@ -968,6 +983,10 @@ class _PluginTabPageState extends State<PluginTabPage> {
           if (uri.scheme == 'otzaria') {
             await _dispatchPluginDeepLink(uri, navigationAction);
             return NavigationActionPolicy.CANCEL;
+          }
+
+          if (uri.scheme == pluginAssetScheme) {
+            return NavigationActionPolicy.ALLOW;
           }
 
           if (uri.scheme == 'file') {
@@ -1338,7 +1357,8 @@ class _PluginTabPageState extends State<PluginTabPage> {
       },
       onReceivedError: (controller, request, error) {
         // only fail the view for the entrypoint file load itself
-        if (request.url.scheme == 'file') {
+        if (request.url.scheme == 'file' ||
+            request.url.scheme == pluginAssetScheme) {
           // שגיאת רשת/קובץ נתפסה ב-Dart — התהליך חי, לא קריסה native.
           // מנקים את ה-canary כדי שלא נחסום שגיאה רגילה כ"קריסה".
           unawaited(
