@@ -115,17 +115,27 @@ class TextCorrection extends Equatable {
   static TextCorrection? fromJson(Object? raw) {
     if (raw is! Map) return null;
     final line = raw['originalLine'];
-    if (line is! String) return null;
-    final proposed = raw['proposedText'] as String?;
+    final proposed = raw['proposedText'];
+    if (line is! String || (proposed != null && proposed is! String)) {
+      return null;
+    }
     final start = raw['selectionStart'];
     final end = raw['selectionEnd'];
+    final isWholeLine =
+        start == null && end == null && raw['originalSelection'] == null;
+    if (isWholeLine) {
+      return TextCorrection.wholeLine(
+        originalLine: line,
+        proposedText: proposed as String?,
+      );
+    }
     if (start is int && end is int) {
       try {
         final correction = TextCorrection.selection(
           originalLine: line,
           start: start,
           end: end,
-          proposedText: proposed,
+          proposedText: proposed as String?,
         );
         final storedSelection = raw['originalSelection'];
         if (storedSelection != null &&
@@ -137,7 +147,20 @@ class TextCorrection extends Equatable {
         return null;
       }
     }
-    return TextCorrection.wholeLine(originalLine: line, proposedText: proposed);
+    return null;
+  }
+
+  /// מצרף הצעה מרשומה פגומה כטקסט ל-[details], בלי להחיל אותה על טווח.
+  static String salvageMalformedInto(String details, Map raw) {
+    final target = raw['originalSelection'] ?? raw['originalLine'];
+    final proposed = raw['proposedText'];
+    if (target is! String || (proposed != null && proposed is! String)) {
+      return details;
+    }
+    return TextCorrection.wholeLine(
+      originalLine: target,
+      proposedText: proposed as String?,
+    ).appendFallbackTo(details);
   }
 
   Map<String, dynamic> toApiPayload() => {
@@ -433,11 +456,18 @@ class DirectErrorReport extends Equatable {
   };
 
   factory DirectErrorReport.fromJson(Map<String, dynamic> json) {
-    final correction = TextCorrection.fromJson(json['correction']);
-    // הצעה פגומה נשמרת כדיווח חופשי: הטקסט שלה עדיין ב-errorDetails של המשתמש.
+    final rawCorrection = json['correction'];
+    final correction = TextCorrection.fromJson(rawCorrection);
     final kind = correction == null
         ? DirectErrorReportKind.freeText
         : DirectErrorReportKind.fromApiName(json['reportKind']);
+    var errorDetails = (json['errorDetails'] as String?) ?? '';
+    if (correction == null && rawCorrection is Map) {
+      errorDetails = TextCorrection.salvageMalformedInto(
+        errorDetails,
+        rawCorrection,
+      );
+    }
     return DirectErrorReport(
       id: json['id'] as String,
       senderEmail: json['senderEmail'] as String,
@@ -446,7 +476,7 @@ class DirectErrorReport extends Equatable {
       currentRef: json['currentRef'] as String,
       lineNumber: json['lineNumber'] as int,
       selectedText: (json['selectedText'] as String?) ?? '',
-      errorDetails: (json['errorDetails'] as String?) ?? '',
+      errorDetails: errorDetails,
       contextText: (json['contextText'] as String?) ?? '',
       filePath: (json['filePath'] as String?) ?? '',
       sourceFolder: (json['sourceFolder'] as String?) ?? '',

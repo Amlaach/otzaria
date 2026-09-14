@@ -325,7 +325,39 @@ void main() {
       final report = DirectErrorReport.fromJson(json);
       expect(report.reportKind, DirectErrorReportKind.freeText);
       expect(report.correction, isNull);
-      expect(report.errorDetails, 'שם ה\' נכתב במלואו');
+      expect(report.errorDetails, startsWith('שם ה\' נכתב במלואו'));
+      expect(report.errorDetails, contains('מוצע: אֱלֹקִ֑ים'));
+    });
+
+    test('בחירה בלי offsets אינה נטענת כהצעה על השורה כולה', () {
+      final json = buildCorrectionReport().toJson();
+      (json['correction'] as Map)
+        ..remove('selectionStart')
+        ..remove('selectionEnd');
+      final report = DirectErrorReport.fromJson(json);
+
+      expect(TextCorrection.fromJson(json['correction']), isNull);
+      expect(report.reportKind, DirectErrorReportKind.freeText);
+      expect(report.correction, isNull);
+      expect(report.toApiPayload().containsKey('correction'), isFalse);
+      expect(
+        report.errorDetails,
+        'שם ה\' נכתב במלואו\n\n--- הצעת תיקון ---\n'
+        'מקור: אֱלֹהִ֑ים\nמוצע: אֱלֹקִ֑ים',
+        reason: 'ההצעה נשמרת כטקסט חופשי, ולא מוחלת על השורה כולה',
+      );
+    });
+
+    test('offset בודד בלי השני, או הצעה שאינה מחרוזת — נפסל', () {
+      final correction = buildCorrectionReport().toJson()['correction'] as Map;
+      expect(
+        TextCorrection.fromJson({...correction, 'selectionEnd': null}),
+        isNull,
+      );
+      expect(
+        TextCorrection.fromJson({...correction, 'proposedText': 5}),
+        isNull,
+      );
     });
   });
 }
