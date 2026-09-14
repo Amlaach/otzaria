@@ -307,9 +307,19 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
         ),
       );
     } else if (await dbPlain.exists()) {
+      // File.copy אינו מדווח התקדמות — על קובץ של כמה GB המסך נשאר על 0% עד
+      // הסוף (issue #1334).
       await _writeDbAtomically(
         path.join(target, DatabaseConstants.databaseFileName),
-        (tempPath) => dbPlain.copy(tempPath),
+        (tempPath) => copyFileWithProgress(
+          dbPlain,
+          tempPath,
+          onProgress: _extractProgress(
+            emit,
+            source,
+            'מעתיק את ספריית הספרים...',
+          ),
+        ),
       );
     } else if (!await targetDb.exists()) {
       emit(
@@ -623,6 +633,37 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
 
   /// מעביר קובץ אל [destPath]. rename נכשל בין volumes שונים (temp מול הספרייה)
   /// עם Cross-device link — במקרה כזה נופלים להעתקה ומחיקה.
+  /// מעתיק קובץ בזרימה ומדווח התקדמות (0..1) כל [reportEvery] בייטים.
+  /// [File.copy] אינו מדווח כלום, ולכן קבצים גדולים הראו 0% עד הסוף.
+  @visibleForTesting
+  static Future<void> copyFileWithProgress(
+    File source,
+    String destPath, {
+    void Function(double progress)? onProgress,
+    int reportEvery = 4 << 20,
+  }) async {
+    final total = await source.length();
+    final sink = File(destPath).openWrite();
+    var done = 0;
+    var sinceReport = 0;
+    onProgress?.call(0);
+    try {
+      await for (final chunk in source.openRead()) {
+        sink.add(chunk);
+        done += chunk.length;
+        sinceReport += chunk.length;
+        if (sinceReport >= reportEvery && total > 0) {
+          sinceReport = 0;
+          onProgress?.call(done / total);
+        }
+      }
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    onProgress?.call(1);
+  }
+
   static Future<void> _moveFile(File file, String destPath) async {
     try {
       await file.rename(destPath);
