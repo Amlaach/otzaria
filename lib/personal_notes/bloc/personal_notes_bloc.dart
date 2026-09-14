@@ -46,6 +46,12 @@ class PersonalNotesBloc extends Bloc<PersonalNotesEvent, PersonalNotesState> {
         bookId: event.bookId,
         categoryId: event.categoryId,
         errorMessage: null,
+        // ספר אחר: ההערות של הספר הקודם אינן שלו — גם בזמן הטעינה וגם אם
+        // היא תיכשל, אחרת מסך ההערות שומר אותן תחת הספר השגוי (issue #1313).
+        locatedNotes: isSameBook ? null : const [],
+        missingNotes: isSameBook ? null : const [],
+        filteredLocatedNotes: isSameBook ? null : const [],
+        filteredMissingNotes: isSameBook ? null : const [],
         searchQuery: isSameBook ? state.searchQuery : '',
         visibleLineIndices: isSameBook ? state.visibleLineIndices : [],
         // איפוס בקשת פתיחת הערה, כדי שלא תיפתח אוטומטית הערה באותה שורה בספר החדש
@@ -64,6 +70,10 @@ class PersonalNotesBloc extends Bloc<PersonalNotesEvent, PersonalNotesState> {
         state.copyWith(
           isLoading: false,
           bookId: event.bookId,
+          locatedNotes: const [],
+          missingNotes: const [],
+          filteredLocatedNotes: const [],
+          filteredMissingNotes: const [],
           errorMessage: e.toString(),
         ),
       );
