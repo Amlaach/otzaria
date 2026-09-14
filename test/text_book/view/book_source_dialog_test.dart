@@ -2,6 +2,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/text_book/view/book_source_dialog.dart';
 
 void main() {
+  group('libraryDisplayPath', () {
+    test('strips the library prefix and the extension', () {
+      expect(
+        libraryDisplayPath(
+          'אוצריא/תלמוד ירושלמי/סדר נזיקין/תלמוד ירושלמי שבועות.txt',
+        ),
+        'תלמוד ירושלמי/סדר נזיקין/תלמוד ירושלמי שבועות',
+      );
+    });
+
+    test('keeps a dot inside a category name', () {
+      expect(libraryDisplayPath('אוצריא/א.ב/ספר'), 'א.ב/ספר');
+    });
+
+    test('returns null for a path outside the library', () {
+      expect(libraryDisplayPath('C:/books/ספר.pdf'), isNull);
+    });
+  });
+
   group('getSourceDisplayInfo', () {
     test('should resolve Sefaria source case-insensitively', () {
       final lower = getSourceDisplayInfo('sefaria');
