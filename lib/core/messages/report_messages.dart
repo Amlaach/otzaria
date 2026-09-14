@@ -16,7 +16,10 @@ abstract class ReportMessages {
       'הדיווחים.';
   static const String reportIdConflict =
       'השרת כבר קלט דיווח אחר עם אותו מזהה, ולכן הדיווח לא נקלט. '
-      'יש לשמור אותו מחדש כדי שיקבל מזהה חדש.';
+      'ניתן לדווח שוב — דיווח חדש מקבל מזהה חדש.';
+  static const String pendingReportIdConflict =
+      'השרת כבר קלט דיווח אחר עם אותו מזהה, ולכן הדיווח לא נקלט. '
+      'הדיווח קיבל מזהה חדש ונשאר בתור — ניתן לשלוח אותו שוב.';
 
   static String duplicateReport(String targetLabel) =>
       'דיווח זהה לזה כבר נשלח ל$targetLabel בעבר, ולכן לא נשלחה הודעה נוספת. '

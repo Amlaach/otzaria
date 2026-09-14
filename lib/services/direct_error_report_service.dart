@@ -30,11 +30,15 @@ class DirectReportDeliveryResult {
   /// אתר ישן קלט הצעת תיקון כטקסט חופשי בלבד (חסר `correction_supported`).
   final bool correctionNotSupported;
 
+  /// 409: השרת מחזיק תוכן אחר תחת אותו `report_id`.
+  final bool isIdConflict;
+
   const DirectReportDeliveryResult._({
     required this.status,
     required this.message,
     this.isDuplicate = false,
     this.correctionNotSupported = false,
+    this.isIdConflict = false,
   });
 
   factory DirectReportDeliveryResult.sent(
@@ -57,10 +61,14 @@ class DirectReportDeliveryResult {
     );
   }
 
-  factory DirectReportDeliveryResult.failed(String message) {
+  factory DirectReportDeliveryResult.failed(
+    String message, {
+    bool isIdConflict = false,
+  }) {
     return DirectReportDeliveryResult._(
       status: DirectReportDeliveryStatus.failed,
       message: message,
+      isIdConflict: isIdConflict,
     );
   }
 
@@ -203,6 +211,13 @@ class DirectErrorReportService {
     await _queueRepository.overwrite(reports);
   }
 
+  /// 409 = התוכן הזה לא נקלט; שליחתו מחדש היא הגשה חדשה, ולכן במזהה חדש (§2.3).
+  /// ידני — כדי שלא יישלח שוב אוטומטית (409 הוא כשל קבוע, §2.4).
+  static DirectErrorReport _withNewIdAfterConflict(DirectErrorReport report) =>
+      report
+          .withId(DirectErrorReport.generateId(report.id))
+          .copyWith(queueType: DirectErrorReportQueueType.manual);
+
   /// null לדיווח שאינו ניתן לסריאליזציה קנונית (surrogate בודד).
   static String? _digestOrNull(DirectErrorReport report) {
     try {
@@ -242,6 +257,17 @@ class DirectErrorReportService {
     final result = await submitReport(report);
     if (result.isSent) {
       await deletePendingReport(report.id);
+    } else if (result.isIdConflict) {
+      final reports = await _queueRepository.load();
+      final index = reports.indexWhere((item) => item.id == report.id);
+      if (index != -1) {
+        reports[index] = _withNewIdAfterConflict(reports[index]);
+        await _queueRepository.overwrite(reports);
+      }
+      return DirectReportDeliveryResult.failed(
+        ReportMessages.pendingReportIdConflict,
+        isIdConflict: true,
+      );
     }
     return result;
   }
@@ -314,7 +340,10 @@ class DirectErrorReportService {
     }
 
     if (attemptResult.isPermanentFailure) {
-      return DirectReportDeliveryResult.failed(attemptResult.message);
+      return DirectReportDeliveryResult.failed(
+        attemptResult.message,
+        isIdConflict: attemptResult.isIdConflict,
+      );
     }
 
     await _enqueueIfNeeded(
@@ -378,6 +407,12 @@ class DirectErrorReportService {
           remainingReports.removeWhere((item) => item.id == report.id);
           await _saveSentReport(_sentRecord(report, attemptResult));
           sentCount++;
+          continue;
+        }
+
+        if (attemptResult.isIdConflict) {
+          final index = remainingReports.indexWhere((r) => r.id == report.id);
+          remainingReports[index] = _withNewIdAfterConflict(report);
           continue;
         }
 
@@ -490,6 +525,7 @@ class DirectErrorReportService {
       if (response.statusCode == HttpStatus.conflict) {
         return _SendAttemptResult.permanentFailure(
           ReportMessages.reportIdConflict,
+          isIdConflict: true,
         );
       }
 
@@ -544,6 +580,7 @@ class _SendAttemptResult {
   final _SendAttemptFailureType? failureType;
   final bool isDuplicate;
   final bool correctionSupported;
+  final bool isIdConflict;
 
   const _SendAttemptResult._({
     required this.isSuccess,
@@ -551,6 +588,7 @@ class _SendAttemptResult {
     this.failureType,
     this.isDuplicate = false,
     this.correctionSupported = false,
+    this.isIdConflict = false,
   });
 
   const _SendAttemptResult.success({
@@ -575,11 +613,15 @@ class _SendAttemptResult {
     );
   }
 
-  factory _SendAttemptResult.permanentFailure(String message) {
+  factory _SendAttemptResult.permanentFailure(
+    String message, {
+    bool isIdConflict = false,
+  }) {
     return _SendAttemptResult._(
       isSuccess: false,
       message: message,
       failureType: _SendAttemptFailureType.permanent,
+      isIdConflict: isIdConflict,
     );
   }
 }

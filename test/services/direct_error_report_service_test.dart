@@ -642,8 +642,70 @@ void _textCorrectionServiceTests() {
       final result = await service.submitPendingReport(report);
 
       expect(result.status, DirectReportDeliveryStatus.failed);
-      expect((await repository.load()).single.id, 'conflict');
+      expect(result.message, ReportMessages.pendingReportIdConflict);
+      final kept = (await repository.load()).single;
+      expect(kept.id, isNot('conflict'), reason: 'שליחה חוזרת = מזהה חדש');
+      expect(kept.correction, report.correction);
+      expect(kept.queueType, DirectErrorReportQueueType.manual);
     });
+
+    test('[T7] אחרי 409, "שלח" שוב שולח במזהה החדש ונקלט', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      await repository.overwrite([buildCorrectionReport(id: 'conflict')]);
+      final sentIds = <String>[];
+      final service = DirectErrorReportService(
+        client: MockClient((request) async {
+          final id = (jsonDecode(request.body) as Map)['report_id'] as String;
+          sentIds.add(id);
+          return id == 'conflict'
+              ? http.Response('{}', 409)
+              : _utf8Response(supportedBody());
+        }),
+        queueRepository: repository,
+        sentRepository: InMemoryDirectErrorReportRepository(),
+      );
+
+      await service.submitPendingReport((await repository.load()).single);
+      final second = await service.submitPendingReport(
+        (await repository.load()).single,
+      );
+
+      expect(second.isSent, isTrue);
+      expect(sentIds, hasLength(2));
+      expect(sentIds.last, isNot('conflict'));
+      expect(await repository.load(), isEmpty);
+    });
+
+    test(
+      '[T7] 409 בשליחה האוטומטית: מזהה חדש, נשאר בתור ולא נשלח שוב לבד',
+      () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        await repository.overwrite([
+          buildCorrectionReport(id: 'conflict').copyWith(
+            queueType: DirectErrorReportQueueType.automaticRetry,
+          ),
+        ]);
+        var calls = 0;
+        final service = DirectErrorReportService(
+          client: MockClient((_) async {
+            calls++;
+            return http.Response('{}', 409);
+          }),
+          queueRepository: repository,
+          sentRepository: sentRepository,
+        );
+
+        await service.flushPendingReports(onlyAutomaticRetry: true);
+        await service.flushPendingReports(onlyAutomaticRetry: true);
+
+        final kept = (await repository.load()).single;
+        expect(kept.id, isNot('conflict'));
+        expect(kept.queueType, DirectErrorReportQueueType.manual);
+        expect(calls, 1, reason: '409 הוא כשל קבוע — אין ניסיון חוזר אוטומטי');
+        expect(await sentRepository.load(), isEmpty);
+      },
+    );
   });
 
   group('כשל קבוע בשליחה מהתור אינו מאבד את ההצעה', () {
