@@ -495,11 +495,17 @@ class DirectErrorReportService {
   Future<_SendAttemptResult> _trySend(DirectErrorReport report) async {
     final String body;
     try {
-      body = jsonEncode(report.toApiPayload());
+      body = report.apiBody;
     } on ArgumentError catch (e) {
       // טקסט שאינו ניתן לסריאליזציה קנונית (surrogate בודד) — לא ישתפר בניסיון חוזר.
       debugPrint('Direct report payload invalid: $e');
       return _SendAttemptResult.permanentFailure(ReportMessages.sendFailed);
+    }
+
+    if (utf8.encode(body).length > DirectErrorReport.maxApiBodyBytes) {
+      return _SendAttemptResult.permanentFailure(
+        ReportMessages.bodyTooLarge(DirectErrorReport.maxApiBodyBytes ~/ 1024),
+      );
     }
 
     try {

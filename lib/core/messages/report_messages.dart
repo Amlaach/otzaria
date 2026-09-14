@@ -21,6 +21,10 @@ abstract class ReportMessages {
       'השרת כבר קלט דיווח אחר עם אותו מזהה, ולכן הדיווח לא נקלט. '
       'הדיווח קיבל מזהה חדש ונשאר בתור — ניתן לשלוח אותו שוב.';
 
+  static String bodyTooLarge(int maxKb) =>
+      'הדיווח גדול מדי לשליחה (הגבול הוא ${maxKb}KB). יש לקצר את הפירוט '
+      'או את ההצעה — הטקסט לא ייחתך.';
+
   static String duplicateReport(String targetLabel) =>
       'דיווח זהה לזה כבר נשלח ל$targetLabel בעבר, ולכן לא נשלחה הודעה נוספת. '
       'הדיווח נקלט במערכת.';

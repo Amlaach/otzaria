@@ -708,6 +708,59 @@ void _textCorrectionServiceTests() {
     );
   });
 
+  group('תקרת גוף הבקשה (§2.2: 256KB)', () {
+    test('נמדדת בבתי UTF-8 ולא ביחידות UTF-16', () {
+      // 140,000 אותיות עבריות = 280,000 בתים, אך רק 140,000 יחידות UTF-16.
+      final report = buildCorrectionReport(errorDetails: 'א' * 140000);
+      expect(
+        report.apiBody.length,
+        lessThan(DirectErrorReport.maxApiBodyBytes),
+      );
+      expect(report.exceedsApiBodyLimit, isTrue);
+      expect(buildCorrectionReport().exceedsApiBodyLimit, isFalse);
+    });
+
+    test('גוף גדול מדי אינו נשלח, וההודעה ייעודית', () async {
+      var calls = 0;
+      final repository = InMemoryDirectErrorReportRepository();
+      final service = DirectErrorReportService(
+        client: MockClient((_) async {
+          calls++;
+          return http.Response('{}', 200);
+        }),
+        queueRepository: repository,
+      );
+
+      final result = await service.submitReport(
+        buildCorrectionReport(errorDetails: 'א' * 140000),
+      );
+
+      expect(calls, 0);
+      expect(result.status, DirectReportDeliveryStatus.failed);
+      expect(result.message, ReportMessages.bodyTooLarge(256));
+      expect(await repository.load(), isEmpty);
+    });
+
+    test('בשליחה מהתור: נשמר בהיסטוריה כנדחה עם ההצעה', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      final big = buildCorrectionReport(id: 'big', errorDetails: 'א' * 140000);
+      await repository.overwrite([big]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('{}', 200)),
+        queueRepository: repository,
+        sentRepository: sentRepository,
+      );
+
+      await service.flushPendingReports();
+
+      expect(await repository.load(), isEmpty);
+      final recorded = (await sentRepository.load()).single;
+      expect(recorded.correction, big.correction);
+      expect(recorded.rejectionReason, ReportMessages.bodyTooLarge(256));
+    });
+  });
+
   group('כשל קבוע בשליחה מהתור אינו מאבד את ההצעה', () {
     for (final status in [400, 413, 422]) {
       test('$status: לא חוזר לתור, נשמר בהיסטוריה כנדחה עם ההצעה', () async {

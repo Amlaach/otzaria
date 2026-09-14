@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:equatable/equatable.dart';
 import 'package:otzaria/utils/canonical_json.dart';
 
@@ -284,6 +286,9 @@ class ReportClientInfo extends Equatable {
 class DirectErrorReport extends Equatable {
   static const int currentSchemaVersion = 2;
 
+  /// תקרת גוף הבקשה לפי החוזה (§2.2): 256KB = 256×1024 בתים של UTF-8.
+  static const int maxApiBodyBytes = 256 * 1024;
+
   final String id;
   final String senderEmail;
   final String subject;
@@ -531,6 +536,11 @@ class DirectErrorReport extends Equatable {
     'library_version': libraryVersion,
     'correction': correction?.toDigestMap(),
   });
+
+  /// גוף הבקשה בדיוק כפי שנשלח.
+  String get apiBody => jsonEncode(toApiPayload());
+
+  bool get exceedsApiBodyLimit => utf8.encode(apiBody).length > maxApiBodyBytes;
 
   Map<String, dynamic> toApiPayload() {
     final payload = <String, dynamic>{

@@ -197,6 +197,7 @@ void main() {
       WidgetTester tester, {
       TextCorrection? template,
       String selectedText = 'אֱלֹהִ֑ים',
+      Future<String?> Function(ReportedErrorData)? validate,
     }) async {
       final submissions = <(ErrorReportAction, ReportedErrorData)>[];
       await tester.pumpWidget(
@@ -208,6 +209,7 @@ void main() {
               directReportTargetLabel: 'אוצריא',
               correctionTemplate:
                   template ?? buildCorrectionTemplate(_line, 'אֱלֹהִ֑ים'),
+              validateBeforeSubmit: validate,
               onActionSelected: (action, data) =>
                   submissions.add((action, data)),
               onCancel: () {},
@@ -365,6 +367,26 @@ void main() {
       final data = await saveForLater(tester, submissions);
       expect(data.correction, isNull);
       expect(data.errorDetails, 'הסבר חופשי');
+    });
+
+    testWidgets('דיווח גדול מדי: הדיאלוג לא נסגר וההצעה נשארת בשדה', (
+      tester,
+    ) async {
+      final submissions = await pumpTab(
+        tester,
+        validate: (_) async => ReportMessages.bodyTooLarge(256),
+      );
+      await tester.enterText(proposalField(), 'אֱלֹקִ֑ים');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('שמור לשליחה מאוחרת'));
+      await tester.pumpAndSettle();
+
+      expect(submissions, isEmpty);
+      expect(
+        tester.widget<TextField>(proposalField()).controller!.text,
+        'אֱלֹקִ֑ים',
+      );
     });
   });
 }
