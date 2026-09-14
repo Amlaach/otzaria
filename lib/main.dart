@@ -1898,6 +1898,7 @@ Future<void> _installWindowCloseHandling() async {
   _appWindowListener = AppWindowListener(window: _appWindow);
   windowManager.addListener(_appWindowListener!);
   await windowManager.setPreventClose(true);
+  await AppWindowListener.enableMacOSCloseHandling();
 }
 
 /// תופס את משבצת החלון באפיק ההודעות, **לפני `runApp`**.
