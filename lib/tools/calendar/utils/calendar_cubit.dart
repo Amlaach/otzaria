@@ -1125,6 +1125,19 @@ class CalendarCubit extends Cubit<CalendarState> {
     }
   }
 
+  /// חוזר להיום רק אם נבחר יום אחר — בלי emit מיותר כשהלוח נסגר על היום.
+  void resetSelectionToTodayIfNeeded() {
+    if (isClosed) return;
+    final selected = state.selectedGregorianDate;
+    final today = state.todayGregorianDate;
+    if (selected.year == today.year &&
+        selected.month == today.month &&
+        selected.day == today.day) {
+      return;
+    }
+    jumpToToday();
+  }
+
   void jumpToToday() {
     final today = resolveCalendarDayForTransition(
       now: DateTime.now(),

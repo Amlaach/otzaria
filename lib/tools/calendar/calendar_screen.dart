@@ -52,12 +52,15 @@ class CalendarWidgetState extends State<CalendarWidget> {
   bool _isSettingsPanelOpen = false;
   double _sidePanelWidth = 360;
   CalendarSidePanelView _sidePanelView = CalendarSidePanelView.times;
+  // נלכד ב-initState: ב-dispose אין גישה בטוחה ל-context.
+  CalendarCubit? _cubit;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _cubit = context.read<CalendarCubit>();
     _keyboardFocusNode = FocusNode(skipTraversal: true, canRequestFocus: true);
     _keyboardFocusNode.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -107,6 +110,9 @@ class CalendarWidgetState extends State<CalendarWidget> {
     _keyboardFocusNode.removeListener(_onFocusChange);
     _stopKeyRepeat();
     _keyboardFocusNode.dispose();
+    // יום שנבחר לעיון נשאר "התאריך הנבחר" גם אחרי סגירת הלוח, ותוספים
+    // שמבקשים את התאריך מה-API קיבלו אותו במקום את היום (issue #1353).
+    _cubit?.resetSelectionToTodayIfNeeded();
     super.dispose();
   }
 
