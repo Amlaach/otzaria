@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:path/path.dart' as p;
 
 import '../models/direct_error_report_text_correction_test.dart'
     show buildCorrectionReport;
@@ -16,7 +17,8 @@ List<DirectErrorReport> _reports() => [
   buildCorrectionReport(
     id: 'corr-none',
     proposed: null,
-    errorDetails: "גרש ' מירכאות \" לוכסן \\ '@ %PATH% \$HOME `x` \u2028 סוף",
+    errorDetails:
+        "גרש ' מירכאות \" לוכסן \\ '@ %PATH% \$HOME `x` \u2028 \u2029 \u0085 ‘’“” !x! ^& %~f0 סוף",
   ),
   DirectErrorReport(
     id: 'legacy',
@@ -65,7 +67,7 @@ void main() {
 
       expect(payloadLines, hasLength(reports.length));
       for (var i = 0; i < reports.length; i++) {
-        expect(jsonDecode(payloadLines[i]), _expected(reports[i]));
+        expect(payloadLines[i], jsonEncode(reports[i].toApiPayload()));
       }
       // שום שורת נתונים לא תסגור את ה-here-string.
       expect(payloadLines.where((l) => l.startsWith("'@")), isEmpty);
@@ -126,7 +128,7 @@ void main() {
     );
 
     test(
-      '[T5] גוף ה-PowerShell של ה-bat מול שרת מקומי — ערכים זהים',
+      '[T5] ה-bat מופעל ב-cmd מול שרת מקומי — השרת מקבל בדיוק את ה-payload',
       () async {
         if (!Platform.isWindows) {
           markTestSkipped('PowerShell 5.1 — Windows בלבד');
@@ -144,34 +146,21 @@ void main() {
               target: OfflineSendScriptTarget.windows,
             )
             .content;
-        const marker = '#OTZARIA_REPORTS_PS_BODY';
-        // אותו גוף שה-bat מריץ, בלי חלון הסיכום החוסם.
-        final body = bat
-            .substring(bat.indexOf(marker) + marker.length)
+        // ה-bat כפי שהוא, בלי חלון הסיכום החוסם.
+        final script = bat
             .replaceFirst(_endpoint, 'http://127.0.0.1:${server.port}/')
             .replaceFirst(
-              RegExp(r'\[System\.Windows\.Forms\.MessageBox\]::Show.*$'),
+              RegExp(r'\[System\.Windows\.Forms\.MessageBox\]::Show[^\r\n]*'),
               r'Write-Output $summary',
-            )
-            .replaceFirst(
-              '[Net.ServicePointManager]::SecurityProtocol = '
-                  '[Net.SecurityProtocolType]::Tls12',
-              '',
             );
-        final file = File('${dir.path}/send.ps1');
-        await file.writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(body)]);
+        final file = File(p.join(dir.path, 'send.bat'));
+        await file.writeAsString(script);
 
-        final result = await Process.run('powershell', [
-          '-NoProfile',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          file.path,
-        ]);
+        final result = await Process.run('cmd', ['/c', file.path]);
         expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
         expect(bodies, hasLength(reports.length));
         for (var i = 0; i < reports.length; i++) {
-          expect(jsonDecode(bodies[i]), _expected(reports[i]));
+          expect(bodies[i], jsonEncode(reports[i].toApiPayload()));
         }
       },
       timeout: const Timeout(Duration(minutes: 2)),

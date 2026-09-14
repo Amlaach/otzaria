@@ -66,13 +66,7 @@ String _buildWindowsBatchScript(
 ) {
   // שורת JSON לכל דיווח, שנשלחת כמות שהיא: פענוח וקידוד מחדש ב-PowerShell
   // עלולים לשנות ערכים, והשרת מאמת digest על התוכן.
-  final payloadLines = payloads
-      .map(
-        (payload) => jsonEncode(
-          payload,
-        ).replaceAll(' ', r' ').replaceAll(' ', r' '),
-      )
-      .join('\n');
+  final payloadLines = payloads.map(jsonEncode).join('\n');
   final powerShellBody = _buildWindowsPowerShellBody(
     endpoint,
     payloadLines,
