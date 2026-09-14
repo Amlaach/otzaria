@@ -99,6 +99,32 @@ class AppWindowListener extends WindowListener {
     'otzaria/process_control',
   );
 
+  static const MethodChannel _macTerminationChannel = MethodChannel(
+    'otzaria/macos_termination',
+  );
+
+  /// מפעיל ב-runner את ניתוב ⌘Q למסלול הסגירה של Dart.
+  ///
+  /// נקרא רק אחרי ש-`setPreventClose(true)` כבר הותקן: לפני כן סגירה
+  /// שמנותבת ל-`performClose` עלולה לעקוף את ה-listener עצמו.
+  static Future<void> enableMacOSCloseHandling() async {
+    if (kIsWeb || !Platform.isMacOS) return;
+    try {
+      await _macTerminationChannel.invokeMethod<void>('enableCloseHandling');
+    } on MissingPluginException {
+      // בינארי ישן עם Dart חדש שומר על ההתנהגות הקודמת, בלי לחסום עלייה.
+    } on PlatformException catch (error) {
+      debugPrint('Could not enable macOS close handling: $error');
+    }
+  }
+
+  /// מתיר ל-AppKit להשלים `NSApplication.terminate` אחרי שכל רצף הסגירה
+  /// של Dart הסתיים. בלי ההיתר, ⌘Q הבא היה חוזר ל-`performClose`.
+  static Future<void> allowMacOSApplicationTermination() async {
+    if (kIsWeb || !Platform.isMacOS) return;
+    await _macTerminationChannel.invokeMethod<void>('allowTermination');
+  }
+
   /// סטטוס קונטיינמנט ה-Job Object מה-runner (Windows בלבד):
   /// כשההקמה נכשלה [failure] מתאר את השלב שנכשל ואת קוד השגיאה.
   static Future<({bool ready, String? failure})> jobObjectStatus() async {
@@ -461,6 +487,7 @@ class AppWindowListener extends WindowListener {
         await windowManager.setPreventClose(false);
         // ⚠️ macOS/Linux בלבד. ב-Windows המסלול הסתיים ב-`exit(0)` שמעל —
         // ראו האזהרה בתיעוד של `quitApplication`.
+        await allowMacOSApplicationTermination();
         await _window.quitApplication();
       }
     } catch (e) {

@@ -348,8 +348,9 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                     // סגירה מנומסת — עוברת דרך ה-handshake
                                     // של onWindowClose ולא הורגת מיד.
                                     onPressed: () =>
-                                        AppWindowScope.controllerOf(context)
-                                            .close(),
+                                        AppWindowScope.controllerOf(
+                                          context,
+                                        ).close(),
                                   ),
                                 if (!settingsState.isFullscreen)
                                   SizedBox(

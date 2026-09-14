@@ -1,0 +1,244 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/bookmarks/view/bookmark_screen.dart';
+import 'package:otzaria/core/focus_repository.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/history/view/history_screen.dart';
+import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
+import 'package:otzaria/navigation/bloc/navigation_event.dart';
+import 'package:otzaria/navigation/bloc/navigation_state.dart';
+import 'package:otzaria/settings/engine/settings_bloc.dart';
+import 'package:otzaria/settings/engine/settings_state.dart';
+import 'package:otzaria/shortcuts/key_map.dart';
+import 'package:otzaria/shortcuts/shortcut_validator.dart';
+import 'package:otzaria/tools/tools_launcher_controller.dart';
+import 'package:flutter/material.dart' show showDialog;
+
+/// תפריט המערכת של מק — ה-menu bar שבראש המסך.
+///
+/// בלעדיו נשאר תפריט ברירת המחדל של תבנית Flutter: פריטי עריכה שאינם עושים
+/// דבר כאן, ו"העדפות…" מת. מחוץ למק מחזיר את [child] כפי שהוא.
+class MacMenuBar extends StatelessWidget {
+  const MacMenuBar({super.key, required this.child});
+
+  final Widget child;
+
+  static bool get _isSupported => !kIsWeb && Platform.isMacOS;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isSupported) return child;
+    // הקיצורים נקראים מההגדרות ולא מקובעים: מקש שמוצהר בתפריט נתפס בידי
+    // macOS לפני Flutter, וקיצור מיושן כאן היה חוטף את החדש.
+    return BlocSelector<SettingsBloc, SettingsState, Map<String, String>>(
+      selector: (state) => state.shortcuts,
+      builder: (context, shortcuts) =>
+          PlatformMenuBar(menus: _menus(shortcuts), child: child),
+    );
+  }
+
+  List<PlatformMenuItem> _menus(Map<String, String> shortcuts) {
+    MenuSerializableShortcut? accel(String key) =>
+        _toActivator(shortcuts[key] ?? ShortcutValidator.defaultShortcuts[key]);
+
+    return <PlatformMenuItem>[
+      // התווית מתעלמים ממנה: macOS מציגה תמיד את שם האפליקציה בתפריט הראשון.
+      PlatformMenu(
+        label: 'אוצריא',
+        menus: <PlatformMenuItem>[
+          const PlatformProvidedMenuItem(
+            type: PlatformProvidedMenuItemType.about,
+          ),
+          PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformMenuItem(
+                label: 'הגדרות…',
+                shortcut: accel('key-shortcut-open-settings'),
+                onSelected: _openSettings,
+              ),
+            ],
+          ),
+          const PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.servicesSubmenu,
+              ),
+            ],
+          ),
+          const PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.hide,
+              ),
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.hideOtherApplications,
+              ),
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.showAllApplications,
+              ),
+            ],
+          ),
+          const PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.quit,
+              ),
+            ],
+          ),
+        ],
+      ),
+      PlatformMenu(
+        label: 'מעבר',
+        menus: <PlatformMenuItem>[
+          PlatformMenuItem(
+            label: 'ספרייה',
+            shortcut: accel('key-shortcut-open-library-browser'),
+            onSelected: _openLibrary,
+          ),
+          PlatformMenuItem(
+            label: 'עיון',
+            shortcut: accel('key-shortcut-open-reading-screen'),
+            onSelected: () => _navigate(Screen.reading),
+          ),
+          PlatformMenuItem(
+            label: 'חיפוש',
+            shortcut: accel('key-shortcut-open-new-search'),
+            onSelected: () => _navigate(Screen.search),
+          ),
+          PlatformMenuItem(
+            label: 'כלים',
+            shortcut: accel('key-shortcut-open-more'),
+            onSelected: _openTools,
+          ),
+        ],
+      ),
+      PlatformMenu(
+        label: 'סימניות',
+        menus: <PlatformMenuItem>[
+          PlatformMenuItem(
+            label: 'סימניות',
+            shortcut: accel('key-shortcut-open-bookmarks'),
+            onSelected: () => _showDialog(const BookmarksDialog()),
+          ),
+          PlatformMenuItem(
+            label: 'היסטוריה',
+            shortcut: accel('key-shortcut-open-history'),
+            onSelected: () => _showDialog(const HistoryDialog()),
+          ),
+        ],
+      ),
+      const PlatformMenu(
+        label: 'חלון',
+        menus: <PlatformMenuItem>[
+          PlatformProvidedMenuItem(
+            type: PlatformProvidedMenuItemType.minimizeWindow,
+          ),
+          PlatformProvidedMenuItem(
+            type: PlatformProvidedMenuItemType.zoomWindow,
+          ),
+          PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              // האפליקציה מאזינה ל-onWindowEnterFullScreen/Leave, ולכן מסך
+              // מלא מהתפריט נשאר מסונכרן עם מצב הסרגל המותאם.
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.toggleFullScreen,
+              ),
+            ],
+          ),
+          PlatformMenuItemGroup(
+            members: <PlatformMenuItem>[
+              PlatformProvidedMenuItem(
+                type: PlatformProvidedMenuItemType.arrangeWindowsInFront,
+              ),
+            ],
+          ),
+        ],
+      ),
+    ];
+  }
+
+  static void _navigate(Screen screen) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    _closeOverlayRoutes(context);
+    context.read<NavigationBloc>().add(NavigateToScreen(screen));
+  }
+
+  static void _openSettings() => _navigate(Screen.settings);
+
+  static void _openLibrary() {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    _navigate(Screen.library);
+    context.read<FocusRepository>().requestLibrarySearchFocus(selectAll: true);
+  }
+
+  static void _openTools() {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    _closeOverlayRoutes(context);
+    ToolsLauncherController.instance.open();
+  }
+
+  static void _showDialog(Widget dialog) {
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    _closeOverlayRoutes(context);
+    showDialog(context: context, builder: (_) => dialog);
+  }
+
+  /// דיאלוג או תפריט פתוח נסגר לפני המעבר — בדיוק כמו במסלול הקיצורים.
+  static void _closeOverlayRoutes(BuildContext context) {
+    final navigator = Navigator.maybeOf(context, rootNavigator: true);
+    if (navigator?.canPop() ?? false) {
+      navigator!.popUntil((route) => route.isFirst);
+    }
+  }
+}
+
+/// ממיר מחרוזת קיצור בפורמט ההגדרות ל-activator שניתן להצהיר עליו בתפריט.
+///
+/// מחזיר `null` לקיצור שאינו ניתן לייצוג — ואז הפריט מוצג בלי מקש, והקיצור
+/// ממשיך להיות מטופל ב-`KeyboardShortcuts` כרגיל.
+@visibleForTesting
+SingleActivator? menuShortcutActivator(String? shortcut) =>
+    _toActivator(shortcut);
+
+SingleActivator? _toActivator(String? shortcut) {
+  if (shortcut == null || shortcut.isEmpty) return null;
+  var meta = false;
+  var shift = false;
+  var alt = false;
+  LogicalKeyboardKey? key;
+  for (final part in shortcut.toLowerCase().split('+')) {
+    switch (part) {
+      // במק `ctrl` שבהגדרות הוא Command — כך גם ShortcutHelper מפרש אותו.
+      case 'ctrl' || 'control' || 'meta':
+        meta = true;
+      case 'shift':
+        shift = true;
+      case 'alt':
+        alt = true;
+      case '':
+        continue;
+      default:
+        final mapped = KeyMap.nameToKey[part];
+        if (mapped != null) {
+          key = mapped;
+        } else if (part.length == 1 &&
+            part.codeUnitAt(0) >= 0x61 &&
+            part.codeUnitAt(0) <= 0x7a) {
+          // מזהי המקשים הלוגיים של a–z הם קודי ה-Unicode שלהם.
+          key = LogicalKeyboardKey(part.codeUnitAt(0));
+        } else {
+          return null;
+        }
+    }
+  }
+  if (key == null) return null;
+  return SingleActivator(key, meta: meta, shift: shift, alt: alt);
+}

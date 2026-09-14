@@ -71,4 +71,7 @@ abstract interface class AppWindowGeometry {
     TitleBarStyle style, {
     required bool windowButtonVisibility,
   });
+
+  /// חיווי התקדמות על אייקון המשימות/Dock. שלילי מסתיר, מעל 1 = בלתי-מוגדר.
+  Future<void> setProgressBar(double progress);
 }

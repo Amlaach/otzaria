@@ -33,7 +33,43 @@ class OtzarUtils {
     'Z',
   ];
 
+  /// תיקיות העגינה שבהן מק מציגה כוננים — המקבילה לאותיות הכוננים ב-Windows.
+  static const List<String> _macMountRoots = ['/Volumes'];
+
+  /// ה-URI שמטפל הפרוטוקול של אוצר החכמה מקבל במק.
+  ///
+  /// בלי הרווח שלפני `/c` שבמסלול Windows: שם ה-URI הוא ארגומנט תהליך, וכאן
+  /// כתובת שעוברת ב-LaunchServices ורווח בה היה נחתך.
+  @visibleForTesting
+  static String macBookUri(int bookId, {int? tabId}) =>
+      'OtzarBook://book/$bookId/p/1/t/${tabId ?? Random().nextInt(1000000)}'
+      '/fs/0/start/0/end/0/c';
+
+  /// סורק את הכוננים המעוגנים במק אחרי `<כונן>/books/<id>.book`.
+  static Future<bool> _checkBookExistenceMac(int bookId) async {
+    for (final mountRoot in _macMountRoots) {
+      final root = Directory(mountRoot);
+      if (!await root.exists()) continue;
+      try {
+        await for (final entry in root.list(followLinks: false)) {
+          if (entry is! Directory) continue;
+          for (final relative in const ['books', 'Otzardisk/books']) {
+            final file = File(path.join(entry.path, relative, '$bookId.book'));
+            if (await file.exists()) return true;
+          }
+        }
+      } on FileSystemException {
+        // כונן בלי הרשאת קריאה — ממשיכים לבא.
+        continue;
+      }
+    }
+    debugPrint('Book $bookId not found in any mounted Otzar disk');
+    return false;
+  }
+
   static Future<bool> checkBookExistence(int bookId) async {
+    if (Platform.isMacOS) return _checkBookExistenceMac(bookId);
+    if (!Platform.isWindows) return false;
     for (final drive in _availableDrives) {
       //newer version teh path is under the /books folder with the extension .book
       final bookPath = '$drive:\\books\\$bookId.book';
@@ -87,12 +123,23 @@ class OtzarUtils {
   }
 
   static Future<bool> canLaunchLocally() async {
+    // במק אין נתיב ל-exe: ההפעלה עוברת דרך מטפל הפרוטוקול `OtzarBook://`
+    // שההתקנה רושמת, ולכן קיומו של מטפל רשום הוא התנאי.
+    if (Platform.isMacOS) {
+      return canLaunchUrlString(macBookUri(1, tabId: 0));
+    }
     if (!Platform.isWindows) return false;
     final (exePath, _) = await findOtzarExePath();
     return exePath.isNotEmpty;
   }
 
   static Future<void> launchOtzarLocal(int bookId) async {
+    if (Platform.isMacOS) {
+      if (!await launchUrlString(macBookUri(bookId))) {
+        throw Exception('Failed to launch Otzar: no handler for OtzarBook://');
+      }
+      return;
+    }
     final (exePath, isVersion18OrAbove) = await findOtzarExePath();
     if (exePath.isEmpty) {
       throw Exception('Otzar.exe not found');

@@ -29,6 +29,7 @@ import 'package:otzaria/plugins/bridge/plugin_bridge_handler.dart';
 import 'package:otzaria/plugins/models/installed_plugin.dart';
 import 'package:otzaria/plugins/plugin_constants.dart';
 import 'package:otzaria/plugins/repository/plugin_registry_repository.dart';
+import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/services/plugin_download_handler.dart';
 import 'package:otzaria/plugins/services/plugin_webview_permission_gate.dart';
 import 'package:otzaria/plugins/services/plugin_file_server.dart';
@@ -671,6 +672,18 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
     _cachedPackageInfo ??= await PackageInfo.fromPlatform();
   }
 
+  /// ה-URI של נקודת הכניסה — `file://` ברוב הפלטפורמות, ובמק דרך
+  /// [pluginAssetScheme] (ראה [pluginAssetSchemeEnabled]).
+  WebUri get _entrypointUri => widget.plugin.isLocalhostDev
+      ? WebUri(_localHtmlPath)
+      : pluginAssetSchemeEnabled
+      ? pluginAssetUri(
+          pluginId: widget.plugin.pluginId,
+          rootPath: widget.plugin.resolvedRootPath,
+          filePath: _localHtmlPath,
+        )
+      : WebUri.uri(Uri.file(_localHtmlPath));
+
   Future<void> _reloadFromDisk() async {
     if (!mounted) return;
     try {
@@ -678,9 +691,7 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         await InAppWebViewController.clearAllCache();
         await _controller?.reload();
       } else {
-        await _controller?.loadUrl(
-          urlRequest: URLRequest(url: WebUri.uri(Uri.file(_localHtmlPath))),
-        );
+        await _controller?.loadUrl(urlRequest: URLRequest(url: _entrypointUri));
       }
     } catch (e) {
       debugPrint(
@@ -734,10 +745,11 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
 
     return InAppWebView(
       webViewEnvironment: WebViewEnvironmentHolder.environment,
-      initialUrlRequest: URLRequest(
-        url: widget.plugin.isLocalhostDev
-            ? WebUri(_localHtmlPath)
-            : WebUri.uri(Uri.file(_localHtmlPath)),
+      initialUrlRequest: URLRequest(url: _entrypointUri),
+      onLoadResourceWithCustomScheme: (controller, request) => servePluginAsset(
+        url: request.url,
+        pluginId: widget.plugin.pluginId,
+        rootPath: widget.plugin.resolvedRootPath,
       ),
       initialSettings: InAppWebViewSettings(
         allowFileAccessFromFileURLs: false,
@@ -750,6 +762,9 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         statusBarEnabled: false,
         cacheEnabled: !widget.plugin.isDevelopment,
         isInspectable: kDebugMode,
+        resourceCustomSchemes: pluginAssetSchemeEnabled
+            ? const [pluginAssetScheme]
+            : const [],
       ),
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
@@ -835,6 +850,9 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         try {
           final uri = navigationAction.request.url;
           if (uri == null) return NavigationActionPolicy.CANCEL;
+          if (uri.scheme == pluginAssetScheme) {
+            return NavigationActionPolicy.ALLOW;
+          }
           if (uri.scheme == 'file') {
             final normalizedUri = p.normalize(uri.toFilePath());
             final normalizedInstall = p.normalize(

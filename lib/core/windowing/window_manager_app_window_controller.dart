@@ -79,4 +79,8 @@ final class WindowManagerAppWindowController
     style,
     windowButtonVisibility: windowButtonVisibility,
   );
+
+  @override
+  Future<void> setProgressBar(double progress) =>
+      windowManager.setProgressBar(progress);
 }

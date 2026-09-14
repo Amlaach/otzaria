@@ -6,6 +6,7 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:otzaria/core/windowing/app_window_scope.dart';
 import 'package:otzaria/core/windowing/window_manager_app_window_controller.dart';
 import 'package:otzaria/models/books.dart';
@@ -2278,6 +2279,35 @@ void main() {
       );
     });
   });
+
+  testWidgets('כפתורי החלון המותאמים מוצגים גם במק', (tester) async {
+    final tab = _makeTextTab('ספר א');
+    final tabsBloc = _TestTabsBloc(
+      TabsState(tabs: [tab], currentTabIndex: 0),
+    );
+    final navigationBloc = _TestNavigationBloc(
+      const NavigationState(currentScreen: Screen.reading),
+    );
+    final settingsBloc = _TestSettingsBloc(SettingsState.initial());
+
+    addTearDown(() async {
+      tab.dispose();
+      await tabsBloc.close();
+      await navigationBloc.close();
+      await settingsBloc.close();
+    });
+
+    await _setSurfaceSize(tester, const Size(1200, 800));
+    await _pumpTitleBar(
+      tester,
+      tabsBloc: tabsBloc,
+      navigationBloc: navigationBloc,
+      settingsBloc: settingsBloc,
+    );
+
+    expect(find.byType(WindowCaption), findsOneWidget);
+  });
+
 }
 
 /// לחיצה כפולה במיקום נתון: שתי הקשות עם השהיה תקפה ל-double-tap, ואז המתנה

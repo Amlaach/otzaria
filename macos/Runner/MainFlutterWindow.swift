@@ -6,6 +6,9 @@ class MainFlutterWindow: NSWindow {
   private var splashWindow: NSWindow?
   private var splashChannel: FlutterMethodChannel?
   private var splashShownAt: Date?
+  private var terminationChannel: FlutterMethodChannel?
+  private var isDartCloseHandlingEnabled = false
+  private var isDartTerminationAllowed = false
 
   // אטימות הסמל (~70%) וזמן תצוגה מינימלי (מונע הבזק אם החשיפה מוקדמת).
   private let splashAlpha: CGFloat = 0.70
@@ -36,6 +39,23 @@ class MainFlutterWindow: NSWindow {
     }
     splashChannel = channel
 
+    let terminationChannel = FlutterMethodChannel(
+      name: "otzaria/macos_termination",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    terminationChannel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "enableCloseHandling":
+        self?.isDartCloseHandlingEnabled = true
+        result(nil)
+      case "allowTermination":
+        self?.isDartTerminationAllowed = true
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    self.terminationChannel = terminationChannel
+
     // משאירים את החלון הראשי **שקוף לגמרי** (alpha 0) עד החשיפה, במקום
     // orderOut (שלא נדבק ב-macOS — המערכת מציגה את החלון מחדש אחרי awakeFromNib,
     // וכך נראה גם אוברליי ה-splash של Flutter במרכזו). שקוף-לגמרי: החלון נשאר
@@ -44,6 +64,17 @@ class MainFlutterWindow: NSWindow {
     self.alphaValue = 0
 
     super.awakeFromNib()
+  }
+
+  /// ⌘Q ו-Quit שולחים `NSApplication.terminate`, שעוקף את ה-delegate של
+  /// החלון. כל עוד Dart לא סיים את ה-flush, מחזירים אותו ל-`performClose`,
+  /// ש-window_manager מתרגם ל-onWindowClose. לאחר ההיתר המפורש מ-Dart
+  /// אפשר להשלים את אותה בקשת terminate בלי להציג שוב את האישור.
+  func applicationShouldTerminate() -> NSApplication.TerminateReply {
+    guard isDartCloseHandlingEnabled else { return .terminateNow }
+    if isDartTerminationAllowed { return .terminateNow }
+    performClose(nil)
+    return .terminateCancel
   }
 
   private func showSplash() {
