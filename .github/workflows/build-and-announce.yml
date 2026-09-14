@@ -1421,6 +1421,18 @@ jobs:
           name: otzaria-linux-raw${{ matrix.arch == 'aarch64' && '-arm64' || '' }}
           path: linux-build/*
 
+      # ‏build-library-index.yml שבמאגר SeforimLibrary בונה את אינדקס הספרייה
+      # מחבילת ה-raw הזו, וחותם באיזו גרסת otzaria_search_engine נבנה. הנעילה
+      # אינה ב-git (‏flutter pub get פותר אותה בכל בנייה), ולכן היא נוסעת לשם
+      # כארטיפקט לצד החבילה — הבנייה כאן מסרבת לאינדקס שנבנה בגרסה אחרת.
+      - name: Upload index build inputs
+        if: matrix.target == 'raw' && matrix.arch == 'x86_64'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: otzaria-index-inputs
+          path: pubspec.lock
+          if-no-files-found: error
+
       - name: Create Linux FULL portable bundle
         if: matrix.target == 'full'
         shell: bash
@@ -1479,11 +1491,19 @@ jobs:
           fi
           pack_full_bundle otzaria-linux-full.tar.zst
 
-          # חבילת ספרייה נוספת עם אינדקס טקסט מוכן מאותו מנוע של האפליקציה.
-          # כולל ספרי PDF: מפתח האינדקס שלהם הוא מזהה יציב ולא נתיב ההתקנה.
-          INDEX_CLI_DATA="$GITHUB_WORKSPACE/full_installer/index-cli-data"
+          # חבילת ספרייה נוספת עם אינדקס חיפוש מוכן. האינדקס אינו נבנה כאן:
+          # הוא נבנה פעם אחת אחרי שחרור הספרייה, ב-build-library-index.yml
+          # שבמאגר SeforimLibrary, ומאוחסן כנכס על אותו release. בנייתו כאן
+          # עלתה 118 דקות מול 12 דקות לאותה חבילה בלעדיה (ריצה 34779834547),
+          # ותוצאתה נקבעת רק ע"י seforim.db ומנוע החיפוש — שניהם אינם משתנים
+          # בין בניות של האפליקציה.
+          #
+          # כרכי התלמוד המצורפים אינם מאונדקסים ממילא — ‏isIndexableBook מחריגה
+          # אותם מאז 9b67127, כי הטקסט שלהם כבר באינדקס מה-DB. הם כן נוכחים
+          # בבניית האינדקס בצד השני, כי catalogueOrder הוא מיקום בעץ הקטלוג
+          # כולו; הסקריפט מאמת שזה אותו ארכיון תלמוד בדיוק.
           INDEXED_LIBRARY_ROOT="$GITHUB_WORKSPACE/full_installer/otzaria-library-full-indexed"
-          mkdir -p "$INDEX_CLI_DATA" "$INDEXED_LIBRARY_ROOT"
+          mkdir -p "$INDEXED_LIBRARY_ROOT"
           cp -al "$GITHUB_WORKSPACE/$BUNDLE_ROOT/אוצריא" "$INDEXED_LIBRARY_ROOT/books"
           # בחבילה הכללית המשתמש בוחר את books ידנית; marker של bundle צמוד
           # לאפליקציה היה גורם לנתיב להיחשב לא-ידני בעלייה הבאה.
@@ -1494,10 +1514,11 @@ jobs:
           esac
           [ ! -L "$BUNDLED_MARKER" ] || { echo "::error::Bundled marker must not be a symlink"; exit 1; }
           [ ! -e "$BUNDLED_MARKER" ] || rm -f -- "$BUNDLED_MARKER"
-          xvfb-run -a "$BUNDLE_ROOT/app/otzaria" build-release-index \
-            --library "$INDEXED_LIBRARY_ROOT/books" \
-            --index "$INDEXED_LIBRARY_ROOT/index" \
-            --data "$INDEX_CLI_DATA"
+          bash tool/release/fetch_prebuilt_library_index.sh \
+            "$INDEXED_LIBRARY_ROOT/index" \
+            full_installer/library_db/seforim.db.zst \
+            full_installer/library_db/talmud_bavli_latest.tar.zst \
+            pubspec.lock
           touch "$INDEXED_LIBRARY_ROOT/index/.otzaria_prebuilt_index"
 
           cat > "$INDEXED_LIBRARY_ROOT/README.txt" << 'EOF'
@@ -1505,8 +1526,9 @@ jobs:
 
           Extract the complete multipart archive and choose its books directory in Otzaria.
           Keep books and index next to each other; the application resolves this layout automatically.
-          The package includes a prebuilt search index.
-          The index covers the bundled PDFs too, so no indexing runs after installation.
+          The package includes a prebuilt search index, so no indexing runs after
+          installation. The bundled Talmud Bavli scans are searchable through the
+          text of the same tractates, which the index covers.
           EOF
 
           VERSION=$(awk '/^version:/ {split($2, v, "+"); print v[1]; exit}' pubspec.yaml)
