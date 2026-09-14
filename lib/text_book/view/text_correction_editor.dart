@@ -5,6 +5,7 @@ import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/core/messages/report_messages.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/theme/theme_exports.dart';
+import 'package:otzaria/utils/canonical_json.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart';
 import 'package:otzaria/widgets/controls/segmented_control.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
@@ -187,7 +188,10 @@ TextCorrectionDraft evaluateCorrectionDraft({
   };
   final correction = original.withProposedText(proposed);
   String? error;
-  if (original.originalLine.length > max) {
+  if (hasLoneSurrogate(original.originalLine) ||
+      (proposed != null && hasLoneSurrogate(proposed))) {
+    error = ReportMessages.invalidCharacters;
+  } else if (original.originalLine.length > max) {
     error = ReportMessages.originalTooLong(max);
   } else if (proposed != null && proposed.length > max) {
     error = ReportMessages.proposalTooLong(max);

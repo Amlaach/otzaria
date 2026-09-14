@@ -29,6 +29,7 @@ import 'package:otzaria/widgets/misc/phone_report_tab.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria/utils/text/ref_helper.dart';
+import 'package:otzaria/utils/canonical_json.dart';
 
 /// נתוני הדיווח שנאספו מתיבת סימון הטקסט + פירוט הטעות שהמשתמש הקליד.
 class ReportedErrorData {
@@ -666,9 +667,10 @@ $detailsSection
       bookTitle: bookTitle,
       currentRef: currentRef,
       lineNumber: lineNumber,
-      selectedText: reportData.selectedText,
-      errorDetails: reportData.errorDetails,
-      contextText: contextText,
+      // שדות חופשיים; surrogate בודד היה פוסל את ה-digest של הדיווח כולו.
+      selectedText: replaceLoneSurrogates(reportData.selectedText),
+      errorDetails: replaceLoneSurrogates(reportData.errorDetails),
+      contextText: replaceLoneSurrogates(contextText),
       filePath: bookDetails['נתיב הקובץ'] ?? '',
       sourceFolder: bookDetails['תיקיית המקור'] ?? '',
       libraryVersion: normalizedLibraryVersion,

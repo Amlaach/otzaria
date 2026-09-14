@@ -56,6 +56,7 @@ import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/text_book/view/error_report_dialog.dart';
 import 'package:otzaria/tools/calendar/helpers/calendar_date_helpers.dart';
 import 'package:otzaria/tour/bloc/tour_cubit.dart';
+import 'package:otzaria/utils/canonical_json.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
 import 'package:otzaria/widgets/misc/restart_widget.dart';
@@ -656,9 +657,9 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
     if (confirmed == true) {
       await DirectErrorReportService().updatePendingReport(
         report.copyWith(
-          selectedText: editValues.selectedText.trim(),
-          errorDetails: editValues.errorDetails.trim(),
-          contextText: editValues.contextText.trim(),
+          selectedText: replaceLoneSurrogates(editValues.selectedText.trim()),
+          errorDetails: replaceLoneSurrogates(editValues.errorDetails.trim()),
+          contextText: replaceLoneSurrogates(editValues.contextText.trim()),
         ),
       );
       if (!mounted) return;

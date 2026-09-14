@@ -173,6 +173,23 @@ void main() {
       expect(draft.isValid, isFalse);
       expect(draft.correction.proposedText, long);
     });
+
+    test('surrogate בודד בהצעה או במקור חוסם, בלי לשנות את הטקסט', () {
+      final draft = evaluateCorrectionDraft(
+        original: original,
+        mode: ProposalMode.replace,
+        editedText: 'ב\uD83D',
+      );
+      expect(draft.error, ReportMessages.invalidCharacters);
+      expect(draft.correction.proposedText, 'ב\uD83D');
+
+      final brokenLine = evaluateCorrectionDraft(
+        original: TextCorrection.wholeLine(originalLine: 'א\uDE00'),
+        mode: ProposalMode.replace,
+        editedText: 'אב',
+      );
+      expect(brokenLine.error, ReportMessages.invalidCharacters);
+    });
   });
 
   group('RegularReportTab — מסלול הצעת תיקון', () {

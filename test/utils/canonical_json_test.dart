@@ -66,6 +66,14 @@ void main() {
       expect(() => canonicalJsonEncode('a\uDE00b'), throwsArgumentError);
     });
 
+    test('זיהוי והחלפה של surrogate בודד (לשדות שאינם מדויקים)', () {
+      expect(hasLoneSurrogate('😀 אב'), isFalse);
+      expect(hasLoneSurrogate('a\uD83D'), isTrue);
+      expect(hasLoneSurrogate('\uDE00b'), isTrue);
+      expect(replaceLoneSurrogates('a\uD83Db\uDE00😀'), 'a�b�😀');
+      expect(replaceLoneSurrogates('ללא שינוי'), 'ללא שינוי');
+    });
+
     test('מספר לא-שלם נדחה', () {
       expect(() => canonicalJsonEncode({'x': 1.5}), throwsArgumentError);
     });

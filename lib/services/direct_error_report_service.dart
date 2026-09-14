@@ -194,11 +194,22 @@ class DirectErrorReportService {
       return;
     }
 
-    final contentChanged = reports[index].contentDigest != report.contentDigest;
+    final previousDigest = _digestOrNull(reports[index]);
+    final contentChanged =
+        previousDigest == null || previousDigest != _digestOrNull(report);
     reports[index] = contentChanged
         ? report.withId(DirectErrorReport.generateId(report.id))
         : report;
     await _queueRepository.overwrite(reports);
+  }
+
+  /// null לדיווח שאינו ניתן לסריאליזציה קנונית (surrogate בודד).
+  static String? _digestOrNull(DirectErrorReport report) {
+    try {
+      return report.contentDigest;
+    } on ArgumentError {
+      return null;
+    }
   }
 
   Future<void> deletePendingReport(String reportId) async {
@@ -242,11 +253,13 @@ class DirectErrorReportService {
     List<DirectErrorReport> reports, {
     required OfflineSendScriptTarget target,
   }) {
+    // דיווח פסול היה נדחה בשרת ממילא; הוא נשאר בתור לעריכה ולא מפיל את הייצוא.
+    final sendable = reports.where((r) => _digestOrNull(r) != null).toList();
     return buildOfflineReportScript(
       target: target,
       endpoint: _endpoint,
-      payloads: reports.map((report) => report.toApiPayload()).toList(),
-      ids: reports.map((report) => report.id).toList(),
+      payloads: sendable.map((report) => report.toApiPayload()).toList(),
+      ids: sendable.map((report) => report.id).toList(),
       idField: 'report_id',
       baseFileName: 'otzaria_send_saved_reports',
     );

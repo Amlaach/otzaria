@@ -957,6 +957,27 @@ void main() {
       expect(find.text('דיווח על טעות בספר'), findsOneWidget);
     });
   });
+
+  test('surrogate בודד בשדות החופשיים מוחלף ב-U+FFFD, וה-digest מחושב', () {
+    final report = ErrorReportHelper.buildDirectReport(
+      senderEmail: 'user@example.com',
+      reportData: const ReportedErrorData(
+        selectedText: 'א\uD83D',
+        errorDetails: 'פירוט \uDE00',
+      ),
+      bookTitle: 'ספר',
+      currentRef: 'א',
+      bookDetails: const {},
+      lineNumber: 1,
+      contextText: 'הקשר\uD83D',
+      libraryVersion: '27',
+    );
+
+    expect(report.selectedText, 'א�');
+    expect(report.errorDetails, 'פירוט �');
+    expect(report.contextText, 'הקשר�');
+    expect(report.contentDigest, hasLength(64));
+  });
 }
 
 TextBookLoaded _loadedState() {

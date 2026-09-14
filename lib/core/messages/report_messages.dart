@@ -75,6 +75,10 @@ abstract class ReportMessages {
       'השורה המקורית ארוכה מ-$maxLength תווים, ולכן לא ניתן להציע לה תיקון '
       'מובנה. ניתן לשלוח דיווח חופשי.';
 
+  static const String invalidCharacters =
+      'הטקסט מכיל תו פגום (חצי מתו מורכב, כמו אימוג׳י שנקטע), ולכן לא ניתן '
+      'לשלוח אותו כהצעה מדויקת. יש למחוק את התו או לשלוח דיווח חופשי.';
+
   static const String proposalNeedsDetailsOrChange =
       'בלי הצעה יש לפרט מהי הטעות.';
 

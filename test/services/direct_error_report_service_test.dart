@@ -693,6 +693,34 @@ void _textCorrectionServiceTests() {
       expect(updated.contentDigest, isNot(report.contentDigest));
     });
 
+    test(
+      'surrogate בודד בדיווח שמור אינו מפיל עריכה או ייצוא סקריפט',
+      () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final broken = buildCorrectionReport(
+          id: 'broken',
+          errorDetails: 'x\uD83D',
+        );
+        final valid = buildCorrectionReport(id: 'valid');
+        await repository.overwrite([broken, valid]);
+        final service = DirectErrorReportService(queueRepository: repository);
+
+        await service.updatePendingReport(
+          broken.copyWith(errorDetails: 'תקין'),
+        );
+        final updated = (await repository.load()).first;
+        expect(updated.id, isNot('broken'));
+        expect(updated.errorDetails, 'תקין');
+
+        final script = service.buildOfflineSendScript(
+          [broken, valid],
+          target: OfflineSendScriptTarget.unix,
+        );
+        expect(script.content, contains('valid'));
+        expect(script.content, isNot(contains('broken')));
+      },
+    );
+
     test('[T7] עריכה שלא שינתה תוכן שומרת את המזהה', () async {
       final repository = InMemoryDirectErrorReportRepository();
       final report = buildCorrectionReport(id: 'same');

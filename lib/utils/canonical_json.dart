@@ -16,6 +16,17 @@ String canonicalJsonEncode(Object? value) {
 String canonicalJsonSha256(Object? value) =>
     sha256.convert(utf8.encode(canonicalJsonEncode(value))).toString();
 
+final RegExp _loneSurrogate = RegExp(
+  r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]',
+);
+
+/// surrogate בודד פוסל את הדיווח כולו ב-OCJ-1 (§4.3).
+bool hasLoneSurrogate(String value) => _loneSurrogate.hasMatch(value);
+
+/// מחליף surrogate בודד ב-U+FFFD, כמו קידוד ה-UTF-8 של גוף הבקשה. לשדות חופשיים בלבד.
+String replaceLoneSurrogates(String value) =>
+    value.replaceAll(_loneSurrogate, '�');
+
 void _write(StringBuffer out, Object? value) {
   if (value == null) {
     out.write('null');
