@@ -448,6 +448,20 @@ void main() {
       expect(controller.evaluated.single, contains('document.hasFocus()'));
     });
 
+    test('עדות הדף אינה קבילה — MoveFocus נשלח בכל זאת', () async {
+      // אחרי שהחלון חוזר ממיזעור הדף מדווח `true` בעוד שאף הקשה אינה
+      // מגיעה אליו. במסלול הזה מוותרים על השער — ולכן גם אין שאילתה לדף.
+      mockChannel(7);
+      final controller = _FocusFake(viewId: 7, pageHasFocus: true);
+
+      expect(
+        await PluginWebViewFocus.request(controller, trustPageFocus: false),
+        isTrue,
+      );
+      expect(calls, hasLength(1));
+      expect(controller.evaluated, isEmpty);
+    });
+
     test('בדיקת המיקוד נכשלה — ממשיכים להעברה', () async {
       mockChannel(7);
       final controller = _FocusFake(

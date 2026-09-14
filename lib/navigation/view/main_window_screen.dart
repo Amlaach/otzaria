@@ -915,6 +915,21 @@ class MainWindowScreenState extends State<MainWindowScreen>
       FocusRepository().scheduleRestore();
     };
 
+    // ה-WebView של תוסף אינו חלק מעץ הפוקוס של Flutter, ולכן השחזור שמעל
+    // אינו מחזיר לו את המקלדת — ובחזרה ממיזעור אין אף מסלול אחר שיעשה זאת.
+    // בפריים הבא, אחרי ש-FocusManager החזיר את הפוקוס שהושעה, כדי ששדה טקסט
+    // שחזר לעצמו יחסום את ההעברה.
+    appWindowListener?.onWindowRestoredFromMinimize = () {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(
+          PluginRuntimeDispatcher.instance
+              .restoreKeyboardFocusAfterWindowRestore(),
+        );
+      });
+    };
+
     // שחזור פוקוס בזמן resize רציף — עם debounce כדי למנוע הצפת קריאות
     appWindowListener?.onWindowResizeOccurred = () {
       if (!mounted) return;
@@ -1502,6 +1517,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
     // Clean up fullscreen callback
     appWindowListener?.onFullscreenChanged = null;
     appWindowListener?.onWindowStateChanged = null;
+    appWindowListener?.onWindowRestoredFromMinimize = null;
     appWindowListener?.onWindowResizeOccurred = null;
     _splashFailsafeTimer?.cancel();
     _pluginInstallDialogQueue.clear();

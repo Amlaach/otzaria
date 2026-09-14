@@ -267,6 +267,63 @@ void main() {
     });
   });
 
+  group('חזרה של חלון האפליקציה ממיזעור', () {
+    test('הפוקוס מוחזר למופע המוצג גם כשהדף מדווח שהוא ממוקד', () async {
+      // זה המצב שנמדד: אחרי מיזעור והחזרה `document.hasFocus()` מחזיר
+      // `true` — ובכל זאת אף הקשה אינה מגיעה לדף עד MoveFocus או קליק.
+      final controller = _FocusController()..pageHasFocusAfterFirst = true;
+      _d.registerController(_pid, controller);
+      _d.setVisiblePluginInstances({_fg(_pid)});
+      await pumpEventQueue();
+      await _d.requestKeyboardFocus(_pid);
+      expect(controller.focusCalls, 1);
+
+      await _d.restoreKeyboardFocusAfterWindowRestore();
+
+      expect(controller.focusCalls, 2);
+    });
+
+    test('מופע שאינו מוצג אינו חוטף את המקלדת', () async {
+      final controller = _FocusController();
+      _d.registerController(_pid, controller);
+      _d.setVisiblePluginInstances(const {});
+      await pumpEventQueue();
+
+      await _d.restoreKeyboardFocusAfterWindowRestore();
+
+      expect(controller.focusCalls, 0);
+    });
+
+    test('מופע רקע אינו מקבל פוקוס', () async {
+      final background = _FocusController();
+      const key = (pluginId: _pid, instanceId: PluginInstanceIds.background);
+      _d.registerController(
+        _pid,
+        background,
+        instanceId: PluginInstanceIds.background,
+      );
+      // מסומן כגלוי בכוונה, כדי שרק שער ה"רקע" יוכל לחסום.
+      _d.setVisiblePluginInstances({key});
+      await pumpEventQueue();
+
+      await _d.restoreKeyboardFocusAfterWindowRestore();
+
+      expect(background.focusCalls, 0);
+    });
+
+    test('בפלטפורמה שאינה זקוקה להעברה — אין קריאה', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final controller = _FocusController();
+      _d.registerController(_pid, controller);
+      _d.setVisiblePluginInstances({_fg(_pid)});
+      await pumpEventQueue();
+
+      await _d.restoreKeyboardFocusAfterWindowRestore();
+
+      expect(controller.focusCalls, 0);
+    });
+  });
+
   // ── חיווט השערים ────────────────────────────────────────────────────────
   // המדיניות נבדקת כפונקציה טהורה במקום אחר; כאן מוודאים שהדיספצ'ר באמת
   // מזין לה את הפלטפורמה ואת מצב החלון, ולא רק מכריז עליהם.

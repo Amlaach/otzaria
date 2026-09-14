@@ -140,6 +140,21 @@ class AppWindowListener extends WindowListener {
   /// maximize, unmaximize, restore, כניסה/יציאה ממסך מלא.
   VoidCallback? onWindowStateChanged;
 
+  /// נקרא כשהחלון חזר ממיזעור — וזה בלבד.
+  ///
+  /// החזרה מגיעה כ-`restore`, ואם החלון היה מוגדל לפני המיזעור היא מגיעה
+  /// כ-`maximize`; שניהם נספרים, ורק אם קדם להם מיזעור.
+  VoidCallback? onWindowRestoredFromMinimize;
+
+  /// האם החלון מוזער ועדיין לא חזר.
+  bool _minimized = false;
+
+  void _notifyRestoredFromMinimize() {
+    if (!_minimized) return;
+    _minimized = false;
+    onWindowRestoredFromMinimize?.call();
+  }
+
   /// נקרא בכל אירוע resize רציף — מיועד ל-debounced restore.
   VoidCallback? onWindowResizeOccurred;
   bool _isClosing = false;
@@ -554,6 +569,7 @@ class AppWindowListener extends WindowListener {
     if (kDebugMode) {
       debugPrint('Window minimized');
     }
+    _minimized = true;
   }
 
   @override
@@ -561,6 +577,7 @@ class AppWindowListener extends WindowListener {
     if (kDebugMode) {
       debugPrint('Window restored');
     }
+    _notifyRestoredFromMinimize();
     onWindowStateChanged?.call();
   }
 
@@ -590,6 +607,8 @@ class AppWindowListener extends WindowListener {
     if (kDebugMode) {
       debugPrint('Window maximized');
     }
+    // חלון שהיה מוגדל לפני המיזעור חוזר כ-maximize ולא כ-restore.
+    _notifyRestoredFromMinimize();
     if (WindowPersistence.isRestoring) return;
     WindowPersistence.scheduleSave();
     onWindowStateChanged?.call();
