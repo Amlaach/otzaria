@@ -826,6 +826,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | הסתרת כותרת מקור מיותרת במקטע מפרש | `test/text_book/view/commentary_item_title_visibility_test.dart` |
 | Book source dialog | `test/text_book/view/book_source_dialog_test.dart` |
 | Error report dialog | `test/text_book/view/error_report_dialog_test.dart` |
+| הצעת תיקון בדיאלוג הדיווח (עורך, diff, מחיקה מול ללא-הצעה, מיפוי בחירה לשורה הגולמית) | `test/text_book/view/text_correction_editor_test.dart` |
 
 **Text Book BLoC**
 | Area | Test File |
@@ -1005,6 +1006,9 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Core (activation queue/channel, error log) | `test/core/` |
 | תעודות ה-CA של נטפרי שנטענות בהפעלה (שלושת הבאנדלים ב-`assets/ca/`) | `test/core/netfree_ca_assets_test.dart` |
 | Error logging | `test/core/main_error_logging_test.dart`, `test/services/direct_error_report_service_test.dart` |
+| תיקוני טקסט — חוזה A (מודל schema 2, round-trip מדויק, null מול "", לקוח ישן, 409/413/429, `correction_supported`) | `test/models/direct_error_report_text_correction_test.dart`, `test/services/direct_error_report_service_test.dart` |
+| digest קנוני OCJ-1 מול ה-fixtures המשותפים לאתר | `test/utils/canonical_json_test.dart` |
+| סקריפט שליחה אופליין (bat/sh) — ה-payload מגיע לשרת כלשונו (הרצה אמיתית ב-bash/PowerShell) | `test/services/offline_report_script_payload_test.dart` |
 
 **Calendar (`lib/tools/calendar/`)**
 | Area | Test File |
