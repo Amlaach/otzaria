@@ -410,7 +410,7 @@ void main() {
       expect(RegExp(r'[^\r]\n').hasMatch(script.content), isFalse);
       expect(script.content, contains('s-1'));
       expect(script.content, contains(PluginReportService.endpoint.toString()));
-      expect(script.content, contains(r'$payload.reportId'));
+      expect(script.content, contains(r'($body | ConvertFrom-Json).reportId'));
     });
 
     test('סקריפט Unix נשאר LF ומכיל את המזהה', () {

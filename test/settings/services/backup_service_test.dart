@@ -20,6 +20,9 @@ import 'package:otzaria/tabs/tabs_repository.dart';
 import 'package:otzaria/workspaces/workspace_repository.dart';
 import 'package:path/path.dart' as p;
 
+import '../../models/direct_error_report_text_correction_test.dart'
+    show buildCorrectionReport, trickyLine;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1189,6 +1192,41 @@ void main() {
       expect((await service.getSentReports()).single.id, 'sent-1');
       await service.closeHttpClient();
     });
+
+    test(
+      '[T5] הצעת תיקון בתור שורדת הפעלה מחדש וגיבוי/שחזור בלי שינוי',
+      () async {
+        final report = buildCorrectionReport(id: 'corr-backup');
+        final before = DirectErrorReportService();
+        await before.queueReport(report);
+        await before.closeHttpClient();
+
+        // "הפעלה מחדש": סגירת ה-box ופתיחתו מהדיסק, ומופע שירות חדש.
+        await reportsBox.close();
+        reportsBox = await Hive.openBox<dynamic>(
+          DirectErrorReportService.queueBoxName,
+        );
+
+        final afterRestart = DirectErrorReportService();
+        final reloaded = (await afterRestart.getPendingReports()).single;
+        expect(reloaded, equals(report));
+        expect(reloaded.toApiPayload(), report.toApiPayload());
+
+        final path = await createSettingsBackup();
+        await reportsBox.clear();
+        await BackupService.restoreFromBackup(path);
+
+        final restored = (await afterRestart.getPendingReports()).single;
+        expect(restored, equals(report));
+        expect(restored.correction!.originalLine, trickyLine);
+        expect(
+          restored.correction!.proposedText,
+          report.correction!.proposedText,
+        );
+        expect(restored.contentDigest, report.contentDigest);
+        await afterRestart.closeHttpClient();
+      },
+    );
 
     test('דיווח שנשלח מאז אינו חוזר לתור בשחזור', () async {
       await reportsBox.put(DirectErrorReportService.pendingReportsKey, [

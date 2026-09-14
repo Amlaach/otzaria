@@ -27,20 +27,26 @@ class DirectReportDeliveryResult {
   /// השרת קלט את הדיווח אך לא שלח מייל, כי תוכן זהה כבר נשלח בעבר.
   final bool isDuplicate;
 
+  /// אתר ישן קלט הצעת תיקון כטקסט חופשי בלבד (חסר `correction_supported`).
+  final bool correctionNotSupported;
+
   const DirectReportDeliveryResult._({
     required this.status,
     required this.message,
     this.isDuplicate = false,
+    this.correctionNotSupported = false,
   });
 
   factory DirectReportDeliveryResult.sent(
     String message, {
     bool isDuplicate = false,
+    bool correctionNotSupported = false,
   }) {
     return DirectReportDeliveryResult._(
       status: DirectReportDeliveryStatus.sent,
       message: message,
       isDuplicate: isDuplicate,
+      correctionNotSupported: correctionNotSupported,
     );
   }
 
@@ -179,6 +185,8 @@ class DirectErrorReportService {
     await _sentRepository.clear();
   }
 
+  /// מעדכן דיווח בתור. תוכן ששונה מקבל `report_id` חדש: ייתכן שהגרסה הקודמת
+  /// כבר נקלטה בשרת, ואותו מזהה עם תוכן אחר נדחה שם ב-409.
   Future<void> updatePendingReport(DirectErrorReport report) async {
     final reports = await _queueRepository.load();
     final index = reports.indexWhere((item) => item.id == report.id);
@@ -186,7 +194,10 @@ class DirectErrorReportService {
       return;
     }
 
-    reports[index] = report;
+    final contentChanged = reports[index].contentDigest != report.contentDigest;
+    reports[index] = contentChanged
+        ? report.withId(DirectErrorReport.generateId(report.id))
+        : report;
     await _queueRepository.overwrite(reports);
   }
 
@@ -264,8 +275,18 @@ class DirectErrorReportService {
 
     final attemptResult = await _trySend(report);
     if (attemptResult.isSuccess) {
-      await _saveSentReport(report);
+      final sentRecord = _sentRecord(report, attemptResult);
+      await _saveSentReport(sentRecord);
       unawaited(flushPendingReports(onlyAutomaticRetry: true));
+      if (sentRecord.serverAcceptedCorrection == false) {
+        return DirectReportDeliveryResult.sent(
+          ReportMessages.correctionNotSupportedByServer(
+            directReportTargetLabel,
+          ),
+          isDuplicate: attemptResult.isDuplicate,
+          correctionNotSupported: true,
+        );
+      }
       if (attemptResult.isDuplicate) {
         return DirectReportDeliveryResult.sent(
           ReportMessages.duplicateReport(directReportTargetLabel),
@@ -342,7 +363,7 @@ class DirectErrorReportService {
 
         if (attemptResult.isSuccess) {
           remainingReports.removeWhere((item) => item.id == report.id);
-          await _saveSentReport(report);
+          await _saveSentReport(_sentRecord(report, attemptResult));
           sentCount++;
           continue;
         }
@@ -411,7 +432,27 @@ class DirectErrorReportService {
     await _sentRepository.overwrite(sentReports);
   }
 
+  /// הרשומה להיסטוריית הנשלחים: הצעת תיקון מסומנת אם השרת תמך בה.
+  DirectErrorReport _sentRecord(
+    DirectErrorReport report,
+    _SendAttemptResult attemptResult,
+  ) {
+    if (!report.isTextCorrection) return report;
+    return report.copyWith(
+      serverAcceptedCorrection: attemptResult.correctionSupported,
+    );
+  }
+
   Future<_SendAttemptResult> _trySend(DirectErrorReport report) async {
+    final String body;
+    try {
+      body = jsonEncode(report.toApiPayload());
+    } on ArgumentError catch (e) {
+      // טקסט שאינו ניתן לסריאליזציה קנונית (surrogate בודד) — לא ישתפר בניסיון חוזר.
+      debugPrint('Direct report payload invalid: $e');
+      return _SendAttemptResult.permanentFailure(ReportMessages.sendFailed);
+    }
+
     try {
       final response = await _client
           .post(
@@ -420,13 +461,21 @@ class DirectErrorReportService {
               'Content-Type': 'application/json; charset=utf-8',
               'Accept': 'application/json',
             },
-            body: jsonEncode(report.toApiPayload()),
+            body: body,
           )
           .timeout(_timeout);
 
       if (response.statusCode == HttpStatus.ok) {
+        final decoded = _decodeResponse(response.body);
         return _SendAttemptResult.success(
-          isDuplicate: _isDuplicateResponse(response.body),
+          isDuplicate: decoded?['duplicate'] == true,
+          correctionSupported: decoded?['correction_supported'] == true,
+        );
+      }
+
+      if (response.statusCode == HttpStatus.conflict) {
+        return _SendAttemptResult.permanentFailure(
+          ReportMessages.reportIdConflict,
         );
       }
 
@@ -455,18 +504,22 @@ class DirectErrorReportService {
     }
   }
 
+  /// חוזה §2.4: 400/409/413/422 קבועים; 408/429/5xx וכל השאר זמניים (תור).
   bool _isPermanentHttpFailure(int statusCode) {
-    return statusCode == HttpStatus.badRequest || statusCode == 422;
+    return statusCode == HttpStatus.badRequest ||
+        statusCode == HttpStatus.conflict ||
+        statusCode == HttpStatus.requestEntityTooLarge ||
+        statusCode == 422;
   }
 
-  /// השרת מחזיר 200 עם duplicate:true כשתוכן זהה כבר נשלח — הדיווח נקלט
-  /// אך לא נשלח מייל, ואסור להציג למשתמש "נשלח בהצלחה".
-  static bool _isDuplicateResponse(String body) {
+  /// גוף תשובת 200. `duplicate:true` = תוכן זהה כבר נשלח במייל (הדיווח נקלט);
+  /// היעדר `correction_supported:true` = אתר ישן שאינו מכיר הצעת תיקון.
+  static Map<String, dynamic>? _decodeResponse(String body) {
     try {
       final decoded = jsonDecode(body);
-      return decoded is Map<String, dynamic> && decoded['duplicate'] == true;
+      return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 }
@@ -476,21 +529,26 @@ class _SendAttemptResult {
   final String message;
   final _SendAttemptFailureType? failureType;
   final bool isDuplicate;
+  final bool correctionSupported;
 
   const _SendAttemptResult._({
     required this.isSuccess,
     required this.message,
     this.failureType,
     this.isDuplicate = false,
+    this.correctionSupported = false,
   });
 
-  const _SendAttemptResult.success({bool isDuplicate = false})
-    : this._(
-        isSuccess: true,
-        message: '',
-        failureType: null,
-        isDuplicate: isDuplicate,
-      );
+  const _SendAttemptResult.success({
+    bool isDuplicate = false,
+    bool correctionSupported = false,
+  }) : this._(
+         isSuccess: true,
+         message: '',
+         failureType: null,
+         isDuplicate: isDuplicate,
+         correctionSupported: correctionSupported,
+       );
 
   bool get isPermanentFailure =>
       !isSuccess && failureType == _SendAttemptFailureType.permanent;

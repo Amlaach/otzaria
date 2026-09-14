@@ -591,7 +591,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
 
     if (!mounted) return;
     if (result.isSent) {
-      if (result.isDuplicate) {
+      if (result.isDuplicate || result.correctionNotSupported) {
         UiSnack.show(result.message);
       } else {
         await ErrorReportHelper.showDirectReportDetailsDialog(
