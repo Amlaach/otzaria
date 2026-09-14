@@ -28,6 +28,7 @@ class DownloadEtaEstimator {
   final Duration refreshInterval;
   final List<_EtaSample> _samples = [];
 
+  DateTime? _startedAt;
   Duration? _lastReportedEta;
   DateTime? _lastReportTime;
 
@@ -46,6 +47,7 @@ class DownloadEtaEstimator {
     required int totalBytes,
     required DateTime now,
   }) {
+    _startedAt ??= now;
     final candidate = _computeEta(
       downloadedBytes: downloadedBytes,
       totalBytes: totalBytes,
@@ -59,7 +61,7 @@ class DownloadEtaEstimator {
     // נתונים — אחרת האטת תחילת החיבור מציגה זמן נותר מופרז.
     if (_lastReportTime == null &&
         candidate != Duration.zero &&
-        now.difference(_samples.first.time) < refreshInterval) {
+        now.difference(_startedAt!) < refreshInterval) {
       return null;
     }
 

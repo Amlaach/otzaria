@@ -127,6 +127,29 @@ void main() {
       );
       expect(real!.inSeconds, 7);
     });
+
+    test('מדווח אחרי refreshInterval גם כשהחלון הנע קצר ממנו', () {
+      final estimator = DownloadEtaEstimator(
+        window: const Duration(seconds: 1),
+        refreshInterval: const Duration(seconds: 3),
+      );
+      estimator.update(downloadedBytes: 0, totalBytes: 1000, now: start);
+
+      // הדגימות ההתחלתיות נזרקות מהחלון, אבל ההמתנה לדיווח הראשון נמדדת
+      // מתחילת ההורדה ולא מהדגימה הראשונה שנותרה בו.
+      for (var second = 1; second <= 4; second++) {
+        final eta = estimator.update(
+          downloadedBytes: second * 100,
+          totalBytes: 1000,
+          now: start.add(Duration(seconds: second)),
+        );
+        if (second < 3) {
+          expect(eta, isNull);
+        } else {
+          expect(eta, isNotNull);
+        }
+      }
+    });
   });
 
   group('formatRemainingTimeHebrew', () {
