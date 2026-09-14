@@ -39,6 +39,20 @@ void main() {
       expect(template.hasSelection, isFalse);
     });
 
+    test('מופע יחיד בגולמי אך כפול בתצוגה בלי ניקוד — השורה כולה', () {
+      // בתצוגה בלי ניקוד שני המופעים נראים "אלהים"; אולי סומן הראשון.
+      final template = buildCorrectionTemplate('אֱלֹהִים ברא אלהים', 'אלהים');
+      expect(template.hasSelection, isFalse);
+    });
+
+    test('מופע יחיד בגולמי שנמצא בתוך תגית HTML — השורה כולה', () {
+      final template = buildCorrectionTemplate(
+        '<span title="אלהים">אֱלֹהִים</span>',
+        'אלהים',
+      );
+      expect(template.hasSelection, isFalse);
+    });
+
     test('בחירה שחוצה תגית HTML — השורה כולה', () {
       expect(
         buildCorrectionTemplate(_line, 'בְּרֵאשִׁ֖ית').hasSelection,

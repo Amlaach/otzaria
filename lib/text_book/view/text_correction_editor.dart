@@ -5,6 +5,7 @@ import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/core/messages/report_messages.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/theme/theme_exports.dart';
+import 'package:otzaria/utils/text/text_manipulation.dart';
 import 'package:otzaria/widgets/controls/segmented_control.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 
@@ -23,8 +24,8 @@ import 'package:otzaria/widgets/text/rtl_text_field.dart';
 /// אחרת לשורה כולה.
 TextCorrection buildCorrectionTemplate(String originalLine, String selected) {
   final located =
-      locateSelectionInLine(originalLine, selected) ??
-      locateSelectionInLine(originalLine, selected.trim());
+      _locateAsDisplayed(originalLine, selected) ??
+      _locateAsDisplayed(originalLine, selected.trim());
   if (located == null) {
     return TextCorrection.wholeLine(originalLine: originalLine);
   }
@@ -33,6 +34,21 @@ TextCorrection buildCorrectionTemplate(String originalLine, String selected) {
     start: located.start,
     end: located.end,
   );
+}
+
+/// התצוגה עשויה להסתיר ניקוד, טעמים ותגיות — מופע יחיד בגולמי מתקבל רק אם
+/// גם בנוסח המצומצם ביותר יש מופע אחד, ואינו בתוך תגית.
+({int start, int end})? _locateAsDisplayed(String line, String selected) {
+  final located = locateSelectionInLine(line, selected);
+  if (located == null) return null;
+  if (line.lastIndexOf('<', located.start) >
+      line.lastIndexOf('>', located.start)) {
+    return null;
+  }
+  final shown = removeVolwels(stripHtmlIfNeeded(line));
+  return locateSelectionInLine(shown, removeVolwels(selected)) == null
+      ? null
+      : located;
 }
 
 enum TextDiffOp { equal, removed, added }
