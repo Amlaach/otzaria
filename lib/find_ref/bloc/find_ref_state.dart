@@ -33,6 +33,11 @@ class FindRefNotReady extends FindRefState {
   const FindRefNotReady();
 }
 
+/// אין ספרייה מותקנת — בניגוד ל-[FindRefNotReady], ניסיון חוזר לא יעזור.
+class FindRefLibraryMissing extends FindRefState {
+  const FindRefLibraryMissing();
+}
+
 class FindRefError extends FindRefState {
   final String message;
   const FindRefError(this.message);

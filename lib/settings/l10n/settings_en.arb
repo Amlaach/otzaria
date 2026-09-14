@@ -959,6 +959,8 @@
   "פתיחת קישור": "Open link",
   "פתח חיפוש טקסט": "Open text search",
   "הספרייה עדיין נטענת": "The library is still loading",
+  "לא נמצאה ספרייה": "No library found",
+  "האיתור יהיה זמין לאחר התקנת הספרייה": "Find Sources will be available once the library is installed",
   "האיתור יהיה זמין בעוד רגע": "Find will be available in a moment",
   "נסה שוב": "Try again",
   "האיתור נכשל": "Find failed",

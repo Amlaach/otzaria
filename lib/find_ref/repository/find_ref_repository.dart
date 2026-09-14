@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/data/constants/database_constants.dart';
@@ -24,6 +25,14 @@ class ReferenceLibraryNotReadyException implements Exception {
 
   @override
   String toString() => 'ReferenceLibraryNotReadyException';
+}
+
+/// נזרקת כשקובץ הספרייה (seforim.db) לא קיים — מצב קבוע, לא טעינה שתסתיים.
+class ReferenceLibraryMissingException implements Exception {
+  const ReferenceLibraryMissingException();
+
+  @override
+  String toString() => 'ReferenceLibraryMissingException';
 }
 
 /// רשומת ספר אישי מתומצתת (user_books.db) כפי שמשמשת את חיפוש הספרים האישיים.
@@ -80,6 +89,7 @@ class FindRefRepository {
 
   final Future<void> Function()? warmUpReferenceBooksCache;
   final bool Function()? isReferenceBooksCacheLoaded;
+  final Future<bool> Function()? libraryDatabaseExists;
   final List<ReferenceBookHit> Function(String query, {int limit})?
   searchReferenceBooks;
   final Future<List<Map<String, dynamic>>> Function(
@@ -248,6 +258,7 @@ class FindRefRepository {
     this.dataRepository,
     this.warmUpReferenceBooksCache,
     this.isReferenceBooksCacheLoaded,
+    this.libraryDatabaseExists,
     this.searchReferenceBooks,
     this.getTocEntriesForReference,
     this.getAltTocEntriesForReference,
@@ -644,6 +655,11 @@ class FindRefRepository {
     final SeforimRepository? repository =
         SqliteDataProvider.instance.repository;
     if (repository == null && getTocEntriesForReference == null) {
+      final dbExists = await _awaitCurrent(
+        libraryDatabaseExists?.call() ??
+            File(DatabaseConstants.getDatabasePath()).exists(),
+      );
+      if (!dbExists) throw const ReferenceLibraryMissingException();
       // רשימה ריקה כאן הוצגה כ"לא נמצא ספר", בעוד שה-DB פשוט עוד לא עלה —
       // המצב הרגיל בשניות הראשונות אחרי הפעלה או יציאה ממצב שינה.
       debugPrint('[FindRef] Database not initialized');

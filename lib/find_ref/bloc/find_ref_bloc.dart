@@ -89,6 +89,9 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
     } on ReferenceLibraryNotReadyException {
       if (emit.isDone || requestGeneration != _requestGeneration) return;
       emit(const FindRefNotReady());
+    } on ReferenceLibraryMissingException {
+      if (emit.isDone || requestGeneration != _requestGeneration) return;
+      emit(const FindRefLibraryMissing());
     } on FindRefQueryCancelled {
       // הקלדה חדשה זרקה את השאילתה מתור ה-worker. ה-handler של אותה הקלדה
       // יעדכן את המצב — אין להציג כאן שגיאה ואין לכתוב תוצאות חלקיות.
