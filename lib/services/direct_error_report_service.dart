@@ -382,10 +382,11 @@ class DirectErrorReportService {
         }
 
         if (attemptResult.isPermanentFailure) {
-          debugPrint(
-            'Direct report permanently failed and was removed from queue: ${report.id}',
-          );
+          // לא חוזר לתור (§2.4), אבל נשמר בהיסטוריה כנדחה — אחרת ההצעה אובדת בשקט.
           remainingReports.removeWhere((item) => item.id == report.id);
+          await _saveSentReport(
+            report.copyWith(rejectionReason: attemptResult.message),
+          );
           continue;
         }
 

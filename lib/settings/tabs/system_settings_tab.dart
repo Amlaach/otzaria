@@ -1375,7 +1375,11 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
     return Column(
       children: [
         ListTile(
-          leading: const Icon(FluentIcons.checkmark_24_regular),
+          leading: Icon(
+            report.rejectionReason == null
+                ? FluentIcons.checkmark_24_regular
+                : FluentIcons.error_circle_24_regular,
+          ),
           title: Text(
             report.bookTitle,
             style: kSettingsTitleStyle,

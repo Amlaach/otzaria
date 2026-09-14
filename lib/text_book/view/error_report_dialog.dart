@@ -110,6 +110,11 @@ class _DirectReportDetails extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (report.rejectionReason != null)
+                _ReportDetailRow(
+                  label: 'הדיווח לא נקלט',
+                  value: report.rejectionReason!,
+                ),
               _ReportDetailRow(label: 'ספר', value: report.bookTitle),
               _ReportDetailRow(label: 'מיקום', value: report.currentRef),
               _ReportDetailRow(

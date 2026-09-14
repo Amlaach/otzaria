@@ -307,6 +307,9 @@ class DirectErrorReport extends Equatable {
   /// בהיסטוריית הנשלחים: false = אתר ישן קלט את ההצעה כטקסט חופשי בלבד.
   final bool? serverAcceptedCorrection;
 
+  /// בהיסטוריה: סיבת כשל קבוע — הדיווח לא נקלט ונשמר כאן כדי שההצעה לא תאבד.
+  final String? rejectionReason;
+
   const DirectErrorReport({
     required this.id,
     required this.senderEmail,
@@ -328,6 +331,7 @@ class DirectErrorReport extends Equatable {
     this.client,
     this.correction,
     this.serverAcceptedCorrection,
+    this.rejectionReason,
   }) : assert(
          (correction == null) == (reportKind == DirectErrorReportKind.freeText),
          'correction must be set exactly for text_correction reports',
@@ -354,6 +358,7 @@ class DirectErrorReport extends Equatable {
     String? libraryVersion,
     DirectErrorReportQueueType? queueType,
     bool? serverAcceptedCorrection,
+    String? rejectionReason,
   }) {
     return _copy(
       id: id,
@@ -371,6 +376,7 @@ class DirectErrorReport extends Equatable {
       queueType: queueType ?? this.queueType,
       serverAcceptedCorrection:
           serverAcceptedCorrection ?? this.serverAcceptedCorrection,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
     );
   }
 
@@ -390,6 +396,7 @@ class DirectErrorReport extends Equatable {
     libraryVersion: libraryVersion,
     queueType: queueType,
     serverAcceptedCorrection: serverAcceptedCorrection,
+    rejectionReason: rejectionReason,
   );
 
   DirectErrorReport _copy({
@@ -407,6 +414,7 @@ class DirectErrorReport extends Equatable {
     required String libraryVersion,
     required DirectErrorReportQueueType queueType,
     required bool? serverAcceptedCorrection,
+    required String? rejectionReason,
   }) {
     return DirectErrorReport(
       id: id,
@@ -429,6 +437,7 @@ class DirectErrorReport extends Equatable {
       client: client,
       correction: correction,
       serverAcceptedCorrection: serverAcceptedCorrection,
+      rejectionReason: rejectionReason,
     );
   }
 
@@ -453,6 +462,7 @@ class DirectErrorReport extends Equatable {
     'client': client?.toJson(),
     'correction': correction?.toJson(),
     'serverAcceptedCorrection': serverAcceptedCorrection,
+    'rejectionReason': rejectionReason,
   };
 
   factory DirectErrorReport.fromJson(Map<String, dynamic> json) {
@@ -491,6 +501,7 @@ class DirectErrorReport extends Equatable {
           ? correction
           : null,
       serverAcceptedCorrection: json['serverAcceptedCorrection'] as bool?,
+      rejectionReason: json['rejectionReason'] as String?,
     );
   }
 
@@ -582,5 +593,6 @@ class DirectErrorReport extends Equatable {
     client,
     correction,
     serverAcceptedCorrection,
+    rejectionReason,
   ];
 }

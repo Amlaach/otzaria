@@ -269,7 +269,14 @@ void main() {
 
         expect(sentCount, 1);
         expect(attemptedReportIds, ['invalid-report', 'valid-report']);
-        expect((await sentRepository.load()).single.id, 'valid-report');
+        final history = await sentRepository.load();
+        expect(history.map((r) => r.id), ['valid-report', 'invalid-report']);
+        expect(history.first.rejectionReason, isNull);
+        expect(
+          history.last.rejectionReason,
+          ReportMessages.serverPermanentFailure(400),
+          reason: 'דיווח שנדחה לצמיתות לא נעלם בשקט — הוא נשמר בהיסטוריה',
+        );
         expect(
           remainingReports.map((report) => report.id).toList(),
           ['manual-report'],
@@ -637,6 +644,37 @@ void _textCorrectionServiceTests() {
       expect(result.status, DirectReportDeliveryStatus.failed);
       expect((await repository.load()).single.id, 'conflict');
     });
+  });
+
+  group('כשל קבוע בשליחה מהתור אינו מאבד את ההצעה', () {
+    for (final status in [400, 413, 422]) {
+      test('$status: לא חוזר לתור, נשמר בהיסטוריה כנדחה עם ההצעה', () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        final report = buildCorrectionReport(id: 'rejected-$status');
+        await repository.overwrite([report]);
+        final service = DirectErrorReportService(
+          client: MockClient((_) async => http.Response('{}', status)),
+          queueRepository: repository,
+          sentRepository: sentRepository,
+        );
+
+        await service.flushPendingReports();
+
+        expect(await repository.load(), isEmpty);
+        final recorded = (await sentRepository.load()).single;
+        expect(recorded.id, report.id);
+        expect(recorded.correction, report.correction);
+        expect(
+          recorded.rejectionReason,
+          ReportMessages.serverPermanentFailure(status),
+        );
+        final restored = DirectErrorReport.fromJson(
+          jsonDecode(jsonEncode(recorded.toJson())) as Map<String, dynamic>,
+        );
+        expect(restored, recorded);
+      });
+    }
   });
 
   group('[T6] שליחה חוזרת באותו מזהה', () {
