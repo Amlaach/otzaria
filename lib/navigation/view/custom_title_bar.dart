@@ -276,11 +276,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                 children: [
                   Container(
                     clipBehavior: Clip.none,
-                    padding: useSystemWindowButtons
-                        ? const EdgeInsets.only(
-                            left: kSystemWindowButtonsWidth,
-                          )
-                        : null,
+                    padding: systemWindowButtonsPadding,
                     decoration: BoxDecoration(
                       color: useReaderStyle
                           ? AppSurfaces.readerBackground(context)

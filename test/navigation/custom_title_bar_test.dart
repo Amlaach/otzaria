@@ -2311,18 +2311,19 @@ void main() {
 
       if (useSystemWindowButtons) {
         expect(find.byType(WindowCaption), findsNothing);
-        // ה-traffic lights יושבים בפינה השמאלית הפיזית בכל כיווניות, ולכן
-        // שום תוכן של הסרגל אינו רשאי להתחיל לפניהם.
+        // AppKit משקפת את כפתורי המערכת לפינה הימנית כשהממשק RTL, וה-
+        // Info.plist של המק מצהיר עברית בלבד — ולכן הפינה השמורה היא ימנית,
+        // ושום תוכן של הסרגל אינו רשאי לחרוג לתוכה.
         final contents = find.byType(IconButton);
         expect(contents, findsWidgets);
-        final leftmost = tester
-            .widgetList<IconButton>(contents)
-            .toList()
-            .asMap()
-            .keys
-            .map((i) => tester.getTopLeft(contents.at(i)).dx)
-            .reduce((a, b) => a < b ? a : b);
-        expect(leftmost, greaterThanOrEqualTo(kSystemWindowButtonsWidth));
+        final rightmost = List.generate(
+          tester.widgetList<IconButton>(contents).length,
+          (i) => tester.getBottomRight(contents.at(i)).dx,
+        ).reduce((a, b) => a > b ? a : b);
+        expect(
+          rightmost,
+          lessThanOrEqualTo(1200 - kSystemWindowButtonsWidth),
+        );
       } else {
         expect(find.byType(WindowCaption), findsOneWidget);
       }
