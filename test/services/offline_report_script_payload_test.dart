@@ -113,7 +113,13 @@ void main() {
               target: OfflineSendScriptTarget.unix,
             )
             .content
-            .replaceFirst(_endpoint, 'http://127.0.0.1:${server.port}/');
+            .replaceFirst(_endpoint, 'http://127.0.0.1:${server.port}/')
+            // הסקריפט למשתמש מסיים בחלון סיכום; בבדיקה חלון כזה חוסם את
+            // Process.run ב-macOS (osascript), ולכן מחליפים אותו בפלט למסוף.
+            .replaceFirst(
+              RegExp(r'if command -v zenity[\s\S]*?\nfi\n'),
+              r'cat "$tmp"' '\n',
+            );
         final file = File('${dir.path}/send.sh');
         await file.writeAsString(script);
 

@@ -274,6 +274,7 @@ void main() {
         ]);
 
         final attemptedReportIds = <String>[];
+        final sentCounter = SentReportsCounter.inMemory();
         final service = DirectErrorReportService(
           client: MockClient((request) async {
             final payload = jsonDecode(request.body) as Map<String, dynamic>;
@@ -288,6 +289,7 @@ void main() {
           }),
           queueRepository: repository,
           sentRepository: sentRepository,
+          sentCounter: sentCounter,
         );
 
         final sentCount = await service.flushPendingReports(
@@ -296,6 +298,11 @@ void main() {
         final remainingReports = await repository.load();
 
         expect(sentCount, 1);
+        expect(
+          await service.getSentReportsTotal(),
+          1,
+          reason: 'דיווח שנדחה נשמר בהיסטוריה אך אינו נספר כנשלח',
+        );
         expect(attemptedReportIds, ['invalid-report', 'valid-report']);
         final history = await sentRepository.load();
         expect(history.map((r) => r.id), ['valid-report', 'invalid-report']);

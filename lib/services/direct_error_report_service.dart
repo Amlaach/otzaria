@@ -193,7 +193,7 @@ class DirectErrorReportService {
   /// כל הדיווחים שנשלחו אי-פעם — לא רק אלה שנשארו בהיסטוריה.
   Future<int> getSentReportsTotal() async {
     final total = await _sentCounter.read();
-    final kept = (await _sentRepository.load()).length;
+    final kept = _sentReportsCount(await _sentRepository.load());
     return total > kept ? total : kept;
   }
 
@@ -428,6 +428,7 @@ class DirectErrorReportService {
           remainingReports.removeWhere((item) => item.id == report.id);
           await _saveSentReport(
             report.copyWith(rejectionReason: attemptResult.message),
+            countAsSent: false,
           );
           continue;
         }
@@ -478,9 +479,12 @@ class DirectErrorReportService {
     await _queueRepository.overwrite(pendingReports);
   }
 
-  Future<void> _saveSentReport(DirectErrorReport report) async {
+  Future<void> _saveSentReport(
+    DirectErrorReport report, {
+    bool countAsSent = true,
+  }) async {
     final sentReports = await _sentRepository.load();
-    final kept = sentReports.length;
+    final kept = _sentReportsCount(sentReports);
     final isNew = sentReports.every((item) => item.id != report.id);
     sentReports.removeWhere((item) => item.id == report.id);
     sentReports.insert(0, report);
@@ -488,8 +492,11 @@ class DirectErrorReportService {
       sentReports.removeRange(maxSentReportsToKeep, sentReports.length);
     }
     await _sentRepository.overwrite(sentReports);
-    if (isNew) await _sentCounter.increment(floor: kept);
+    if (countAsSent && isNew) await _sentCounter.increment(floor: kept);
   }
+
+  static int _sentReportsCount(List<DirectErrorReport> reports) =>
+      reports.where((report) => report.rejectionReason == null).length;
 
   /// הרשומה להיסטוריית הנשלחים: הצעת תיקון מסומנת אם השרת תמך בה.
   DirectErrorReport _sentRecord(
