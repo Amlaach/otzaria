@@ -1037,6 +1037,12 @@
   "אינדקס לא קיים, לא ניתן לבצע חיפוש זה ללא אינדקס": "No index exists; this search cannot run without an index",
   "חפש": "Search",
   "עדכן חיפוש": "Update search",
+  "אינדקס החיפוש לא קיים": "No search index",
+  "אינדקס החיפוש בבנייה": "Building the search index",
+  "כדי לחפש בתוכן הספרים יש לבנות תחילה את אינדקס החיפוש. הבנייה רצה ברקע, וניתן להמשיך לעיין בספרים בינתיים.": "To search the text of the books, build the search index first. It runs in the background, and you can keep reading in the meantime.",
+  "החיפוש יתאפשר כשבניית האינדקס תסתיים. ניתן להמשיך לעיין בספרים בינתיים.": "Search will be available once the index is built. You can keep reading in the meantime.",
+  "{processed} מתוך {total} ספרים": "{processed} of {total} books",
+  "בנה אינדקס": "Build index",
 
   "@@comment_tools_panel": "פאנל כלים ותוספים (issue #1101)",
   "כלים ותוספים": "Tools & Plugins",
