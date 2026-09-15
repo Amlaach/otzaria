@@ -113,6 +113,86 @@ String? buildLineRefKey(String heRef, Iterable<String> titleAliases) {
   return tokens.sublist(longestMatch.length).join(' ');
 }
 
+/// מסמן מפתח חלקי. טוקנים מנורמלים אינם מכילים אותו, ולכן מפתח חלקי לא
+/// יתנגש במפתח מלא, ומסד ישן פשוט לא יחזיר עבורו כלום.
+const String partialRefKeyMarker = '~';
+
+/// המפתח החלקי של הפניה מוקלדת, שעשויה להשמיט את החלקים בעלי השם של ה-heRef.
+String? buildPartialRefKey(String ref) {
+  final key = buildRefKey(ref);
+  return key == null ? null : '$partialRefKeyMarker $key';
+}
+
+/// מפתחות חלקיים של שורה שה-heRef שלה נפתח, אחרי הכותרת, בחלקים בעלי שם
+/// ("טור, חושן משפט, שט, ג") — אחד לכל השמטה מבחוץ פנימה ("~ שט ג").
+/// ריק אלא אם אחרי החלקים באים לפחות שני רכיבים מספריים.
+List<String> partialLineRefKeys(String heRef, Iterable<String> titleAliases) {
+  final suffix = _suffixAfterTitleAlias(heRef, titleAliases);
+  if (suffix == null) return const [];
+  final components = suffix
+      .split(',')
+      .map((c) => c.trim())
+      .where((c) => c.isNotEmpty)
+      .toList();
+  var named = components.indexWhere(_isNumeralComponent);
+  if (named < 0) named = components.length;
+  final numeric = components.sublist(named);
+  if (named == 0 || numeric.length < 2 || !numeric.every(_isNumeralComponent)) {
+    return const [];
+  }
+  final keys = <String>[];
+  for (var omitted = 1; omitted <= named; omitted++) {
+    final key = buildPartialRefKey(components.sublist(omitted).join(', '));
+    if (key != null && !keys.contains(key)) keys.add(key);
+  }
+  return keys;
+}
+
+const Map<String, int> _numeralValues = {
+  'א': 1,
+  'ב': 2,
+  'ג': 3,
+  'ד': 4,
+  'ה': 5,
+  'ו': 6,
+  'ז': 7,
+  'ח': 8,
+  'ט': 9,
+  'י': 10,
+  'כ': 20,
+  'ל': 30,
+  'מ': 40,
+  'נ': 50,
+  'ס': 60,
+  'ע': 70,
+  'פ': 80,
+  'צ': 90,
+  'ק': 100,
+  'ר': 200,
+  'ש': 300,
+  'ת': 400,
+};
+
+/// רכיב heRef שהוא מספר מיקום ("שט", "סימן ז", "ב.") ולא שם.
+bool _isNumeralComponent(String component) {
+  final tokens = refKeyTokens(component);
+  return tokens.isNotEmpty && tokens.every(_isNumeralToken);
+}
+
+/// ספרות, או אותיות בסדר ערך לא-עולה. שם שנקרא כמספר ("נח") רק מאבד את
+/// המפתח החלקי שלו.
+bool _isNumeralToken(String token) {
+  if (RegExp(r'^\d+$').hasMatch(token)) return true;
+  if (token.length > 6) return false;
+  int? previous;
+  for (final ch in token.split('')) {
+    final value = _numeralValues[ch];
+    if (value == null || (previous != null && value > previous)) return false;
+    previous = value;
+  }
+  return true;
+}
+
 /// החלק שאחרי כותרת מילולית ב-[heRef], לפי ה-alias הארוך ביותר שמתאים.
 ///
 /// רץ בכוונה **לפני** זיהוי הטווח: מקף חוקי בתוך שם ספר, וחיתוך הטווח לפניו

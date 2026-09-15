@@ -86,6 +86,16 @@ FindRefRepository buildFindRefRepository() {
         searchEpoch: request.epoch,
       );
     },
+    resolvePartialLineRefs: (bookIds, partialKey) async {
+      final request = await searchWorker();
+      repository.throwIfSearchGenerationCancelled(request.epoch);
+      return request.worker.resolvePartialLineRefs(
+        bookIds,
+        partialKey,
+        searchScope: scope,
+        searchEpoch: request.epoch,
+      );
+    },
     getBookEra: (bookTitle) async {
       final request = await searchWorker();
       repository.throwIfSearchGenerationCancelled(request.epoch);

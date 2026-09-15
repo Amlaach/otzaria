@@ -129,6 +129,82 @@ void main() {
     expect(resolved?.lineIndex, 11);
   });
 
+  // issue #1346 — "טור שט ג": הפניה שהושמט ממנה שם החלק.
+  group('מפתח חלקי', () {
+    Future<void> seedTur() async {
+      final raw = await db.database;
+      raw.execute(
+        "INSERT INTO book (id, categoryId, sourceId, title) "
+        "VALUES (3, 1, 1, 'טור')",
+      );
+      const lines = [
+        (5, 'טור, חושן משפט,  שט, ג'),
+        // אותה הפניה בשתי שורות רצופות — מוצעת פעם אחת, מהשורה הראשונה.
+        (6, 'טור, חושן משפט,  שט, ג'),
+        (9, 'טור, יורה דעה,  שט, ג'),
+        (12, 'טור, יורה דעה,  שי, א'),
+      ];
+      for (final (lineIndex, heRef) in lines) {
+        raw.execute(
+          'INSERT INTO line (id, bookId, lineIndex, content, heRef) '
+          'VALUES (?, 3, ?, ?, ?)',
+          [300 + lineIndex, lineIndex, 'טקסט', heRef],
+        );
+      }
+    }
+
+    test('מחזיר מועמד לכל חלק שבו ההפניה קיימת', () async {
+      await seedTur();
+      await repo.rebuildLineRefIndex(3);
+
+      final resolved = await repo.resolvePartialRefKeyInBooks([
+        3,
+      ], buildPartialRefKey('שט ג')!);
+
+      expect(resolved[3]!.map((c) => c.lineIndex), [5, 9]);
+    });
+
+    test('הפניה בחלק אחד בלבד מחזירה מועמד יחיד', () async {
+      await seedTur();
+      await repo.rebuildLineRefIndex(3);
+
+      final resolved = await repo.resolvePartialRefKeyInBooks([
+        3,
+      ], buildPartialRefKey('שי א')!);
+
+      expect(resolved[3]!.map((c) => c.lineIndex), [12]);
+    });
+
+    test('ספר בלי חלקים בעלי שם אינו מקבל מפתחות חלקיים', () async {
+      final resolved = await repo.resolvePartialRefKeyInBooks([
+        1,
+      ], buildPartialRefKey('לב יא')!);
+      expect(resolved, isEmpty);
+    });
+
+    test('backfill משלים מפתחות חלקיים לספר שנבנה בלעדיהם', () async {
+      await seedTur();
+      final raw = await db.database;
+      // אינדקס כמו לפני השינוי: מפתחות מלאים בלבד.
+      for (final (lineIndex, key) in [
+        (5, 'חושן משפט שט ג'),
+        (9, 'יורה דעה שט ג'),
+      ]) {
+        raw.execute(
+          'INSERT INTO line_ref (bookId, refKeyHash, lineIndex) VALUES (3, ?, ?)',
+          [refKeyHash(key), lineIndex],
+        );
+      }
+
+      await repo.backfillMissingLineRefIndexes();
+
+      final resolved = await repo.resolvePartialRefKeyInBooks([
+        3,
+      ], buildPartialRefKey('שט ג')!);
+      expect(resolved[3]!.map((c) => c.lineIndex), [5, 9]);
+    });
+  });
+
   group('מפרשים על שורת מקור מדויקת', () {
     test('שורת מקור מדויקת מחזירה רק את המפרש על אותו פסוק', () async {
       final rows = await repo.getCommentatorsForReference(

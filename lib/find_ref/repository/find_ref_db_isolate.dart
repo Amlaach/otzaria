@@ -272,6 +272,33 @@ class FindRefDbIsolate {
     };
   }
 
+  /// פותר מפתח חלקי ([buildPartialRefKey]) — כמה מועמדים לספר, אחד לכל חלק.
+  Future<Map<int, List<({int lineIndex, int lineId, String? heRef})>>>
+  resolvePartialLineRefs(
+    List<int> bookIds,
+    String partialKey, {
+    int searchScope = 0,
+    int? searchEpoch,
+  }) async {
+    final res = await _request(
+      'partialLineRefs',
+      {'bookIds': bookIds, 'refKey': partialKey},
+      cancellable: true,
+      searchScope: searchScope,
+      searchEpoch: searchEpoch,
+    );
+    final resolved =
+        <int, List<({int lineIndex, int lineId, String? heRef})>>{};
+    for (final row in _castRows(res)) {
+      (resolved[row['bookId'] as int] ??= []).add((
+        lineIndex: row['lineIndex'] as int,
+        lineId: row['lineId'] as int,
+        heRef: row['heRef'] as String?,
+      ));
+    }
+    return resolved;
+  }
+
   Future<List<Map<String, dynamic>>> getCommentatorRows({
     required int bookId,
     required String bookTitle,
@@ -760,6 +787,23 @@ void _workerMain(_Bootstrap bootstrap) {
               'lineId': entry.value.lineId,
               'heRef': entry.value.heRef,
             },
+        ];
+      case 'partialLineRefs':
+        final repo = await ensureRepo();
+        if (repo == null) return const <Map<String, dynamic>>[];
+        final resolved = await repo.resolvePartialRefKeyInBooks(
+          (args['bookIds'] as List).cast<int>(),
+          args['refKey'] as String,
+        );
+        return [
+          for (final candidates in resolved.values)
+            for (final candidate in candidates)
+              {
+                'bookId': candidate.bookId,
+                'lineIndex': candidate.lineIndex,
+                'lineId': candidate.lineId,
+                'heRef': candidate.heRef,
+              },
         ];
       case 'commentators':
         final repo = await ensureRepo();

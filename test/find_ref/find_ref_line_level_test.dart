@@ -15,14 +15,22 @@ void main() {
   const heRefsByBook = {
     12: {648: 'ישעיהו לב, יא', 650: 'ישעיהו לב, יג'},
     70: {5: 'ברכות ב., א'},
-    380: {6846: 'טור, חושן משפט,  שט, א', 6848: 'טור, חושן משפט,  שט, ג'},
+    380: {
+      6846: 'טור, חושן משפט,  שט, א',
+      6848: 'טור, חושן משפט,  שט, ג',
+      7000: 'טור, יורה דעה,  שי, ב',
+      7100: 'טור, אבן העזר,  שי, ב',
+    },
   };
 
   final titles = {12: 'ישעיהו', 70: 'ברכות', 380: 'טור'};
 
   late List<({List<int> bookIds, String refKey})> lookups;
 
-  FindRefRepository buildRepo({bool withIndex = true}) {
+  FindRefRepository buildRepo({
+    bool withIndex = true,
+    bool withPartialKeys = true,
+  }) {
     lookups = [];
     return FindRefRepository(
       dataRepository: MockDataRepository(),
@@ -61,6 +69,27 @@ void main() {
           'dbLineId': 1,
         },
       ],
+      resolvePartialLineRefs: !withIndex || !withPartialKeys
+          ? null
+          : (bookIds, partialKey) async => {
+              for (final bookId in bookIds)
+                if ((heRefsByBook[bookId] ?? {}).entries
+                        .where(
+                          (line) => partialLineRefKeys(line.value, [
+                            titles[bookId]!,
+                          ]).contains(partialKey),
+                        )
+                        .toList()
+                    case final lines when lines.isNotEmpty)
+                  bookId: [
+                    for (final line in lines)
+                      (
+                        lineIndex: line.key,
+                        lineId: 1000 + line.key,
+                        heRef: line.value,
+                      ),
+                  ],
+            },
       resolveLineRefs: !withIndex
           ? null
           : (bookIds, refKey) async {
@@ -154,5 +183,31 @@ void main() {
 
     expect(results.first.isSourceLine, isTrue);
     expect(results.first.segment, 6848);
+  });
+
+  test(
+    'בלי שם החלק ("טור שט ג") מגיע לשורה בחלק היחיד שבו היא קיימת',
+    () async {
+      final results = await buildRepo().findRefs('טור שט ג');
+
+      expect(results.first.isSourceLine, isTrue);
+      expect(results.first.segment, 6848);
+    },
+  );
+
+  test('הפניה שקיימת בכמה חלקים מוצעת בכל אחד מהם', () async {
+    final results = await buildRepo().findRefs('טור שי ב');
+
+    expect(
+      results.where((r) => r.isSourceLine).map((r) => r.segment),
+      unorderedEquals([7000, 7100]),
+    );
+  });
+
+  test('מסד בלי מפתחות חלקיים נשאר ברמת ה-TOC', () async {
+    final results = await buildRepo(
+      withPartialKeys: false,
+    ).findRefs('טור שט ג');
+    expect(results.every((r) => !r.isSourceLine), isTrue);
   });
 }

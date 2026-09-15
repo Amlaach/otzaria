@@ -36,6 +36,30 @@ void main() {
     }
   });
 
+  group('partialLineRefKeys', () {
+    for (final entry in fixtures['partialLineKeys'] as List) {
+      final heRef = entry['heRef'] as String;
+      test(heRef, () {
+        final aliases = (entry['aliases'] as List).cast<String>();
+        final expected = (entry['keys'] as List).cast<Map<String, dynamic>>();
+        final keys = partialLineRefKeys(heRef, aliases);
+        expect(keys, [for (final e in expected) e['key']]);
+        expect(keys.map(refKeyHash), [for (final e in expected) e['hash']]);
+      });
+    }
+  });
+
+  group('buildPartialRefKey', () {
+    for (final entry in fixtures['partialRefKeys'] as List) {
+      final input = entry['input'] as String;
+      test(input, () {
+        final key = buildPartialRefKey(input);
+        expect(key, entry['key']);
+        expect(refKeyHash(key!), entry['hash']);
+      });
+    }
+  });
+
   test('שאילתה וכותרת מגיעות לאותו מפתח', () {
     expect(
       buildRefKey('פרק לב פסוק יא'),

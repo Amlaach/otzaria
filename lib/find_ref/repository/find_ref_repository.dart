@@ -187,6 +187,13 @@ class FindRefRepository {
   )?
   resolveLineRefs;
 
+  /// Injection for testing: פותר מפתח חלקי ([buildPartialRefKey]) — הפניה
+  /// שהושמט ממנה שם החלק ("טור שט ג"). מחזיר מועמד לכל חלק שבו היא קיימת;
+  /// מסד שנבנה לפני המפתחות החלקיים מחזיר map ריק.
+  final Future<Map<int, List<({int lineIndex, int lineId, String? heRef})>>>
+  Function(List<int> bookIds, String partialKey)?
+  resolvePartialLineRefs;
+
   /// Injection for testing: מחזירה את הדור של מפרש לפי שם.
   /// In production calls [CommentaryService.getBookEra].
   final Future<CommentaryEra> Function(String bookTitle)? getBookEra;
@@ -273,6 +280,7 @@ class FindRefRepository {
     this.getUserBookTocEntries,
     this.fetchCommentatorRows,
     this.resolveLineRefs,
+    this.resolvePartialLineRefs,
     this.getBookEra,
     this.getCategoryPathSync,
     this.beginSearchEpoch,
@@ -1045,8 +1053,7 @@ class FindRefRepository {
         continue;
       }
 
-      final exact = exactLines[bookId];
-      if (exact != null) {
+      for (final exact in exactLines[bookId] ?? const <_ExactLine>[]) {
         results.add(
           DbReferenceResult(
             title: title,
@@ -1638,8 +1645,7 @@ class FindRefRepository {
   ///
   /// שאילתה מאוגדת אחת לכל מפתח קנוני — לא פנייה לכל ספר מועמד. ריק כשאין
   /// הזרקה (בדיקות) או כשהמסד נבנה לפני האינדקס, ואז נשאר מסלול ה-TOC.
-  Future<Map<int, ({int lineIndex, int lineId, String? heRef})>>
-  _resolveExactLines(
+  Future<Map<int, List<_ExactLine>>> _resolveExactLines(
     List<ReferenceBookHit> bookHits,
     Map<ReferenceBookHit, List<String>> remainingByHit, {
     int tokensAfterRange = 0,
@@ -1672,11 +1678,29 @@ class FindRefRepository {
       }
     }
 
-    final resolved = <int, ({int lineIndex, int lineId, String? heRef})>{};
+    final resolved = <int, List<_ExactLine>>{};
     // מפתח עם החלק נפתר אחרון כדי שיגבר על המפתח בלעדיו.
     for (final byKey in [bookIdsByKey, bookIdsBySectionKey]) {
       for (final entry in byKey.entries) {
-        resolved.addAll(await _awaitCurrent(resolve(entry.value, entry.key)));
+        final lines = await _awaitCurrent(resolve(entry.value, entry.key));
+        lines.forEach((bookId, line) => resolved[bookId] = [line]);
+      }
+    }
+
+    // שם החלק הושמט ("טור שט ג"): ההפניה עשויה להתקיים בכמה חלקים, וכל אחד
+    // מוצע. רק לספרים שהמפתח המלא לא פתר.
+    final resolvePartial = resolvePartialLineRefs;
+    if (resolvePartial != null) {
+      for (final entry in bookIdsByKey.entries) {
+        final unresolved = [
+          for (final id in entry.value)
+            if (!resolved.containsKey(id)) id,
+        ];
+        if (unresolved.isEmpty) continue;
+        final partialKey = buildPartialRefKey(entry.key)!;
+        resolved.addAll(
+          await _awaitCurrent(resolvePartial(unresolved, partialKey)),
+        );
       }
     }
     return resolved;
@@ -2141,3 +2165,5 @@ class _RankKey {
     required this.era,
   });
 }
+
+typedef _ExactLine = ({int lineIndex, int lineId, String? heRef});
