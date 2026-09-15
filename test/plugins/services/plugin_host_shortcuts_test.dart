@@ -117,24 +117,45 @@ void main() {
       expect(HardwareKeyboard.instance.physicalKeysPressed, isEmpty);
     });
 
-    testWidgets('מקש שכבר לחוץ אינו משוגר שוב', (tester) async {
-      await tester.pumpWidget(const SizedBox());
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyL);
-      addTearDown(() => tester.sendKeyUpEvent(LogicalKeyboardKey.keyL));
-      const shortcut = PluginHostShortcut(
-        id: 'key-shortcut-open-library-browser',
-        mainKey: 'l',
-        codes: ['KeyL'],
-        ctrl: true,
-        shift: false,
-        alt: false,
-        meta: false,
-      );
-      expect(PluginHostShortcuts.dispatch(shortcut), isFalse);
-      expect(
-        HardwareKeyboard.instance.physicalKeysPressed,
-        isNot(contains(PhysicalKeyboardKey.controlLeft)),
-      );
-    });
+    testWidgets(
+      'מקש שנשאר "לחוץ" (שוחרר בתוך ה-WebView) משתחרר והקיצור משוגר (issue #1349)',
+      (tester) async {
+        await tester.pumpWidget(
+          const Focus(autofocus: true, child: SizedBox()),
+        );
+        await tester.pump();
+        // Ctrl+Tab בספר: Tab נלחץ ב-Flutter, והשחרור שלו הלך לתוסף שקיבל פוקוס.
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.tab);
+        var tabDowns = 0;
+        KeyEventResult handler(KeyEvent event) {
+          if (event is KeyDownEvent &&
+              event.physicalKey == PhysicalKeyboardKey.tab &&
+              HardwareKeyboard.instance.isControlPressed) {
+            tabDowns++;
+          }
+          return KeyEventResult.ignored;
+        }
+
+        FocusManager.instance.addLateKeyEventHandler(handler);
+        addTearDown(
+          () => FocusManager.instance.removeLateKeyEventHandler(handler),
+        );
+
+        const shortcut = PluginHostShortcut(
+          id: 'fixed:ctrl+tab',
+          mainKey: 'tab',
+          codes: ['Tab'],
+          ctrl: true,
+          shift: false,
+          alt: false,
+          meta: false,
+        );
+        expect(PluginHostShortcuts.dispatch(shortcut), isTrue);
+        expect(PluginHostShortcuts.dispatch(shortcut), isTrue);
+
+        expect(tabDowns, 2);
+        expect(HardwareKeyboard.instance.physicalKeysPressed, isEmpty);
+      },
+    );
   });
 }
