@@ -143,6 +143,18 @@ void main() {
       expect(segments.first.run.text, 'Otzaria');
     });
 
+    test('keeps the digits of a number in reading order', () {
+      final block = layoutWith().layout('זְרִיחָה 06:32', maxWidth: 300);
+      final segments = block.lines.single.segments;
+      // The number sits left of the Hebrew word, its first digit leftmost.
+      final number = segments.first.run;
+      expect(number.text, '06:32');
+      expect(
+        [for (var i = 0; i < number.glyphCount; i++) number.cluster(i)],
+        [0, 1, 2, 3, 4],
+      );
+    });
+
     test('places an over-wide word on its own line', () {
       final block = layoutWith(fontSize: 40).layout(
         'תִּפְאֶרֶת שָׁלוֹם',

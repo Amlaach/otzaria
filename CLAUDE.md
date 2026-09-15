@@ -1020,6 +1020,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | פוקוס וניווט מקלדת | `test/tools/calendar/widgets/calendar_widget_focus_test.dart`, `…calendar_top_bar_focus_test.dart` |
 | החלקה בין חודשים | `test/tools/calendar/widgets/calendar_main_panel_swipe_test.dart` |
 | פריסה רספונסיבית | `test/tools/calendar/calendar_screen_responsive_test.dart` |
+| הדפסה (טקסט מעוצב וקטורי בשלוש התצוגות) | `test/tools/calendar/helpers/calendar_print_pdf_test.dart` |
 
 ### Writing Tests
 - **Bloc**: Use `bloc_test` package

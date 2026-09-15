@@ -1,0 +1,44 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:opentype_shaper/opentype_shaper.dart';
+import 'package:otzaria/tools/calendar/helpers/calendar_print_helpers.dart';
+import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
+import 'package:pdf/pdf.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+
+String? _findNativeLibrary() {
+  final name = Platform.isWindows
+      ? 'opentype_shaper.dll'
+      : Platform.isMacOS
+      ? 'libopentype_shaper.dylib'
+      : 'libopentype_shaper.so';
+  for (final profile in const ['release', 'debug']) {
+    final candidate = File('C:/opentype_shaper/rust/target/$profile/$name');
+    if (candidate.existsSync()) return candidate.absolute.path;
+  }
+  return null;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final libraryPath = _findNativeLibrary();
+
+  setUpAll(() {
+    ShaperLibrary.path = libraryPath;
+    tz.initializeTimeZones();
+  });
+
+  for (final view in CalendarView.values) {
+    test('לוח השנה בתצוגת ${view.name} מודפס בטקסט מעוצב וקטורי', () async {
+      final state = CalendarState.initial().copyWith(calendarView: view);
+      final bytes = await createCalendarPdf(state, PdfPageFormat.a4, count: 2);
+
+      final raw = latin1.decode(bytes);
+      expect(raw, contains('/Identity-H'));
+      expect(raw, isNot(contains(RegExp(r'/Subtype\s*/Image'))));
+      expect(RegExp(r'/Type\s*/Page(?![s\w])').allMatches(raw).length, 2);
+    });
+  }
+}

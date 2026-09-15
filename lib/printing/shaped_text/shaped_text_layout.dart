@@ -235,13 +235,15 @@ class ShapedTextLayout {
   ShapedWord _shapeWord(String paragraph, int start, int end) {
     final text = paragraph.substring(start, end);
     final wordRtl = _directionOf(text);
+    // The shaper does no bidi: a number shaped right-to-left prints reversed.
+    final shapeRtl = wordRtl && !_isNumber(text);
 
     ShapedRun? primary;
     for (var index = 0; index < fonts.length; index++) {
       final run = fonts[index].shape(
         text,
-        rtl: wordRtl,
-        script: wordRtl ? script : '',
+        rtl: shapeRtl,
+        script: shapeRtl ? script : '',
         language: language,
         features: features,
       );
@@ -293,6 +295,16 @@ class ShapedTextLayout {
       }
     }
     return rtl;
+  }
+
+  /// A word with a digit and no strong character, such as `2026` or `06:32`.
+  bool _isNumber(String text) {
+    var hasDigit = false;
+    for (final rune in text.runes) {
+      if (_isRtlCharacter(rune) || _isLtrCharacter(rune)) return false;
+      if (rune >= 0x30 && rune <= 0x39) hasDigit = true;
+    }
+    return hasDigit;
   }
 
   ShapedTextLine _placeLine(

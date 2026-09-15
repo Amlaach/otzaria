@@ -1942,10 +1942,10 @@ class _PrintingScreenState extends State<PrintingScreen> {
                                           PrintingPagesPerSheetDropdownRow(
                                             value: _pagesPerSheet,
                                             onChanged: (value) {
-                                              setState(() {
-                                                _pagesPerSheet = value;
-                                                _refreshPreview();
-                                              });
+                                              // הרשת נבנית מתמונות העמודים הקיימות — אין מה לרסטר מחדש.
+                                              setState(
+                                                () => _pagesPerSheet = value,
+                                              );
                                             },
                                           ),
                                         ],
@@ -2184,10 +2184,10 @@ class _PrintingScreenState extends State<PrintingScreen> {
                                             PrintingPagesPerSheetDropdownRow(
                                               value: _pagesPerSheet,
                                               onChanged: (value) {
-                                                setState(() {
-                                                  _pagesPerSheet = value;
-                                                  _refreshPreview();
-                                                });
+                                                // הרשת נבנית מתמונות העמודים הקיימות — אין מה לרסטר מחדש.
+                                                setState(
+                                                  () => _pagesPerSheet = value,
+                                                );
                                               },
                                             ),
                                         ],
