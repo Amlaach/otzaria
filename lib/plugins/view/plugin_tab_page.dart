@@ -136,20 +136,36 @@ const String _sdkStub = r'''
     }
     return null;
   };
+  var _nonTextInputTypes = ['button', 'checkbox', 'radio', 'submit', 'reset',
+    'range', 'color', 'file', 'image'];
+  window.__otzariaIsEditableTarget = function (e) {
+    var t = e.composedPath ? e.composedPath()[0] : e.target;
+    if (!t) return false;
+    if (t.isContentEditable) return true;
+    if (t.tagName === 'TEXTAREA') return true;
+    return t.tagName === 'INPUT' &&
+        _nonTextInputTypes.indexOf(String(t.type).toLowerCase()) === -1;
+  };
   window.addEventListener('keydown', function (e) {
     if (!window.flutter_inappwebview) return;
     if (e.key === 'Escape') {
       window.flutter_inappwebview.callHandler('otzaria_escape_pressed');
-      return;
-    }
-    if (e.repeat) return;
-    var match = window.__otzariaMatchHostShortcut(e, window.__otzariaHostShortcuts);
-    if (match) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      window.flutter_inappwebview.callHandler('otzaria_host_shortcut', match.id);
     }
   }, true);
+  // שלב bubble: קיצור שהתוסף טיפל בו (preventDefault) נשאר שלו. בשדה עריכה
+  // מועברים רק הקיצורים הקבועים, כדי לא לגנוב קיצורי עריכה (Ctrl+K, Ctrl+H).
+  window.addEventListener('keydown', function (e) {
+    if (!window.flutter_inappwebview || e.key === 'Escape') return;
+    if (e.repeat || e.defaultPrevented) return;
+    var match = window.__otzariaMatchHostShortcut(e, window.__otzariaHostShortcuts);
+    if (!match) return;
+    if (match.id.indexOf('fixed:') !== 0 && window.__otzariaIsEditableTarget(e)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.flutter_inappwebview.callHandler('otzaria_host_shortcut', match.id);
+  });
 })();
 ''';
 
