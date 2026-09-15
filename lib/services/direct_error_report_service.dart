@@ -352,10 +352,16 @@ class DirectErrorReportService {
   }
 
   bool _isSefariaReport(DirectErrorReport report) {
-    final normalizedSource = report.sourceFolder.trim().toLowerCase();
-    return normalizedSource.contains('sefariatootzaria') ||
-        normalizedSource.contains('sefaria');
+    return _sefariaSourceFolders.contains(
+      report.sourceFolder.trim().toLowerCase(),
+    );
   }
+
+  /// התאמה מדויקת, זהה לניתוב באתר (resolver.js) — לא הכלה.
+  static const Set<String> _sefariaSourceFolders = {
+    'sefaria',
+    'sefariatootzaria',
+  };
 
   String _resolveDirectReportTargetLabel(DirectErrorReport report) {
     return _isSefariaReport(report)

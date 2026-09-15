@@ -355,6 +355,30 @@ void main() {
     );
 
     test(
+      'sefaria label only for an exact source folder, like the website',
+      () async {
+        Future<String?> messageFor(String sourceFolder) async {
+          final service = DirectErrorReportService(
+            client: MockClient((request) async => http.Response('', 200)),
+            queueRepository: InMemoryDirectErrorReportRepository(),
+            sentRepository: InMemoryDirectErrorReportRepository(),
+          );
+          final result = await service.submitReport(
+            _buildReport(id: 'r-$sourceFolder', sourceFolder: sourceFolder),
+          );
+          return result.message;
+        }
+
+        for (final folder in ['Sefaria', ' SEFARIATOOTZARIA ']) {
+          expect(await messageFor(folder), ReportMessages.sentToSefaria);
+        }
+        for (final folder in ['sefaria-extra', 'mysefaria', 'sefariaBooks']) {
+          expect(await messageFor(folder), ReportMessages.sentToOtzaria);
+        }
+      },
+    );
+
+    test(
       '200 with duplicate:true is sent-as-duplicate with a dedicated message',
       () async {
         final repository = InMemoryDirectErrorReportRepository();
