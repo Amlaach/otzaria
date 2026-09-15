@@ -2,9 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
-/// סריאליזציה קנונית OCJ-1 (חוזה תיקוני הטקסט §4.3), זהה לצד האתר.
-///
-/// מפתחות ממוינים לפי יחידות UTF-16, בלי רווחים, מספרים שלמים בלבד.
+/// OCJ-1 (חוזה §4.3), זהה לאתר: מפתחות לפי UTF-16, בלי רווחים, שלמים בלבד.
 /// זורק [ArgumentError] על ערך שאינו נתמך (שבר, surrogate בודד, סוג אחר).
 String canonicalJsonEncode(Object? value) {
   final buffer = StringBuffer();
@@ -23,7 +21,7 @@ final RegExp _loneSurrogate = RegExp(
 /// surrogate בודד פוסל את הדיווח כולו ב-OCJ-1 (§4.3).
 bool hasLoneSurrogate(String value) => _loneSurrogate.hasMatch(value);
 
-/// מחליף surrogate בודד ב-U+FFFD, כמו קידוד ה-UTF-8 של גוף הבקשה. לשדות חופשיים בלבד.
+/// מחליף surrogate בודד ב-U+FFFD, כמו קידוד UTF-8 של הגוף. לשדות חופשיים בלבד.
 String replaceLoneSurrogates(String value) =>
     value.replaceAll(_loneSurrogate, '�');
 

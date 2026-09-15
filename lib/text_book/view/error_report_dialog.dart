@@ -1570,7 +1570,7 @@ class _RegularReportTabState extends State<RegularReportTab> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: Colors.grey.withValues(alpha: 0.3),
+                        color: Theme.of(context).colorScheme.outlineVariant,
                       ),
                       borderRadius: AppTokens.borderRadiusAll,
                     ),

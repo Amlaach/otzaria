@@ -24,10 +24,8 @@ enum DirectErrorReportKind {
       );
 }
 
-/// הצעת תיקון מובנית. כל שדות הטקסט מדויקים — לא עוברים trim או נרמול.
-///
-/// [originalSelection] null פירושו שההצעה חלה על השורה כולה.
-/// [proposedText] null = לא הוצע תיקון; מחרוזת ריקה = הצעת מחיקה.
+/// הצעת תיקון מובנית; שדות הטקסט מדויקים (בלי trim/נרמול). בחירה null = השורה
+/// כולה; [proposedText] null = ללא הצעה, "" = הצעת מחיקה.
 class TextCorrection extends Equatable {
   /// תקרת אורך (יחידות UTF-16) של השורה ושל ההצעה, לפי החוזה (§2.2).
   static const int maxTextLength = 20000;
@@ -279,10 +277,8 @@ class ReportClientInfo extends Equatable {
   List<Object?> get props => [appVersion, platform];
 }
 
-/// מודל אחיד לדיווח טעות שנשלח ישירות לצוות אוצריא.
-///
-/// [schemaVersion] 1 = דיווח שנוצר בגרסה ישנה (נשלח בדיוק כפי שנשלח אז);
-/// 2 = חוזה תיקוני הטקסט (docs/text-corrections/CONTRACT.md באתר).
+/// דיווח טעות שנשלח ישירות לצוות אוצריא. [schemaVersion] 1 = דיווח מגרסה ישנה
+/// (נשלח כפי שנשלח אז); 2 = חוזה תיקוני הטקסט (docs/text-corrections באתר).
 class DirectErrorReport extends Equatable {
   static const int currentSchemaVersion = 2;
 

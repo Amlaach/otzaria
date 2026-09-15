@@ -127,11 +127,8 @@ class DirectErrorReportService {
              toJson: (report) => report.toJson(),
            );
 
-  /// סוגר את ה-HTTP client הפנימי. ב-Windows admin install הקרנל נתקע
-  /// לכמה שניות בעת ניקוי socket handles ביציאה, אז יש לקרוא לפונקציה
-  /// הזו כשלב מקדים ל-onWindowClose עבור המופע הארוך-טווח (זה שמריץ
-  /// את `startAutomaticFlush` ב-main.dart). מופעים קצרי-טווח שנוצרים
-  /// בדיאלוגים ובמסכי הגדרות לא צריכים להיכלל כאן.
+  /// לקריאה לפני onWindowClose במופע הארוך-טווח (של `startAutomaticFlush`):
+  /// ב-Windows admin install ניקוי socket handles ביציאה תוקע לכמה שניות.
   Future<void> closeHttpClient() async {
     _client.close();
   }
@@ -272,9 +269,8 @@ class DirectErrorReportService {
     return result;
   }
 
-  /// בונה סקריפט שליחה של הדיווחים השמורים, מותאם למערכת ההפעלה של המחשב
-  /// המחובר שבו יופעל. הסקריפט קריא לבני אדם (ללא Base64), ומציג את התוצאה
-  /// בחלון מערכת כדי להימנע מג'יבריש עברית בקונסול.
+  /// סקריפט שליחה קריא (ללא Base64) של הדיווחים השמורים למחשב המחובר; התוצאה
+  /// מוצגת בחלון מערכת כדי להימנע מג'יבריש עברית בקונסול.
   OfflineSendScript buildOfflineSendScript(
     List<DirectErrorReport> reports, {
     required OfflineSendScriptTarget target,

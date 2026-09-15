@@ -10,9 +10,8 @@ import 'package:otzaria/utils/text/text_manipulation.dart';
 import 'package:otzaria/widgets/controls/segmented_control.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 
-/// מאתר את [selected] כתת-מחרוזת יחידה ומדויקת של [line].
-///
-/// מחזיר null כשאין מופע או שיש יותר מאחד — אסור לנחש איזה מופע סומן.
+/// מאתר את [selected] כתת-מחרוזת יחידה ומדויקת של [line]; null כשאין מופע
+/// או שיש יותר מאחד — אסור לנחש איזה מופע סומן.
 ({int start, int end})? locateSelectionInLine(String line, String selected) {
   if (selected.isEmpty) return null;
   final first = line.indexOf(selected);
