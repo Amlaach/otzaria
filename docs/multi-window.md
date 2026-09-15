@@ -432,7 +432,7 @@ Win32 ריק שכבר קיים.
 | | |
 |---|---|
 | **Job Object** | שייך ל**תהליך** ולא לחלון. גרסה שיצרה Job לכל חלון הרגה את התהליך בסגירת חלון משני (`KILL_ON_JOB_CLOSE` על כל החברים). נוצר פעם אחת ואינו נסגר לעולם |
-| **`printing`** | ב-pub.dev מצביע הערוץ הוא גלובלי לתהליך (`printing_plugin.cpp:35`), והמנוע השני דרס אותו. התיקון (ערוץ פר-מופע) ב-PR DavBfr/dart_pdf#1969; עד המיזוג נדרש `dependency_overrides` לפורק `Otzaria/dart_pdf`. הפלאגין נרשם בכל חלון |
+| **`printing`** | ב-pub.dev מצביע הערוץ הוא גלובלי לתהליך (`printing_plugin.cpp:35`), והמנוע השני דרס אותו. התיקון (ערוץ פר-מופע) ב-PR DavBfr/dart_pdf#1969; עד המיזוג `dependency_overrides` ב-`pubspec.yaml` מצביע לפורק `Otzaria/dart_pdf` (מסומן TODO). ב-Windows הפלאגין נרשם בכל חלון; בלינוקס עדיין מדולג בחלון משני |
 | **מחלקות WebView2** | `flutter_inappwebview` מבטל רישום של `CustomPlatformView` בדסטרקטור בלי מונה הפניות. מוחזק חלון message-only מכל מחלקה לכל אורך חיי התהליך, אחרת סגירת חלון אחד שוברת WebView בשני |
 | **רישום תוספים** | `RegisterPlugins` המלא בכל מנוע. כל המנועים נוצרים על ה-thread הראשי (`kMsgOpenSecondaryWindow`), ולכן אין צורך בסריאליזציה |
 | **PDFium** | ספרייה גלובלית לתהליך, ו-pdfrx מחזיק את מצבה במשתנים פר-isolate-group. שני חלונות דרסו זה לזה את קולבקי הגופנים, והקריאה הבאה נפלה ב-`Cannot invoke native callback from a different isolate` — קריסת VM. כל חלון משני מקבל **עותק פרטי של `pdfium.dll`** (`<dataRoot>/windows/slot-N/`), כך ש-Windows טוען מודול נפרד עם globals משלו |
