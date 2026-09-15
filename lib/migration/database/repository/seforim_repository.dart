@@ -2964,11 +2964,11 @@ extension BookAcronymRepository on SeforimRepository {
     // "סימן ה" תחת בית יוסף→אורח חיים).
     final altCache = await _buildAltTocCacheForBook(bookId, bookTitle);
     if (altCache.all.isNotEmpty) {
-      // בספר עם מבני כותרות חלופיים, טוקן בודד או ציטוט דף כבר מטופלים
-      // ב-AltToc. שאר הציטוטים יכולים לדלג על חלק ביניים, אך כולם חייבים
-      // להתאים לכותרת היעד עצמה כדי שלא יוחזרו תתי-כותרות של קטע אחר.
-      if (queryTokens.length == 1 ||
-          _isDafCitationForAltTocFallback(queryTokens)) {
+      // ציטוט דף, או טוקן בודד שה-AltToc כבר מוצא ("זהר לו"), מטופלים שם.
+      // אחרת ("בית יוסף תקיב") מותר לדלג על חלק ביניים, בהתאמה לכותרת היעד עצמה.
+      if (_isDafCitationForAltTocFallback(queryTokens) ||
+          (queryTokens.length == 1 &&
+              _searchAltTocFlat(altCache, queryTokens).isNotEmpty)) {
         return const [];
       }
       return _searchTocFlat(
