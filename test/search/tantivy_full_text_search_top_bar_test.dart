@@ -246,6 +246,18 @@ void main() {
     );
   });
 
+  testWidgets('הטאב ממקד את התוכן שלו כששדה החיפוש אינו מוצג (issue #1349)', (
+    tester,
+  ) async {
+    // אחרי תוסף הפוקוס "חונה" בשורש — כך מדמים את המצב שב-WebView.
+    FocusManager.instance.rootScope.requestScopeFocus();
+    await pumpSearch(tester, width: 1200);
+    await tester.pump();
+
+    final primary = FocusManager.instance.primaryFocus;
+    expect(primary?.debugLabel, 'search_tab_content');
+  });
+
   testWidgets('סרגל ברוחב 411 שומר רוחב מזערי למילות החיפוש', (tester) async {
     await pumpSearch(
       tester,
