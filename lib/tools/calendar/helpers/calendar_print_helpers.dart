@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:collection/collection.dart' show mergeSort;
 import 'package:flutter/services.dart';
 import 'package:kosher_dart/kosher_dart.dart';
 import 'package:pdf/pdf.dart';
@@ -204,73 +206,92 @@ Future<void> _addDayPages(
     final jewishDate = JewishDate.fromDateTime(date);
     final events = _eventsForDate(date, dayState);
 
+    // MultiPage: רשימת זמנים ארוכה ממשיכה לעמוד הבא; ב-Page היא חרגה והעמוד יצא ריק.
     pdf.addPage(
-      _rtlPage(
-        format,
-        (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 16),
-              child: font(
-                _getDayText(date, jewishDate),
-                20,
-                align: ShapedTextAlign.center,
-              ),
+      pw.MultiPage(
+        pageFormat: format,
+        textDirection: pw.TextDirection.rtl,
+        build: (context) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.only(bottom: 16),
+            child: font(
+              _getDayText(date, jewishDate),
+              20,
+              align: ShapedTextAlign.center,
             ),
-            pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 16),
-              child: font(
-                'עיר: ${dayState.selectedCity}',
-                12,
-                align: ShapedTextAlign.center,
-              ),
+          ),
+          pw.Container(
+            padding: const pw.EdgeInsets.only(bottom: 16),
+            child: font(
+              'עיר: ${dayState.selectedCity}',
+              12,
+              align: ShapedTextAlign.center,
             ),
-            pw.Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final entry in dayState.dailyTimes.entries)
-                  pw.Container(
-                    width: 150,
-                    padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                        color: PdfColors.grey300,
-                        width: 0.5,
-                      ),
-                      borderRadius: pw.BorderRadius.circular(6),
-                    ),
-                    child: pw.Row(
-                      children: [
-                        pw.SizedBox(width: 36, child: font(entry.value, 10)),
-                        pw.SizedBox(width: 8),
-                        pw.Expanded(child: font(entry.key, 9)),
-                      ],
-                    ),
+          ),
+          pw.Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final (name, time) in calendarPrintedZmanim(dayState))
+                pw.Container(
+                  width: 150,
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
                   ),
-              ],
-            ),
-            pw.SizedBox(height: 20),
-            font('אירועים', 14),
-            pw.SizedBox(height: 8),
-            if (events.isEmpty)
-              font('אין אירועים ליום זה', 11, color: PdfColors.grey700)
-            else
-              ...events.map(
-                (event) => pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 6),
-                  child: font('• ${event.title}', 11),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Column(
+                    children: [font(name, 9), font(time, 10)],
+                  ),
                 ),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+          font('אירועים', 14),
+          pw.SizedBox(height: 8),
+          if (events.isEmpty)
+            font('אין אירועים ליום זה', 11, color: PdfColors.grey700)
+          else
+            ...events.map(
+              (event) => pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 6),
+                child: font('• ${event.title}', 11),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
+}
+
+/// הזמנים שהמסך מציג ליום — שהמשתמש הפעיל ושרלוונטיים לו — בשמם העברי.
+@visibleForTesting
+List<(String, String)> calendarPrintedZmanim(CalendarState state) {
+  final jewishCalendar = JewishCalendar.fromDateTime(
+    state.selectedGregorianDate,
+  )..inIsrael = state.inIsrael;
+  final zmanim = [
+    for (final def in kZmanimRegistry)
+      if (state.enabledZmanim.contains(def.id) &&
+          (def.isRelevant?.call(jewishCalendar) ?? true))
+        if (state.dailyTimes[def.id] case final time? when time.isNotEmpty)
+          (id: def.id, name: def.fullName, time: time),
+  ];
+  // כמו במסך: שעות לפי הסדר הכרונולוגי, זמני תאריך אחריהן, וחצות לילה בסוף.
+  int rank(({String id, String name, String time}) z) =>
+      z.id == 'chatzosLayla' ? 2 : (isClockTime(z.time) ? 0 : 1);
+  mergeSort(
+    zmanim,
+    compare: (a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      if (byRank != 0 || rank(a) != 0) return byRank;
+      return a.time.compareTo(b.time);
+    },
+  );
+  return [for (final z in zmanim) (z.name, z.time)];
 }
 
 CalendarState _getStateForDayOffset(CalendarState state, int offset) {

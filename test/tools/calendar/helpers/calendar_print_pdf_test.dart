@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opentype_shaper/opentype_shaper.dart';
 import 'package:otzaria/tools/calendar/helpers/calendar_print_helpers.dart';
+import 'package:otzaria/tools/calendar/helpers/zmanim_helpers.dart';
 import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
 import 'package:pdf/pdf.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -41,4 +43,49 @@ void main() {
       expect(RegExp(r'/Type\s*/Page(?![s\w])').allMatches(raw).length, 2);
     });
   }
+
+  CalendarState dayState({Set<String>? enabled}) {
+    final date = DateTime(2026, 9, 16);
+    final base = CalendarState.initial();
+    return base.copyWith(
+      calendarView: CalendarView.day,
+      selectedGregorianDate: date,
+      dailyTimes: calculateDailyTimes(date, base.selectedCity),
+      enabledZmanim: enabled,
+    );
+  }
+
+  int pageCount(Uint8List bytes) => RegExp(
+    r'/Type\s*/Page(?![s\w])',
+  ).allMatches(latin1.decode(bytes)).length;
+
+  test('בתצוגת יום מודפסים רק הזמנים שהופעלו, בשמם העברי', () {
+    final state = dayState(enabled: {'chatzosLayla', 'sunset', 'sunrise'});
+    final zmanim = calendarPrintedZmanim(state);
+    // כמו במסך: לפי השעה, וחצות לילה בסוף.
+    final names = {
+      for (final def in kZmanimRegistry) def.id: def.fullName,
+    };
+    expect(
+      [for (final (name, _) in zmanim) name],
+      [
+        names['sunrise'],
+        names['sunset'],
+        names['chatzosLayla'],
+      ],
+    );
+    for (final (name, time) in zmanim) {
+      expect(name, contains(RegExp('[א-ת]')));
+      expect(time, contains(RegExp('[0-9]')));
+    }
+  });
+
+  test('רשימת זמנים ארוכה בתצוגת יום ממשיכה לעמוד הבא', () async {
+    final all = {for (final def in kZmanimRegistry) def.id};
+    final state = dayState(enabled: all);
+    expect(calendarPrintedZmanim(state).length, greaterThan(40));
+
+    final bytes = await createCalendarPdf(state, PdfPageFormat.a4);
+    expect(pageCount(bytes), greaterThan(1));
+  });
 }
