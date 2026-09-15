@@ -238,6 +238,24 @@ void main() {
     test('שניהם מוגדרים → יש טווח', () {
       expect(hasPdfPageRange(startPage: 30, endPage: 50), isTrue);
     });
+
+    test('טווח עד העמוד האחרון במסמך → אין טווח (issue #1369)', () {
+      expect(
+        hasPdfPageRange(startPage: 1, endPage: 125, totalPages: 125),
+        isFalse,
+      );
+    });
+
+    test('טווח שנגמר לפני העמוד האחרון → יש טווח', () {
+      expect(
+        hasPdfPageRange(startPage: 1, endPage: 124, totalPages: 125),
+        isTrue,
+      );
+      expect(
+        hasPdfPageRange(startPage: 2, endPage: 125, totalPages: 125),
+        isTrue,
+      );
+    });
   });
 
   group('pdfPageRangeSummary', () {

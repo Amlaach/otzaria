@@ -659,6 +659,7 @@ class _PrintingScreenState extends State<PrintingScreen> {
     final hasPageRange = hasPdfPageRange(
       startPage: startPage,
       endPage: endPage,
+      totalPages: _totalPdfPages,
     );
 
     if (_pagesPerSheet <= 1 && !hasPageRange) {
@@ -1912,6 +1913,7 @@ class _PrintingScreenState extends State<PrintingScreen> {
                                                         'A4': PdfPageFormat.a4,
                                                         'Letter': PdfPageFormat
                                                             .letter,
+                                                        'A5': PdfPageFormat.a5,
                                                       }.entries.map((entry) {
                                                         return AppMenuEntry(
                                                           value: entry.value,
