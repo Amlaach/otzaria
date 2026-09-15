@@ -242,6 +242,7 @@ class ErrorReportHelper {
     required TextBook book,
     required int lineIndex,
     required List<String> content,
+    String? reportLine,
   }) async {
     if (book.isUserBook || book.versionTitle != null) return null;
     try {
@@ -268,7 +269,13 @@ class ErrorReportHelper {
         heRef: line.heRef,
         originalLine: line.content,
       );
-      return isSourceConsistentWithContent(snapshot, content) ? snapshot : null;
+      return isSourceConsistentWithContent(
+            snapshot,
+            content,
+            reportLine: reportLine,
+          )
+          ? snapshot
+          : null;
     } catch (e) {
       debugPrint('Resolving report source failed: $e');
       return null;
@@ -276,10 +283,13 @@ class ErrorReportHelper {
   }
 
   /// השורה מה-DB חייבת להיות זהה לשורה שהוצגה, אחרת המשתמש סימן במקום אחר.
+  /// [reportLine] — השורה שהוצגה כש-[content] אינו מסודר לפי אינדקס השורה (מפרש).
   static bool isSourceConsistentWithContent(
     ReportSourceSnapshot snapshot,
-    List<String> content,
-  ) {
+    List<String> content, {
+    String? reportLine,
+  }) {
+    if (reportLine != null) return reportLine == snapshot.originalLine;
     final index = snapshot.lineIndex;
     return index >= 0 &&
         index < content.length &&
@@ -941,6 +951,8 @@ $detailsSection
   /// - [savedSelectedIndex]: Optional saved selected index (can be int or ValueNotifier of int)
   /// - [reportContent]: Optional content override for reports that target a secondary text
   /// - [reportBook]: Optional book override for reports that target a secondary text
+  /// - [reportLine]: השורה הגולמית ב-[savedSelectedIndex] כש-[reportContent] אינו
+  ///   הספר כולו (מפרש); בלעדיה אין מסלול הצעת תיקון.
   static Future<void> showErrorReportDialog({
     required BuildContext context,
     required String selectedText,
@@ -950,6 +962,7 @@ $detailsSection
     int? savedSelectedIndex,
     List<String>? reportContent,
     TextBook? reportBook,
+    String? reportLine,
   }) async {
     final effectiveContent = resolveReportContent(
       state: state,
@@ -994,6 +1007,7 @@ $detailsSection
       book: effectiveBook,
       lineIndex: currentLineNumber,
       content: effectiveContent,
+      reportLine: reportLine,
     );
     final correctionTemplate = source == null
         ? null

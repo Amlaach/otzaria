@@ -313,10 +313,12 @@ class ContextMenuUtils {
 
   /// ממפה מפרש ([link] + תוכנו [rawContent]) לפרמטרי דיווח הטעות: הדיווח מופנה
   /// לספר המפרש עצמו (path2/index2), וללא בחירת טקסט מדווחים על כל פסקת המפרש.
+  /// `reportLine` null בקישור-טווח: התוכן הוא כמה שורות מחוברות, לא שורה אחת ב-DB.
   static ({
     TextBook book,
     List<String> content,
     int lineIndex,
+    String? reportLine,
     String bookTitle,
     String selectedText,
   })
@@ -331,6 +333,9 @@ class ContextMenuUtils {
       book: _targetBookFromLink(link),
       content: [rawContent],
       lineIndex: link.index2 - 1,
+      reportLine: (link.index2End ?? link.index2) == link.index2
+          ? rawContent
+          : null,
       bookTitle: utils.getTitleFromPath(link.path2),
       selectedText: hasSelection
           ? savedSelectedText
@@ -370,6 +375,7 @@ class ContextMenuUtils {
       savedSelectedIndex: args.lineIndex,
       reportContent: args.content,
       reportBook: args.book,
+      reportLine: args.reportLine,
     );
   }
 
