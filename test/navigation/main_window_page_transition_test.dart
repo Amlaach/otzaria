@@ -9,6 +9,33 @@ import 'package:otzaria/navigation/view/main_window_screen.dart';
 /// כלומר שמסך stateful שזז בעץ במהלך ה-swap *לא* נבנה מחדש (כשיש לו GlobalKey),
 /// וכן מתעדת שבלי GlobalKey הוא כן נבנה מחדש. שתי הקבוצות פועלות על הקוד האמיתי.
 void main() {
+  group('shouldResyncMainPage', () {
+    test('PageView שהתאפס לספרייה בעוד המצב "עיון" — מסונכרן מחדש', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: 0),
+        isTrue,
+      );
+    });
+
+    test('מוצג ומסומן על היעד — אין מה לעשות', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: 1),
+        isFalse,
+      );
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: null),
+        isFalse,
+      );
+    });
+
+    test('המצב הלוגי פיגר אחרי ה-controller — מסונכרן', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 0, shownPage: 1),
+        isTrue,
+      );
+    });
+  });
+
   group('MainWindowScreenState.buildTransitionPages', () {
     const library = Text('library');
     const reading = Text('reading');

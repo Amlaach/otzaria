@@ -265,6 +265,18 @@ PageTransitionKind resolvePageTransition({
       : PageTransitionKind.crossSlide;
 }
 
+/// האם העמוד הראשי אינו על היעד. [shownPage] הוא מה שה-PageView מציג בפועל:
+/// PageView שנבנה מחדש חוזר ל-initialPage בעוד [cachedPage] נשאר, והפער
+/// הזה הציג ספרייה בתוך טאב קריאה בלי להתרפא לעולם.
+@visibleForTesting
+bool shouldResyncMainPage({
+  required int targetPage,
+  required int cachedPage,
+  required double? shownPage,
+}) =>
+    cachedPage != targetPage ||
+    (shownPage?.round() ?? targetPage) != targetPage;
+
 final GlobalKey<State<LibraryBrowser>> libraryBrowserKey =
     GlobalKey<State<LibraryBrowser>>();
 final GlobalKey<MainWindowScreenState> mainWindowScreenKey =
@@ -1666,8 +1678,14 @@ class MainWindowScreenState extends State<MainWindowScreen>
     if (_isCrossSliding) return;
     final currentScreen = context.read<NavigationBloc>().state.currentScreen;
     final targetPage = _pageIndexForScreen(currentScreen);
-    if (targetPage == null) return;
-    if (_currentPageIndex == targetPage) return;
+    if (targetPage == null ||
+        !shouldResyncMainPage(
+          targetPage: targetPage,
+          cachedPage: _currentPageIndex,
+          shownPage: pageController.page,
+        )) {
+      return;
+    }
 
     setState(() {
       _currentPageIndex = targetPage;
@@ -2935,6 +2953,12 @@ class MainWindowScreenState extends State<MainWindowScreen>
               // הטאב הפעיל אוכלס (אסינכרונית בעלייה) — כעת אפשר לתזמן את חשיפת
               // החלון המלא תוך מתן עדיפות לספר הפעיל. no-op אם כבר תוזמן/נחשף.
               _scheduleSplashReveal();
+              // טאב שנפתח/נבחר כשהמסך כבר "עיון" אינו משנה את הניווט, ולכן
+              // רק כאן מתגלה עמוד ראשי שהתאפס למקום אחר.
+              final screen = context.read<NavigationBloc>().state.currentScreen;
+              if (screen == Screen.reading || screen == Screen.search) {
+                unawaited(_syncPageWithState());
+              }
               if (currentTab != null) {
                 int tabIndex = 0;
                 if (currentTab is TextBookTab) tabIndex = currentTab.index;
