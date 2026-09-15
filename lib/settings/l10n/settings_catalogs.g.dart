@@ -387,6 +387,7 @@ const Map<String, Map<String, String>> kSettingsCatalogs = {
     'הפעל סיור מודרך להדרכה והכרת כל מסכי אוצריא': 'Take a guided tour and discover Otzaria’s features.',
     'הפעלת מצב סייפר': 'Turn on Safer Mode',
     'הצג': 'Show',
+    'הצג את כל ההיסטוריה': 'Show full history',
     'הצג בממשק': 'Show in Menu',
     'הצג בספרייה': 'Show In the Library',
     'הצג הכל': 'Show All',
