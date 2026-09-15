@@ -182,6 +182,25 @@ void main() {
       expect(result, hasLength(1));
       expect(result.single.path2, 'הערות על חברותא על זבחים');
     });
+
+    test('קישור FOOTNOTES נתפס גם כשכותרת הספר אינה מתחילה ב"הערות"', () {
+      final links = [
+        _link('ציוני מהר"ן', type: 'FOOTNOTES'),
+        _link('רש"י'),
+      ];
+
+      final result = numberedNoteLinks(links);
+
+      expect(result, hasLength(1));
+      expect(result.single.path2, 'ציוני מהר"ן');
+    });
+
+    test('סוג שאינו תלוי-טקסט נפסל גם כשהכותרת "הערות"', () {
+      expect(
+        numberedNoteLinks([_link('הערות על X', type: 'REFERENCE')]),
+        isEmpty,
+      );
+    });
   });
 
   group('numberedNoteLinkFromUrl', () {

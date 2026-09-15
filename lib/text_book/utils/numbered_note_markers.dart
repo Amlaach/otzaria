@@ -18,7 +18,11 @@ final RegExp _anchorOpenRegExp = RegExp(
 );
 final RegExp _anchorCloseRegExp = RegExp(r'^</a\s*>$', caseSensitive: false);
 
-/// קישורי ההערות הממוספרות של השורה: מפרשים שכותרתם "הערות...".
+/// קישורי ההערות הממוספרות של השורה.
+///
+/// הזיהוי הוא לפי סוג הקישור [LinkTypes.footnotes] — נתון שנכתב ב-DB. כותרת
+/// שמתחילה ב"הערות" נשארת כקבלה תאימות־לאחור בלבד, לקישורים ישנים שנשמרו
+/// כ-COMMENTARY: היא ניחוש, והיא מפספסת כל ספר הערות ששמו אינו בתבנית הזאת.
 ///
 /// זהו הסינון היחיד שאפשר לעשות באופן סינכרוני בזמן רינדור — התאמת הסמן
 /// להערה עצמה נעשית לפי תוכן ההערה, בזמן הריחוף ([numberedNoteLinkFromUrl]).
@@ -28,7 +32,8 @@ List<Link> numberedNoteLinks(List<Link> linksForLine) => linksForLine
           LinkTypes.isDependentTextLink(link.connectionType) &&
           link.path2.isNotEmpty &&
           link.index2 > 0 &&
-          utils.getTitleFromPath(link.path2).startsWith('הערות'),
+          (LinkTypes.normalize(link.connectionType) == LinkTypes.footnotes ||
+              utils.getTitleFromPath(link.path2).startsWith('הערות')),
     )
     .toList();
 

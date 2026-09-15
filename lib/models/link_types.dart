@@ -44,6 +44,7 @@ class LinkTypes {
     diburHamatchil,
     elucidation,
     explication,
+    footnotes,
   };
 
   /// סוגי הפניה צדדית — קישורים שאינם טקסט תלוי, ולכן שני צדדיהם שקולים:
@@ -53,10 +54,11 @@ class LinkTypes {
   ///
   /// מכסה בדיוק את ערכי ה-ConnectionType שהגנרטור יכול לכתוב: תלויי-טקסט
   /// ב-[dependentTextTypes], הפניות כאן, ו-[source] (וירטואלי, לא נשמר)
-  /// ו-[linker] חד-כיווניים. ערכים שאינם ConnectionType ([altToc],
-  /// [footnotes]) וכאלה ש-fromKnownStringOrNull ממפה לסוג אחר לפני האחסון
+  /// ו-[linker] חד-כיווניים. ערכים שאינם ConnectionType ([altToc]) וכאלה
+  /// ש-fromKnownStringOrNull ממפה לסוג אחר לפני האחסון
   /// ([quotationAuto], [relatedPassage], [none]) אינם כאן — הם לא יכולים
-  /// להופיע בעמודה ולכן היו רק פרמטרים מתים בשאילתה.
+  /// להופיע בעמודה ולכן היו רק פרמטרים מתים בשאילתה. [footnotes] עבר
+  /// ל-[dependentTextTypes] משנעשה ConnectionType אמיתי.
   ///
   /// [linker] מוחרג משום שהוא תוצר הלינקר שלנו ולא של ספריא: הוא לעולם אינו
   /// עובר דרך ה-mask המיוצא, ולכן לא ניתן לדעת אם צדו הוסתר. הנימוק אינו

@@ -32,7 +32,7 @@ JOIN book b ON l.targetBookId = b.id
 LEFT JOIN book_author ba ON b.id = ba.bookId
 LEFT JOIN author a ON ba.authorId = a.id
 WHERE l.sourceBookId = ?
-AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION')
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION', 'FOOTNOTES')
 /*LINK_VISIBILITY_FILTER*/
 GROUP BY l.targetBookId, b.title, a.name
 ORDER BY b.orderIndex, b.title;
@@ -57,7 +57,7 @@ JOIN line tl ON l.targetLineId = tl.id
 LEFT JOIN book_author ba ON b.id = ba.bookId
 LEFT JOIN author a ON ba.authorId = a.id
 WHERE l.sourceBookId = ?
-AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION')
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION', 'FOOTNOTES')
 AND sl.lineIndex >= ?
 AND sl.lineIndex < ?
 /*LINK_VISIBILITY_FILTER*/
@@ -87,7 +87,7 @@ JOIN book b ON l.targetBookId = b.id
 JOIN line sl ON l.sourceLineId = sl.id
 JOIN line tl ON l.targetLineId = tl.id
 WHERE l.sourceBookId = ?
-AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL')
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'FOOTNOTES')
 AND sl.lineIndex >= ?
 AND sl.lineIndex < ?
 AND l.targetBookId != ?
