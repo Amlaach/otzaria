@@ -447,8 +447,10 @@ class _ReadingScreenState extends State<ReadingScreen>
                               for (var i = 0; i < state.tabs.length; i++)
                                 // מפתח על הילד הישיר שומר State כשהטאבים מחליפים מיקום.
                                 // TickerMode מכבה את האנימציות של טאבי רקע.
-                                KeyedSubtree(
+                                // ExcludeFocus: מעבר Tab שנחת בטאב רקע גלל אליו.
+                                ExcludeFocus(
                                   key: ObjectKey(state.tabs[i]),
+                                  excluding: i != validIndex,
                                   child: TickerMode(
                                     enabled: i == validIndex,
                                     // המפתח מאפשר לצלם את הכרטיסיה הנגררת,

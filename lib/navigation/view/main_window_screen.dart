@@ -1745,6 +1745,21 @@ class MainWindowScreenState extends State<MainWindowScreen>
   /// כל העמודים נשארים בעץ, וה-State של עמוד שמחליף מקום נשמר דרך reparenting.
   ///
   /// במנוחה ([targetIndex] או [slotIndex] הם null) — מוחזר הסדר הקנוני כמות שהוא.
+  /// עמוד חי מחוץ למסך אסור שיקבל פוקוס: מעבר Tab שנחת בו גלל אליו את
+  /// ה-PageView, והספרייה/ההגדרות הוצגו בתוך מסך העיון.
+  @visibleForTesting
+  static List<Widget> excludeOffscreenPagesFromFocus(
+    List<Widget> pages,
+    int currentIndex,
+  ) => [
+    for (var i = 0; i < pages.length; i++)
+      ExcludeFocus(
+        key: pages[i].key,
+        excluding: i != currentIndex,
+        child: pages[i],
+      ),
+  ];
+
   @visibleForTesting
   static List<Widget> buildTransitionPages(
     List<Widget> canonical, {
@@ -1763,11 +1778,12 @@ class MainWindowScreenState extends State<MainWindowScreen>
   /// בונה את רשימת עמודי ה-PageView לפי מצב המעבר הנוכחי (ראה
   /// [buildTransitionPages]).
   List<Widget> _buildPagesList() {
-    final canonical = <Widget>[
+    final pages = [
       _cachedLibraryPage!,
       _cachedReadingPage!,
       _cachedSettingsPage!,
     ];
+    final canonical = excludeOffscreenPagesFromFocus(pages, _currentPageIndex);
     return buildTransitionPages(
       canonical,
       targetIndex: _transitionTargetIndex,
