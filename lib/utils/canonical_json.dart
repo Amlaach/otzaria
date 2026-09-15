@@ -14,6 +14,9 @@ String canonicalJsonEncode(Object? value) {
 String canonicalJsonSha256(Object? value) =>
     sha256.convert(utf8.encode(canonicalJsonEncode(value))).toString();
 
+/// Number.MAX_SAFE_INTEGER — מעבר לו JS מאבד דיוק והאתר דוחה (§4.3).
+const int _maxSafeInteger = 9007199254740991;
+
 final RegExp _loneSurrogate = RegExp(
   r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]',
 );
@@ -31,6 +34,13 @@ void _write(StringBuffer out, Object? value) {
   } else if (value is bool) {
     out.write(value ? 'true' : 'false');
   } else if (value is int) {
+    if (value > _maxSafeInteger || value < -_maxSafeInteger) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'OCJ-1 allows safe integers only',
+      );
+    }
     out.write(value.toString());
   } else if (value is String) {
     _writeString(out, value);

@@ -78,6 +78,17 @@ void main() {
       expect(() => canonicalJsonEncode({'x': 1.5}), throwsArgumentError);
     });
 
+    test('שלם מחוץ לטווח הבטוח (±2^53−1) נדחה, כמו באתר', () {
+      const maxSafe = 9007199254740991;
+      expect(canonicalJsonEncode(maxSafe), '9007199254740991');
+      expect(canonicalJsonEncode(-maxSafe), '-9007199254740991');
+      expect(() => canonicalJsonEncode(maxSafe + 1), throwsArgumentError);
+      expect(
+        () => canonicalJsonEncode({'x': -maxSafe - 1}),
+        throwsArgumentError,
+      );
+    });
+
     test('מערכים נשמרים בסדרם', () {
       expect(canonicalJsonEncode([3, 'a', null]), '[3,"a",null]');
     });
