@@ -923,9 +923,14 @@ class MainWindowScreenState extends State<MainWindowScreen>
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        final activePane = context.read<TabsBloc>().state.activePane;
+        if (activePane is! ToolTab || !activePane.isPlugin) return;
         unawaited(
           PluginRuntimeDispatcher.instance
-              .restoreKeyboardFocusAfterWindowRestore(),
+              .restoreKeyboardFocusAfterWindowRestore(
+                activePane.toolId,
+                instanceId: activePane.instanceId,
+              ),
         );
       });
     };

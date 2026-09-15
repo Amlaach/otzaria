@@ -260,7 +260,7 @@ class PluginRuntimeDispatcher {
     return false;
   }
 
-  /// מחזיר את פוקוס המקלדת ל-WebView של התוסף שמוצג כרגע, אחרי שחלון
+  /// מחזיר את פוקוס המקלדת ל-WebView של המופע הפעיל של תוסף, אחרי שחלון
   /// האפליקציה חזר ממיזעור.
   ///
   /// אין אף מסלול אחר שמבקש את ההעברה: המופע לא הושהה (ולכן
@@ -273,21 +273,18 @@ class PluginRuntimeDispatcher {
   /// `trustPageFocus: false` מאותה סיבה — עדות הדף כוזבת כאן;
   /// `deferred: true` כדי ששדה טקסט או דיאלוג של Flutter, שהמקלדת שייכת
   /// להם בדין, לא יאבדו אותה.
-  Future<void> restoreKeyboardFocusAfterWindowRestore() async {
-    for (final key in _visibleInstanceKeys.toList()) {
-      final instance = _instances[key];
-      if (instance == null ||
-          instance.isBackground ||
-          instance.controller == null) {
-        continue;
-      }
-      await requestKeyboardFocus(
-        key.pluginId,
-        instanceId: key.instanceId,
-        deferred: true,
-        trustPageFocus: false,
-      );
-    }
+  /// בטאב מפוצל שני WebView-ים יכולים להיות גלויים. רק החלונית הפעילה
+  /// מועברת לכאן, כדי שלא נמסור את המקלדת לאחותה בסוף הלולאה.
+  Future<void> restoreKeyboardFocusAfterWindowRestore(
+    String pluginId, {
+    PluginInstanceId instanceId = PluginInstanceIds.defaultForeground,
+  }) async {
+    await requestKeyboardFocus(
+      pluginId,
+      instanceId: instanceId,
+      deferred: true,
+      trustPageFocus: false,
+    );
   }
 
   /// מבטל בקשות פוקוס שנזכרו. נדרש בעזיבת מסך העיון: בקשה ששרדה הייתה

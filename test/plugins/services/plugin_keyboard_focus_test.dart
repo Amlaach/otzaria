@@ -278,9 +278,23 @@ void main() {
       await _d.requestKeyboardFocus(_pid);
       expect(controller.focusCalls, 1);
 
-      await _d.restoreKeyboardFocusAfterWindowRestore();
+      await _d.restoreKeyboardFocusAfterWindowRestore(_pid);
 
       expect(controller.focusCalls, 2);
+    });
+
+    test('בטאב מפוצל רק המופע הפעיל מקבל את הפוקוס', () async {
+      final inactive = _FocusController();
+      final active = _FocusController();
+      _d.registerController(_pid, inactive);
+      _d.registerController(_other, active);
+      _d.setVisiblePluginInstances({_fg(_pid), _fg(_other)});
+      await pumpEventQueue();
+
+      await _d.restoreKeyboardFocusAfterWindowRestore(_other);
+
+      expect(inactive.focusCalls, 0);
+      expect(active.focusCalls, 1);
     });
 
     test('מופע שאינו מוצג אינו חוטף את המקלדת', () async {
@@ -289,7 +303,7 @@ void main() {
       _d.setVisiblePluginInstances(const {});
       await pumpEventQueue();
 
-      await _d.restoreKeyboardFocusAfterWindowRestore();
+      await _d.restoreKeyboardFocusAfterWindowRestore(_pid);
 
       expect(controller.focusCalls, 0);
     });
@@ -306,7 +320,7 @@ void main() {
       _d.setVisiblePluginInstances({key});
       await pumpEventQueue();
 
-      await _d.restoreKeyboardFocusAfterWindowRestore();
+      await _d.restoreKeyboardFocusAfterWindowRestore(_pid);
 
       expect(background.focusCalls, 0);
     });
@@ -318,7 +332,7 @@ void main() {
       _d.setVisiblePluginInstances({_fg(_pid)});
       await pumpEventQueue();
 
-      await _d.restoreKeyboardFocusAfterWindowRestore();
+      await _d.restoreKeyboardFocusAfterWindowRestore(_pid);
 
       expect(controller.focusCalls, 0);
     });
