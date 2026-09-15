@@ -81,19 +81,22 @@ class _ScrollableStubState extends State<_ScrollableStub> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ScrollMetricsNotification(
-        metrics: FixedScrollMetrics(
-          minScrollExtent: 0,
-          maxScrollExtent: widget.maxScrollExtent,
-          pixels: 0,
-          viewportDimension: 100,
-          axisDirection: AxisDirection.down,
-          devicePixelRatio: 1,
-        ),
-        context: context,
-      ).dispatch(context);
+      if (mounted) dispatchMetrics(widget.maxScrollExtent);
     });
+  }
+
+  void dispatchMetrics(double maxScrollExtent) {
+    ScrollMetricsNotification(
+      metrics: FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: maxScrollExtent,
+        pixels: 0,
+        viewportDimension: 100,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: 1,
+      ),
+      context: context,
+    ).dispatch(context);
   }
 
   @override
@@ -810,6 +813,53 @@ void main() {
     // יציאה מהמסילה מסתירה את התווית.
     await gesture.moveTo(const Offset(400, 300));
     await tester.pump();
+    expect(find.textContaining('יעד'), findsNothing);
+  });
+
+  testWidgets('מסילה שנעלמת תחת הסמן אינה משאירה תווית יתומה (issue #1364)', (
+    tester,
+  ) async {
+    // MouseRegion שהוסר מהעץ אינו מקבל onExit, והתווית נשארה על המסך לתמיד.
+    final listener = ItemPositionsListener.create();
+    final controller = ItemScrollController();
+    final stubKey = GlobalKey<_ScrollableStubState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScrollablePositionedListScrollbar(
+            scrollController: controller,
+            itemPositionsListener: listener,
+            itemCount: 100,
+            labelForIndex: (index) => 'יעד $index',
+            child: _ScrollableStub(key: stubKey),
+          ),
+        ),
+      ),
+    );
+
+    (listener.itemPositions as ValueNotifier<Iterable<ItemPosition>>).value =
+        const [
+          ItemPosition(index: 0, itemLeadingEdge: 0, itemTrailingEdge: 0.02),
+          ItemPosition(index: 1, itemLeadingEdge: 0.02, itemTrailingEdge: 0.04),
+        ];
+    await tester.pump();
+
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: const Offset(400, 300));
+    addTearDown(() => gesture.removePointer());
+    await tester.pump();
+    await gesture.moveTo(const Offset(6, 300));
+    await tester.pump();
+    expect(find.textContaining('יעד'), findsOneWidget);
+
+    // בקצה הרשימה maxScrollExtent מתאפס, והמסילה יוצאת מהעץ כשהסמן עליה.
+    stubKey.currentState!.dispatchMetrics(0);
+    await tester.pump();
+    expect(
+      find.byKey(ScrollablePositionedListScrollbar.thumbKey),
+      findsNothing,
+    );
     expect(find.textContaining('יעד'), findsNothing);
   });
 
