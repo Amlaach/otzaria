@@ -161,6 +161,7 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
           await _restoreDatabaseFiles(backupDir, backupPath!);
         }
       }
+      if (state is EmptyLibraryDirectorySelected) await clearFilePickerCache();
     } catch (e) {
       if (backupDir != null) {
         await _restoreDatabaseFiles(backupDir, backupPath!);
@@ -207,6 +208,7 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
           await _restoreDatabaseFiles(backupDir, backupPath!);
         }
       }
+      if (state is EmptyLibraryDirectorySelected) await clearFilePickerCache();
     } catch (e) {
       if (backupDir != null) {
         await _restoreDatabaseFiles(backupDir, backupPath!);
@@ -308,18 +310,20 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
       );
     } else if (await dbPlain.exists()) {
       // File.copy אינו מדווח התקדמות — על קובץ של כמה GB המסך נשאר על 0% עד
-      // הסוף (issue #1334).
+      // הסוף (issue #1334). עותק שהבורר יצר במטמון מועבר, לא מועתק שוב (#1360).
+      final fromPickerCache = await isFilePickerCacheFile(dbPlain);
       await _writeDbAtomically(
         path.join(target, DatabaseConstants.databaseFileName),
-        (tempPath) => copyFileWithProgress(
-          dbPlain,
-          tempPath,
-          onProgress: _extractProgress(
+        (tempPath) {
+          final onProgress = _extractProgress(
             emit,
             source,
             'מעתיק את ספריית הספרים...',
-          ),
-        ),
+          );
+          return fromPickerCache
+              ? moveFileWithProgress(dbPlain, tempPath, onProgress: onProgress)
+              : copyFileWithProgress(dbPlain, tempPath, onProgress: onProgress);
+        },
       );
     } else if (!await targetDb.exists()) {
       emit(
@@ -671,6 +675,57 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
       await file.copy(destPath);
       await file.delete();
     }
+  }
+
+  static String? _filePickerCacheDirOverride;
+
+  /// תיקיית המטמון שבה file_picker שומר עותקים (`<cache>/file_picker`).
+  /// בבדיקות אין path_provider — מזריקים תיקייה.
+  @visibleForTesting
+  static set filePickerCacheDirOverride(String? value) =>
+      _filePickerCacheDirOverride = value;
+
+  /// האם [file] הוא עותק זמני שיצר file_picker במטמון האפליקציה. באנדרואיד
+  /// הבורר מעתיק לשם כל קובץ נבחר, והעותק מיותר אחרי הייבוא (issue #1360).
+  @visibleForTesting
+  static Future<bool> isFilePickerCacheFile(File file) async {
+    var cacheDir = _filePickerCacheDirOverride;
+    if (cacheDir == null) {
+      try {
+        cacheDir = (await getTemporaryDirectory()).path;
+      } catch (_) {
+        return false;
+      }
+    }
+    final pickerDir = path.join(cacheDir, 'file_picker');
+    return path.isWithin(pickerDir, file.absolute.path);
+  }
+
+  /// מעביר עותק זמני אל [destPath]: rename מיידי על אותו התקן, ובנפילה
+  /// (Cross-device) העתקה עם התקדמות ומחיקת המקור.
+  @visibleForTesting
+  static Future<void> moveFileWithProgress(
+    File source,
+    String destPath, {
+    void Function(double progress)? onProgress,
+  }) async {
+    onProgress?.call(0);
+    try {
+      await source.rename(destPath);
+    } on FileSystemException {
+      await copyFileWithProgress(source, destPath, onProgress: onProgress);
+      await source.delete();
+    }
+    onProgress?.call(1);
+  }
+
+  /// אחרי ייבוא מוצלח העותקים שיצר הבורר במטמון מיותרים — באנדרואיד הם
+  /// הכפילו את נפח הספרייה על המכשיר, גם מניסיונות קודמים (issue #1360).
+  static Future<void> clearFilePickerCache() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      await FilePicker.clearTemporaryFiles();
+    } catch (_) {}
   }
 
   /// משחזר את קבצי ה-DB מתיקיית הגיבוי חזרה אל [dir] (דורס אם קיים).

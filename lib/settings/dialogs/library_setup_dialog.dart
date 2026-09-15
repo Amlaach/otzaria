@@ -184,6 +184,12 @@ class _LibrarySetupDialogContentState
   /// תיקיית המקור לייבוא (פעולת [_LibraryAction.chooseFile]) והנכסים שזוהו בה.
   String? _sourceFolder;
   bool _sourceFolderUnreadable = false;
+
+  /// באנדרואיד הבורר מעתיק את הקובץ שנבחר למטמון לפני שהבחירה חוזרת — דקות
+  /// על קובץ של כמה GB, בלי שום חיווי (issue #1360). האפשרות שבחירתה בהעתקה.
+  _LibraryAction? _copyingFor;
+
+  bool get _copyingPickedFile => _copyingFor != null;
   List<String> _detectedAssets = const [];
 
   String? _sourceArchive;
@@ -269,20 +275,60 @@ class _LibrarySetupDialogContentState
     });
   }
 
+  /// בוחר קובץ עם חיווי בזמן ההעתקה למטמון. כשל בהעתקה (למשל אין מקום פנוי
+  /// באחסון הפנימי) מוצג למשתמש במקום להיבלע בשקט (issue #1360).
+  Future<PlatformFile?> _pickFileWithCopyFeedback({
+    required _LibraryAction action,
+    required List<String> allowedExtensions,
+    required String dialogTitle,
+  }) async {
+    if (_copyingPickedFile) return null;
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: allowedExtensions,
+        dialogTitle: dialogTitle,
+        onFileLoading: (status) {
+          if (!mounted) return;
+          setState(() {
+            _copyingFor = status == FilePickerStatus.picking ? action : null;
+          });
+        },
+        windowsOptions: kModalWindowsOptions,
+        linuxOptions: kModalLinuxOptions,
+      );
+      if (file != null && file.path == null) {
+        throw StateError('picked file without a path');
+      }
+      return file;
+    } catch (_) {
+      if (mounted) {
+        UiSnack.showError(
+          context.settingsText(
+            'העתקת הקובץ שנבחר נכשלה — בדוק שיש די מקום פנוי באחסון הפנימי',
+          ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted && _copyingPickedFile) {
+        setState(() => _copyingFor = null);
+      }
+    }
+  }
+
   /// בחירת הקובץ ישירות מספקת נתיב נגיש גם מ-Android Scoped Storage.
   Future<void> _pickSourceDatabaseFile() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
+    final file = await _pickFileWithCopyFeedback(
+      action: _LibraryAction.chooseFile,
       allowedExtensions: const ['db'],
       dialogTitle: context.settingsText(
         'בחר את קובץ {file}',
         args: {'file': DatabaseConstants.databaseFileName},
       ),
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
-    if (file?.path == null || !mounted) return;
-    if (file!.name != DatabaseConstants.databaseFileName) {
+    if (file == null || !mounted) return;
+    if (file.name != DatabaseConstants.databaseFileName) {
       UiSnack.showError(
         context.settingsText(
           'יש לבחור את {file}',
@@ -317,15 +363,13 @@ class _LibrarySetupDialogContentState
   }
 
   Future<void> _pickSourceArchive() async {
-    final file = await FilePicker.pickFile(
-      type: FileType.custom,
+    final file = await _pickFileWithCopyFeedback(
+      action: _LibraryAction.chooseArchive,
       allowedExtensions: const ['zip', 'zst'],
       dialogTitle: context.settingsText('בחר ארכיון ספרייה (ZIP או ZST)'),
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
-    if (file?.path == null || !mounted) return;
-    setState(() => _sourceArchive = file!.path);
+    if (file == null || !mounted) return;
+    setState(() => _sourceArchive = file.path);
   }
 
   /// נכס יהיה קיים לאחר הייבוא אם זוהה בתיקיית המקור, או שהוא כבר קיים
@@ -339,6 +383,7 @@ class _LibrarySetupDialogContentState
   }
 
   bool _canConfirm(EmptyLibraryState state) {
+    if (_copyingPickedFile) return false;
     switch (_action) {
       case _LibraryAction.useInPlace:
         // שימוש במקום אינו כותב לשום מקום — תיקיית היעד אינה רלוונטית לו.
@@ -381,7 +426,14 @@ class _LibrarySetupDialogContentState
 
   /// תת-כותרת לאפשרות "בחירת תיקייה": לפני בחירה — הנחיה; אחרי בחירה —
   /// "כל הקבצים זוהו", או אזהרה תמציתית רק על קבצים שיישארו חסרים לאחר הייבוא.
+  String _copyingPickedFileText() => context.settingsText(
+    'המערכת מעתיקה את הקובץ שנבחר… זה עלול להימשך כמה דקות',
+  );
+
   String _importSubtitle() {
+    if (_copyingFor == _LibraryAction.chooseFile) {
+      return _copyingPickedFileText();
+    }
     if (_sourceFolder == null) {
       return context.settingsText(
         'בחר תיקייה שקיימים בה קובצי הספרייה והמערכת',
@@ -417,9 +469,14 @@ class _LibrarySetupDialogContentState
     );
   }
 
-  String _archiveSubtitle() => _sourceArchive == null
-      ? context.settingsText('בחר קובץ ZIP או ZST המכיל את seforim.db')
-      : p.basename(_sourceArchive!);
+  String _archiveSubtitle() {
+    if (_copyingFor == _LibraryAction.chooseArchive) {
+      return _copyingPickedFileText();
+    }
+    return _sourceArchive == null
+        ? context.settingsText('בחר קובץ ZIP או ZST המכיל את seforim.db')
+        : p.basename(_sourceArchive!);
+  }
 
   void _confirm() {
     switch (_action) {
@@ -691,12 +748,17 @@ class _LibrarySetupDialogContentState
       actions: [
         ActionButton.neutral(
           text: context.settingsText('בחר תיקייה'),
-          onPressed: chooseFileSelected ? _pickSourceFolder : null,
+          onPressed: chooseFileSelected && !_copyingPickedFile
+              ? _pickSourceFolder
+              : null,
           icon: FluentIcons.folder_open_24_regular,
         ),
         ActionButton.neutral(
           text: context.settingsText('בחר קובץ ספרייה'),
-          onPressed: chooseFileSelected ? _pickSourceDatabaseFile : null,
+          onPressed: chooseFileSelected && !_copyingPickedFile
+              ? _pickSourceDatabaseFile
+              : null,
+          isLoading: _copyingFor == _LibraryAction.chooseFile,
           icon: FluentIcons.document_24_regular,
         ),
       ],
@@ -709,7 +771,10 @@ class _LibrarySetupDialogContentState
       actions: [
         ActionButton.neutral(
           text: context.settingsText('בחר קובץ דחוס'),
-          onPressed: chooseArchiveSelected ? _pickSourceArchive : null,
+          onPressed: chooseArchiveSelected && !_copyingPickedFile
+              ? _pickSourceArchive
+              : null,
+          isLoading: _copyingFor == _LibraryAction.chooseArchive,
           icon: FluentIcons.archive_24_regular,
         ),
       ],

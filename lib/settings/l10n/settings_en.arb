@@ -1154,5 +1154,7 @@
   "תיאור": "Description",
   "שלבים לשחזור (לא חובה)": "Steps to reproduce (optional)",
   "דואר אלקטרוני": "Email",
-  "דואר אלקטרוני (לא חובה)": "Email (optional)"
+  "דואר אלקטרוני (לא חובה)": "Email (optional)",
+  "המערכת מעתיקה את הקובץ שנבחר… זה עלול להימשך כמה דקות": "The system is copying the selected file… this may take a few minutes",
+  "העתקת הקובץ שנבחר נכשלה — בדוק שיש די מקום פנוי באחסון הפנימי": "Copying the selected file failed — check that there is enough free space in internal storage"
 }
