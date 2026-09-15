@@ -178,11 +178,6 @@ void main() {
       runner.cursorTarget = (slot: null, isSelf: false, isShellTray: true);
       await drag.handleDroppedOutside(firstTab(), tabsBloc);
       expect(runner.endCalls, 2);
-
-      tabsBloc.emitState(TabsState(tabs: [firstTab()], currentTabIndex: 0));
-      runner.cursorTarget = (slot: null, isSelf: false, isShellTray: false);
-      await drag.handleDroppedOutside(firstTab(), tabsBloc);
-      expect(runner.endCalls, 3);
     });
   });
 
@@ -197,16 +192,18 @@ void main() {
     expect(tabsBloc.events.whereType<RemoveTab>(), isEmpty);
   });
 
-  test('הכרטיסיה האחרונה אינה יוצאת לחלון חדש', () async {
-    // גרירתה החוצה הייתה משאירה חלון ריק ופותחת חדש — תזוזה בלי תועלת.
-    tabsBloc.emitState(TabsState(tabs: [firstTab()], currentTabIndex: 0));
-    runner.cursorTarget = (slot: null, isSelf: false, isShellTray: false);
+  test(
+    'גם הכרטיסיה האחרונה יוצאת לחלון חדש — חלון המקור נשאר על הספרייה',
+    () async {
+      tabsBloc.emitState(TabsState(tabs: [firstTab()], currentTabIndex: 0));
+      runner.cursorTarget = (slot: null, isSelf: false, isShellTray: false);
 
-    await drag.handleDroppedOutside(firstTab(), tabsBloc);
+      await drag.handleDroppedOutside(firstTab(), tabsBloc);
 
-    expect(runner.openWindowCalls, 0);
-    expect(tabsBloc.events, isEmpty);
-  });
+      expect(runner.openWindowCalls, 1);
+      expect(tabsBloc.events.whereType<RemoveTab>(), hasLength(1));
+    },
+  );
 
   test('שחרור מעל חלון אחר שולח אליו, והכרטיסיה מוסרת רק אחרי אישור', () async {
     final peer = _FakePeer(2, accept: true)..register();
@@ -440,15 +437,14 @@ void main() {
       expect(tabsBloc.events, isEmpty);
     });
 
-    test('הכרטיסיה האחרונה אינה יוצאת לחלון חדש', () async {
-      // אחרת נשאר חלון ריק ונפתח חדש — תזוזה בלי תועלת.
+    test('גם הכרטיסיה האחרונה יוצאת לחלון חדש', () async {
       tabsBloc.emitState(TabsState(tabs: [firstTab()], currentTabIndex: 0));
       runner.cursorTarget = (slot: null, isSelf: false, isShellTray: false);
 
       startDrag(firstTab());
       await Future<void>.delayed(settle);
 
-      expect(runner.openWindowCalls, 0);
+      expect(runner.openWindowCalls, 1);
     });
 
     test('שחרור אחרי המסירה אינו מטפל בכרטיסיה פעמיים', () async {

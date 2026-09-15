@@ -26,6 +26,7 @@ import 'package:otzaria/indexing/bloc/indexing_state.dart';
 import 'package:otzaria/indexing/indexing_work_status.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
 import 'package:otzaria/core/windowing/window_title_sync.dart';
+import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/navigation/utils/refresh_indexing_plan.dart';
 import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
@@ -95,7 +96,6 @@ import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
 import 'package:otzaria/plugins/models/plugin_book_identity.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
 import 'package:otzaria/tabs/bloc/tabs_event.dart';
-import 'package:otzaria/tabs/services/windows_jump_list_service.dart';
 import 'package:otzaria/tabs/bloc/tabs_state.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
 import 'package:otzaria/tabs/models/searching_tab.dart';
@@ -373,7 +373,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
   bool _isShowingInfoReport = false;
   StreamSubscription<FileSystemEvent>? _externalActivationWatchSub;
   StreamSubscription<String>? _externalActivationChannelSub;
-  final WindowsJumpListService _jumpListService = WindowsJumpListService();
 
   static const List<
     ({
@@ -617,7 +616,11 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
       }
 
-      unawaited(_initializeExternalActivationMonitoring());
+      // ⚠️ המארח בלבד: הניקוז הוא rename אטומי, וכשכל החלונות מנטרים
+      // הזוכה שרירותי — לפעמים חלון שהמשתמש סגר קפץ בחזרה למסך.
+      if (!WindowRole.isSecondary) {
+        unawaited(_initializeExternalActivationMonitoring());
+      }
 
       _tourCubit.registerSession();
 
@@ -1103,7 +1106,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
     try {
       final pendingUris = await _externalActivationQueue.drainUriStrings();
       for (final uriString in pendingUris) {
-        await _handleExternalActivationUriString(uriString);
+        await _routeDrainedExternalUri(uriString);
       }
     } catch (e, stackTrace) {
       debugPrint('External activation polling failed: $e\n$stackTrace');
@@ -1149,6 +1152,36 @@ class MainWindowScreenState extends State<MainWindowScreen>
     await _processPendingExternalActivations();
   }
 
+  /// מפנה קישור שנוקז אל החלון הגלוי שהיה פעיל אחרון, או מטפל בו כאן.
+  ///
+  /// המארח הוא המנקז היחיד, ולכן בלי ההפניה הזו הקישור היה נפתח תמיד בו —
+  /// גם כשהמשתמש עובד בחלון אחר.
+  Future<void> _routeDrainedExternalUri(String uriString) async {
+    final uri = Uri.tryParse(uriString);
+    final action = uri == null ? null : ExternalUriRouter.parseUri(uri);
+    // "חלון חדש" לא ביקש חלון קיים — אין למי להפנות.
+    if (action is OpenNewWindowAction || !MultiWindowService.isSupported) {
+      await _handleExternalActivationUriString(uriString);
+      return;
+    }
+
+    final slot = await const MultiWindowService().lastActiveSlot();
+    if (!mounted) return;
+    // null = אין חלון גלוי; אז המארח מוצג בכוונה — משהו חייב להופיע.
+    if (slot == null || slot == WindowBus.instance.slot) {
+      await _handleExternalActivationUriString(uriString);
+      return;
+    }
+
+    final handled = await WindowBus.instance.request(slot, {
+      'type': MultiWindowService.requestOpenUri,
+      'uri': uriString,
+    }, timeout: const Duration(seconds: 5));
+    if (handled == true || !mounted) return;
+    // היעד לא ענה או סירב — עדיף שהקישור ייפתח כאן מאשר שייעלם.
+    await _handleExternalActivationUriString(uriString);
+  }
+
   Future<bool> _handleExternalActivationUriString(String uriString) async {
     if (!mounted) {
       return false;
@@ -1161,7 +1194,8 @@ class MainWindowScreenState extends State<MainWindowScreen>
       final action = ExternalUriRouter.parseUri(uri);
       if (action == null) return false;
 
-      await _bringWindowToFront();
+      // "חלון חדש" לא ביקש חלון קיים — הרמת חלון שרירותי (אולי מוסתר) מפתיעה.
+      if (action is! OpenNewWindowAction) await _bringWindowToFront();
       if (!mounted) return false;
       return await _dispatchExternalUriAction(action);
     } catch (e, stackTrace) {
@@ -1360,6 +1394,8 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
         _settingsScreenController.openTab(SettingsTab.tools);
         return true;
+      case OpenNewWindowAction():
+        return const MultiWindowService().openEmptyWindow();
       case ReindexLibraryAction():
         // רענון הקטלוג מהדיסק; ה-listener על completedRefreshRequestIds מריץ
         // StartIndexing + ReconcileIndex כשהרענון שקלט את הבקשה מסתיים.
@@ -2952,16 +2988,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
               }
             },
           ),
-          // סנכרון רשימת הטאבים הפתוחים ל-Jump List של שורת המשימות (Windows).
-          // נדלק כשרשימת הטאבים מוחלפת; השירות עצמו no-op מחוץ ל-Windows,
-          // ומסנן כותרות שלא השתנו.
-          BlocListener<TabsBloc, TabsState>(
-            // הרשימה נשמרת כאובייקט זהה כשהיא לא משתנה, ולכן בדיקת הזהות
-            // מספיקה וחוסכת מיפוי של כל הכותרות בכל שינוי מצב.
-            listenWhen: (previous, current) =>
-                !identical(previous.tabs, current.tabs),
-            listener: (context, state) => _jumpListService.sync(state.tabs),
-          ),
           // כותרת החלון עוקבת אחרי הכרטיסיה הפעילה, כמו בדפדפן.
           //
           // ⚠️ גם על החלפת כרטיסיה ולא רק על שינוי הרשימה: הכותרת מתארת את
@@ -2977,23 +3003,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
                 tabCount: state.tabs.length,
               ),
             ),
-          ),
-          // חלון משני שהתרוקן מכרטיסיות נסגר, כמו כרטיסייה אחרונה בדפדפן.
-          // ⚠️ מעבר-מצב ולא `!hasOpenTabs`: בעלייה הרשימה עדיין ריקה.
-          BlocListener<TabsBloc, TabsState>(
-            listenWhen: (previous, current) =>
-                previous.hasOpenTabs && !current.hasOpenTabs,
-            listener: (context, state) {
-              final windowListener = appWindowListener;
-              if (windowListener != null) {
-                final tabsBloc = context.read<TabsBloc>();
-                unawaited(
-                  windowListener.closeIfEmptied(
-                    isStillEmpty: () => !tabsBloc.state.hasOpenTabs,
-                  ),
-                );
-              }
-            },
           ),
           // settings.changed עבור selectedCity ו-calendarType —
           // שדות אלה נמצאים ב-CalendarState ולא ב-SettingsState

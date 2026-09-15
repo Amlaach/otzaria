@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:otzaria/core/error_log_file.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
 
@@ -30,7 +31,7 @@ class SharedHiveValue {
   const SharedHiveValue({
     required this.revision,
     required this.value,
-    required this.authoritative,
+    this.reason,
   });
 
   /// מונה שהבעלים מקדם בכל כתיבה.
@@ -41,12 +42,19 @@ class SharedHiveValue {
 
   final Object? value;
 
+  /// למה הערך אינו מוסמך. null כשהוא כן — ומועבר הלאה לחריגה שהקורא זורק,
+  /// כדי שהלוג יבחין בין "אין בעלים" ל"פקע הזמן" ל"אין מטפל".
+  ///
+  /// הסיבה היא גם המקור ל-[authoritative], כדי שערך לא-מוסמך לא יוכל לצאת
+  /// בלעדיה — הקורא זורק ורושם אותה.
+  final SharedHiveUnavailableReason? reason;
+
   /// האם הערך הגיע מהבעלים.
   ///
   /// ⚠️ `false` פירושו **"לא הצלחנו לשאול"**, ולא "ריק". ההבחנה הזו היא כל
   /// ההגנה: קריאה שנכשלה החזירה בעבר רשימה ריקה, ה-bloc קיבע אותה לכל חיי
   /// החלון, והכתיבה הראשונה שלו מחקה 200 רשומות אצל הבעלים.
-  final bool authoritative;
+  bool get authoritative => reason == null;
 
   List<dynamic> get asList {
     final v = value;
@@ -54,14 +62,126 @@ class SharedHiveValue {
   }
 }
 
+/// למה הבעלים לא סיפק תשובה שאפשר להסתמך עליה.
+///
+/// ⚠️ ההבחנה אינה קוסמטית: פקיעת זמן היא בעלים **עסוק** (ותחזור אחרי
+/// הטעינה שלו), ואילו [noHandler] היא מרוץ אתחול — הבעלים ענה לפני
+/// ש-`WindowBusHost.initState` קבע את `onRequest`. בלוג הן נראו זהות.
+enum SharedHiveUnavailableReason {
+  /// כינוי הבעלים אינו רשום כלל באפיק.
+  noOwner('אין חלון בעלים רשום'),
+
+  /// הבעלים לא ענה בתוך הזמן שהוקצב.
+  timeout('הבעלים לא ענה בזמן'),
+
+  /// הבעלים ענה null — עדיין אין לו מטפל בקשות.
+  noHandler('הבעלים ענה בלי מטפל בקשות'),
+
+  /// הבקשה זרקה אצל הבעלים.
+  ownerError('הבקשה נכשלה אצל הבעלים'),
+
+  /// הבעלים ענה שגם הוא לא הצליח לקרוא מ-Hive.
+  ownerReadFailed('גם הבעלים לא הצליח לקרוא');
+
+  const SharedHiveUnavailableReason(this.description);
+
+  final String description;
+}
+
 /// הבעלים לא ענה, ולכן אין על מה לבסס כתיבה.
 class SharedHiveUnavailable implements Exception {
-  const SharedHiveUnavailable(this.id);
+  const SharedHiveUnavailable(this.id, this.reason);
+
+  /// בונה את החריגה ורושם אותה ללוג.
+  ///
+  /// הרישום עצמו ב-[_log]: המופע הראשון לכל (מפתח, סיבה) נרשם מיד, וחזרות
+  /// מתקבצות לרשומה מסכמת אחת לכל היותר ב-[_summaryInterval].
+  static SharedHiveUnavailable report(
+    SharedHiveKey id,
+    SharedHiveUnavailableReason reason,
+  ) {
+    final error = SharedHiveUnavailable(id, reason);
+    _log(error);
+    return error;
+  }
 
   final SharedHiveKey id;
+  final SharedHiveUnavailableReason reason;
+
+  /// יעד הרישום. מוחלף בבדיקות כדי שלא ייכתב errors.txt אמיתי של המפתח.
+  @visibleForTesting
+  static void Function(String text) logSink = ErrorLogFile.appendText;
+
+  @visibleForTesting
+  static DateTime Function() logClock = DateTime.now;
+
+  @visibleForTesting
+  static void resetLogForTest() => _logged.clear();
 
   @override
-  String toString() => 'החלון הראשי לא זמין ($id)';
+  String toString() => 'החלון הראשי לא זמין ($id): ${reason.description}';
+}
+
+/// כל כמה זמן לכל היותר נרשמת רשומה מסכמת על חזרות של אותה תקלה.
+const Duration _summaryInterval = Duration(minutes: 5);
+
+/// מה שנרשם עד כה על (מפתח, סיבה) אחד.
+class _UnavailableLog {
+  _UnavailableLog(this.since);
+
+  /// מתי נרשמה הרשומה האחרונה — ממנה נספרות החזרות.
+  DateTime since;
+  int repeats = 0;
+}
+
+final Map<String, _UnavailableLog> _logged = {};
+
+/// רושם את התקלה — מיד בפעם הראשונה, ואחריה כסיכום מקובץ.
+///
+/// בלי הקיבוץ תקלה שחוזרת כל 6 שניות (issue #1339) הייתה ממלאת את
+/// errors.txt, ובלי הסיכום החזרתיות שלה הייתה נעלמת לגמרי.
+void _log(SharedHiveUnavailable error) {
+  final key = '${error.id}/${error.reason.name}';
+  final now = SharedHiveUnavailable.logClock();
+  final entry = _logged[key];
+  if (entry == null) {
+    _logged[key] = _UnavailableLog(now);
+    _appendLog(error, repeats: null);
+    return;
+  }
+  entry.repeats++;
+  if (now.difference(entry.since) < _summaryInterval) return;
+  _appendLog(
+    error,
+    repeats: 'אירע ${entry.repeats} פעמים מאז ${entry.since.toIso8601String()}',
+  );
+  entry.since = now;
+  entry.repeats = 0;
+}
+
+/// הכתיבה נדחית לסיבוב הבא של תור האירועים כדי שהזורק לא ימתין לה,
+/// וכשל בה לעולם אינו מחליף את החריגה. הכתיבה עצמה סינכרונית וקצרה.
+void _appendLog(SharedHiveUnavailable error, {required String? repeats}) {
+  final slot = WindowBus.instance.slot;
+  unawaited(
+    Future(() {
+      try {
+        SharedHiveUnavailable.logSink(
+          ErrorLogFile.formatEntry(
+            title: 'מאגר משותף לא זמין',
+            error: error,
+            details: {
+              'box': error.id.box,
+              'key': error.id.key,
+              'reason': error.reason.name,
+              'slot': '$slot',
+              'repeats': repeats,
+            },
+          ),
+        );
+      } catch (_) {}
+    }),
+  );
 }
 
 /// הקריאה מ-Hive עצמו נכשלה — לא בעיית ניתוב בין חלונות.
@@ -222,18 +342,25 @@ class SharedHiveStore {
 
   /// ⚠️ timeout נדיב, ובמכוון.
   ///
-  /// ברירת המחדל של [WindowBus.peers] היא 800ms, ונמדד שהבעלים עסוק
+  /// ברירת המחדל של [WindowBus.peers] היא 2,500ms, ונמדד שהבעלים עסוק
   /// 2,092ms בזמן טעינת קטלוג הספרייה — כלומר בדיוק ברגע שבו נפתח חלון
   /// שני. קריאה שפקעה שם החזירה רשימה ריקה, וזה היה מסלול אובדן הנתונים
   /// החמור ביותר בענף.
-  static const Duration _ownerTimeout = Duration(seconds: 8);
+  @visibleForTesting
+  static Duration ownerTimeout = const Duration(seconds: 8);
 
-  /// "לא ידוע מה יש שם" — לא "ריק".
-  static const SharedHiveValue _unknown = SharedHiveValue(
-    revision: 0,
-    value: null,
-    authoritative: false,
-  );
+  /// "לא ידוע מה יש שם" — לא "ריק". נושא את הסיבה כדי שהזורק בהמשך
+  /// ([HiveListRepository], [TabsRepository]) יוכל לרשום אותה.
+  static SharedHiveValue _unknown(SharedHiveUnavailableReason reason) =>
+      SharedHiveValue(revision: 0, value: null, reason: reason);
+
+  static SharedHiveUnavailableReason _reasonFor(WindowBusFailure? failure) =>
+      switch (failure) {
+        WindowBusFailure.timeout => SharedHiveUnavailableReason.timeout,
+        WindowBusFailure.error => SharedHiveUnavailableReason.ownerError,
+        // היעד ענה, ותשובתו null — `onRequest` טרם נקבע אצלו.
+        null => SharedHiveUnavailableReason.noHandler,
+      };
 
   Future<SharedHiveValue> read(String boxName, String key) async {
     final id = SharedHiveKey(boxName, key);
@@ -244,13 +371,14 @@ class SharedHiveStore {
     }
 
     final owner = WindowBus.instance.ownerPort;
-    if (owner == null) return _unknown;
+    if (owner == null) return _unknown(SharedHiveUnavailableReason.noOwner);
 
-    final result = await WindowBus.instance.requestPort(
+    final answer = await WindowBus.instance.requestPortDetailed(
       owner,
       {'type': requestRead, 'box': boxName, 'key': key},
-      timeout: _ownerTimeout,
+      timeout: ownerTimeout,
     );
+    final result = answer.result;
     if (result is Map) {
       // ⚠️ הבעלים ענה — אבל התשובה שלו יכולה להיות "גם אני לא הצלחתי לקרוא".
       // סימון עיוור של `true` כאן הפך כשל קריאה אצל הבעלים ל-null מוסמך,
@@ -258,14 +386,19 @@ class SharedHiveStore {
       return SharedHiveValue(
         revision: (result['revision'] as int?) ?? 0,
         value: result['value'],
-        authoritative: result['authoritative'] != false,
+        reason: result['authoritative'] == false
+            ? SharedHiveUnavailableReason.ownerReadFailed
+            : null,
       );
     }
     // ⚠️ אין עותק מקומי, ובמכוון. חלון משני מקבל שורש Hive פרטי וריק, ולכן
     // "העותק המקומי" הוא רשימה ריקה שנראית כמו נתונים אמיתיים. עדיף להצהיר
     // שלא ידוע מה יש שם מלהחזיר ריק שיירשם בחזרה.
-    debugPrint('SharedHiveStore: owner did not answer read of $id');
-    return _unknown;
+    final reason = _reasonFor(answer.failure);
+    debugPrint(
+      'SharedHiveStore: owner did not answer read of $id (${reason.name})',
+    );
+    return _unknown(reason);
   }
 
   /// כותב את [value], ואם [ifRevision] אינו null — רק אם זו עדיין הגרסה
@@ -290,9 +423,14 @@ class SharedHiveStore {
     }
 
     final owner = WindowBus.instance.ownerPort;
-    if (owner == null) throw SharedHiveUnavailable(id);
+    if (owner == null) {
+      throw SharedHiveUnavailable.report(
+        id,
+        SharedHiveUnavailableReason.noOwner,
+      );
+    }
 
-    final result = await WindowBus.instance.requestPort(
+    final answer = await WindowBus.instance.requestPortDetailed(
       owner,
       {
         'type': requestWrite,
@@ -303,9 +441,12 @@ class SharedHiveStore {
         // כדי שהבעלים לא ישדר לנו בחזרה שינוי שאנחנו יזמנו.
         'origin': ?WindowBus.instance.slot,
       },
-      timeout: _ownerTimeout,
+      timeout: ownerTimeout,
     );
-    if (result is! Map) throw SharedHiveUnavailable(id);
+    final result = answer.result;
+    if (result is! Map) {
+      throw SharedHiveUnavailable.report(id, _reasonFor(answer.failure));
+    }
     if (result['ok'] == true) return;
     if (result['conflict'] == true) {
       throw SharedHiveConflict(
@@ -313,7 +454,6 @@ class SharedHiveStore {
         SharedHiveValue(
           revision: (result['revision'] as int?) ?? 0,
           value: result['value'],
-          authoritative: true,
         ),
       );
     }
@@ -336,7 +476,9 @@ class SharedHiveStore {
         value: SharedHiveValue(
           revision: _revisions[id] ?? 0,
           value: _box(id.box).get(id.key),
-          authoritative: authoritative,
+          reason: authoritative
+              ? null
+              : SharedHiveUnavailableReason.ownerReadFailed,
         ),
         error: null,
       );
@@ -346,7 +488,7 @@ class SharedHiveStore {
         value: SharedHiveValue(
           revision: _revisions[id] ?? 0,
           value: null,
-          authoritative: false,
+          reason: SharedHiveUnavailableReason.ownerReadFailed,
         ),
         error: e,
       );

@@ -55,7 +55,10 @@ class TabsRepository {
     // בחלון משני בזמן שהבעלים עסוק כתב `openTabs: {tabs: []}` בלי שגיאה,
     // ושחזור ממנו סגר את כל הכרטיסיות של המשתמש.
     if (!tabs.authoritative || !current.authoritative) {
-      throw SharedHiveUnavailable(SharedHiveKey(boxName, _tabsBoxKey));
+      throw SharedHiveUnavailable.report(
+        SharedHiveKey(boxName, _tabsBoxKey),
+        (tabs.authoritative ? current.reason : tabs.reason)!,
+      );
     }
     return {
       'tabs': tabs.value ?? <dynamic>[],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/models/link_types.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/services/target_line_links_service.dart';
@@ -52,7 +53,10 @@ class _MenuProbe extends StatelessWidget {
 }
 
 void main() {
-  tearDown(TargetLineLinksService.resetInstanceForTesting);
+  tearDown(() {
+    TargetLineLinksService.resetInstanceForTesting();
+    MultiWindowService.debugSupportedOverride = null;
+  });
 
   Future<List<AppContextMenuEntry>> buildMenu(
     WidgetTester tester, {
@@ -81,7 +85,7 @@ void main() {
       expect(labels, isNot(contains('מפרשים')));
       expect(labels, isNot(contains('קישורים')));
       expect(labels, contains('העתק'));
-      expect(labels, contains('פתח ספר זה בחלון נפרד'));
+      expect(labels, contains('פתח ועבור לכרטיסיה'));
     });
 
     testWidgets('"פתח בכרטיסייה חדשה" מופיע מיד אחרי פתיחת הספר', (
@@ -92,8 +96,22 @@ void main() {
       expect(labels, contains(kOpenInNewTabLabel));
       expect(
         labels.indexOf(kOpenInNewTabLabel),
-        labels.indexOf('פתח ספר זה בחלון נפרד') + 1,
+        labels.indexOf('פתח ועבור לכרטיסיה') + 1,
       );
+    });
+
+    testWidgets('"פתח בחלון חדש" מופיע רק כשריבוי חלונות נתמך', (tester) async {
+      MultiWindowService.debugSupportedOverride = true;
+      var labels = (await buildMenu(tester)).map((e) => e.label).toList();
+      expect(labels, contains('פתח בחלון חדש'));
+      expect(
+        labels.indexOf('פתח בחלון חדש'),
+        labels.indexOf(kOpenInNewTabLabel) + 1,
+      );
+
+      MultiWindowService.debugSupportedOverride = false;
+      labels = (await buildMenu(tester)).map((e) => e.label).toList();
+      expect(labels, isNot(contains('פתח בחלון חדש')));
     });
 
     testWidgets('עם onNavigateToLink נוספים שני הפריטים', (tester) async {
@@ -133,7 +151,7 @@ void main() {
       );
       expect(
         labels.indexOf('קישורים'),
-        lessThan(labels.indexOf('פתח ספר זה בחלון נפרד')),
+        lessThan(labels.indexOf('פתח ועבור לכרטיסיה')),
       );
     });
 
@@ -148,7 +166,7 @@ void main() {
 
       expect(labels, contains('העתק'));
       expect(labels, contains('העתק את כל הפסקה'));
-      expect(labels, contains('פתח ספר זה בחלון נפרד'));
+      expect(labels, contains('פתח ועבור לכרטיסיה'));
       expect(labels, contains('דווח על טעות בספר'));
     });
   });

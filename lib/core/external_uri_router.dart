@@ -173,6 +173,11 @@ class ReindexLibraryAction extends ExternalUriAction {
   const ReindexLibraryAction();
 }
 
+/// פתיחת חלון אוצריא חדש וריק (ללא כרטיסיה).
+class OpenNewWindowAction extends ExternalUriAction {
+  const OpenNewWindowAction();
+}
+
 /// שאילתת מידע — אוספת דוח JSON על התוכנה/הספרייה/התוספים/השגיאות ומציגה
 /// אותו בפופאפ. בשונה מכל שאר הפעולות אינה מנווטת לשום מקום.
 ///
@@ -238,6 +243,7 @@ class ShowInfoAction extends ExternalUriAction {
 /// * `otzaria://plugin/install-local?path=<abs-path>` – התקנת תוסף מקובץ מקומי
 ///   (משמש לשיוך קובץ `.otzplugin` במערכת ההפעלה). הנתיב חייב להיות מוחלט,
 ///   להסתיים ב-`.otzplugin`, ואינו נתיב UNC/התקן (ראה `_isSafeLocalPluginPath`).
+/// * `otzaria://window/new`                – פתיחת חלון אוצריא חדש וריק
 /// * `otzaria://library/reindex`            – רענון הספרייה מהדיסק ועדכון האינדקס
 ///   (מיועד לתוכנה חיצונית שמעדכנת את קבצי הספרייה)
 /// * `otzaria://info`                       – דוח JSON מלא (תוכנה + ספרייה + תוספים + שגיאות)
@@ -349,6 +355,15 @@ class ExternalUriRouter {
           .toList();
       if (segments.length == 1 && segments.first.toLowerCase() == 'reindex') {
         return const ReindexLibraryAction();
+      }
+      return null;
+    }
+    if (host == 'window') {
+      final segments = uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
+      if (segments.length == 1 && segments.first.toLowerCase() == 'new') {
+        return const OpenNewWindowAction();
       }
       return null;
     }

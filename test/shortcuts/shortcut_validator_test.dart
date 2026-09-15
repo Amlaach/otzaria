@@ -201,6 +201,28 @@ void main() {
     });
   });
 
+  group('openNewWindowKey', () {
+    test('רשום ברשימות, עם ברירת מחדל ושם תצוגה', () {
+      const key = ShortcutValidator.openNewWindowKey;
+      expect(ShortcutValidator.shortcutKeys, contains(key));
+      expect(ShortcutValidator.defaultShortcuts[key], 'ctrl+alt+n');
+      expect(ShortcutValidator.shortcutNames[key], 'חלון חדש');
+    });
+
+    test('ברירת המחדל אינה מתנגשת בשום קיצור אחר', () {
+      final others = ShortcutValidator.defaultShortcuts.entries.where(
+        (e) => e.key != ShortcutValidator.openNewWindowKey,
+      );
+      for (final entry in others) {
+        expect(
+          entry.value,
+          isNot('ctrl+alt+n'),
+          reason: 'המפתח "${entry.key}" חולק את הקיצור של "חלון חדש"',
+        );
+      }
+    });
+  });
+
   group('openToolShortcutKeys', () {
     test(
       'כל מפתח רשום ב-shortcutKeys, defaultShortcuts (ריק) ו-shortcutNames',

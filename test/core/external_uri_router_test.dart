@@ -1519,6 +1519,37 @@ void main() {
       });
     });
 
+    group('window/new', () {
+      test('new → OpenNewWindowAction', () {
+        expect(
+          ExternalUriRouter.parseUri(Uri.parse('otzaria://window/new')),
+          isA<OpenNewWindowAction>(),
+        );
+      });
+
+      test('אינו רגיש לאותיות גדולות/קטנות', () {
+        expect(
+          ExternalUriRouter.parseUri(Uri.parse('OTZARIA://WINDOW/NEW')),
+          isA<OpenNewWindowAction>(),
+        );
+      });
+
+      test('נתיב לא מוכר תחת window — מוחזר null', () {
+        expect(
+          ExternalUriRouter.parseUri(Uri.parse('otzaria://window/other')),
+          isNull,
+        );
+        expect(
+          ExternalUriRouter.parseUri(Uri.parse('otzaria://window')),
+          isNull,
+        );
+        expect(
+          ExternalUriRouter.parseUri(Uri.parse('otzaria://window/new/extra')),
+          isNull,
+        );
+      });
+    });
+
     group('info/<topic>', () {
       test('כל הנושאים מפוענחים ל-ShowInfoAction', () {
         for (final topic in InfoTopic.values) {

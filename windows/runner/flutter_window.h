@@ -117,10 +117,6 @@ class FlutterWindow : public Win32Window {
   // בעת חשיפת החלון הראשי.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       splash_channel_;
-  // ערוץ עדכון ה-Jump List של שורת המשימות (otzaria/jumplist) — Dart שולח
-  // "updateTabs" עם כותרות הטאבים הפתוחים בכל שינוי.
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
-      jumplist_channel_;
   std::atomic_bool force_exit_watchdog_armed_ = false;
   // האם החלון עדיין נספר ב-`g_live_window_count`. מונע הפחתה כפולה
   // כשמגיעות שתי בקשות סגירה, **וגם** ספירה כפולה בשימוש חוזר.

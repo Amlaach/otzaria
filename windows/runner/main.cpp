@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "flutter_window.h"
+#include "jump_list_manager.h"
 #include "splash_window.h"
 #include "startup_watchdog.h"
 #include "utils.h"
@@ -312,6 +313,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // (למשל לוח שנה) מקבל כפתור נפרד בשורת המשימות במקום להתאחד עם הסמל המוצמד.
   ::SetCurrentProcessExplicitAppUserModelID(L"Otzaria.Otzaria");
 
+  // משימות ה-Jump List נרשמות פעם אחת לתהליך, ורק אחרי ה-AppUserModelID —
+  // אחרת הרשימה נקשרת למזהה אחר ולא מופיעה תחת הסמל המוצמד.
+  if (!is_cli_invocation) {
+    jump_list::AddUserTasksAsync();
+  }
+
   // Show the native floating-icon splash as early as possible (it needs COM
   // for WIC PNG decoding). It is an independent, top-most, click-through
   // layered window centered on the primary monitor — decoupled from the main
@@ -384,6 +391,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   startup_watchdog::Stop();
+  jump_list::WaitForPendingTasks(200);
   if (mutex) CloseHandle(mutex);
   ::CoUninitialize();
   return EXIT_SUCCESS;

@@ -5,6 +5,7 @@ import 'dart:ui' as ui show IsolateNameServer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
+import 'package:otzaria/core/error_log_file.dart';
 import 'package:otzaria/core/windowing/shared_hive_store.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
@@ -83,6 +84,8 @@ void main() {
 
   setUp(() {
     WindowBus.namespace = _namespace;
+    // הרישום ללוג כבוי כאן כדי שהבדיקות לא יכתבו ל-errors.txt האמיתי.
+    SharedHiveUnavailable.logSink = (_) {};
     WindowRole.isSecondary = false;
     // ⚠️ תיקייה זמנית **ייחודית** ולא נתיב קבוע ב-systemTemp: שתי הרצות
     // מקבילות באותה מכונה היו נועלות זו לזו את קובצי ה-Hive.
@@ -91,6 +94,8 @@ void main() {
   });
 
   tearDown(() async {
+    SharedHiveUnavailable.logSink = ErrorLogFile.appendText;
+    SharedHiveUnavailable.resetLogForTest();
     WindowRole.isSecondary = false;
     WindowBus.instance.onRequest = null;
     WindowBus.instance.unregister();

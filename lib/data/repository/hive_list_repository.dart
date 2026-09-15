@@ -69,7 +69,10 @@ class HiveListRepository<T> {
       return [];
     }
     if (!snapshot.authoritative) {
-      throw SharedHiveUnavailable(SharedHiveKey(boxName, key));
+      throw SharedHiveUnavailable.report(
+        SharedHiveKey(boxName, key),
+        snapshot.reason!,
+      );
     }
     return _decode(snapshot.asList).items;
   }
@@ -87,7 +90,10 @@ class HiveListRepository<T> {
     while (true) {
       final snapshot = await SharedHiveStore.instance.read(boxName, key);
       if (!snapshot.authoritative) {
-        throw SharedHiveUnavailable(SharedHiveKey(boxName, key));
+        throw SharedHiveUnavailable.report(
+          SharedHiveKey(boxName, key),
+          snapshot.reason!,
+        );
       }
       final decoded = _decode(snapshot.asList);
       final next = apply(decoded.items);

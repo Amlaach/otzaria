@@ -82,6 +82,12 @@ class Win32Window {
   // רושם שהמשתמש בחר את [window] בלחיצה.
   static void NoteUserActivation(HWND window);
 
+  // החלון האחרון שהופעל (עכבר או מקלדת), או nullptr אם אין כזה חי.
+  //
+  // ⚠️ מקור האמת לניתוב `otzaria://`: `LastActiveWindow` בצד Dart הוא
+  // static פר-isolate, ולכן כל חלון רואה רק את עצמו.
+  static HWND LastActivatedWindow();
+
   // האם יש לחסום הפעלה של [window] כרגע.
   //
   // ## ⚠️ למה נדרש שער כזה בכלל

@@ -14,6 +14,7 @@ import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
 import 'package:otzaria/navigation/bloc/navigation_event.dart';
 import 'package:otzaria/navigation/bloc/navigation_state.dart';
+import 'package:otzaria/navigation/view/main_window_screen.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
@@ -158,6 +159,8 @@ class _WindowBusHostState extends State<WindowBusHost> {
         return _receiveTab(request['tab'], request['index']);
       case MultiWindowService.requestDragOver:
         return _dragOver(request);
+      case MultiWindowService.requestOpenUri:
+        return _openUri(request['uri']);
       case MultiWindowService.requestDragLeave:
         externalTabDrag.value = null;
         return true;
@@ -168,6 +171,18 @@ class _WindowBusHostState extends State<WindowBusHost> {
         // המאגרים המשותפים מנותבים לחלון הראשון; הבקשות שלהם מטופלות שם.
         return SharedHiveStore.instance.handleRequest(request);
     }
+  }
+
+  /// קישור `otzaria://` שהמארח ניקז והפנה לכאן, כי זה החלון הפעיל האחרון.
+  ///
+  /// האישור חוזר מיד, לפני הטיפול: פתיחת ספר עלולה להימשך יותר מפקיעת הזמן
+  /// של המארח, והוא היה פותח את הקישור גם אצלו.
+  Future<Object?> _openUri(Object? uri) async {
+    if (uri is! String || uri.trim().isEmpty) return false;
+    final screen = mainWindowScreenKey.currentState;
+    if (screen == null) return false;
+    unawaited(screen.handleInternalDeepLink(uri));
+    return true;
   }
 
   /// כרטיסיה מחלון אחר נגררת מעל החלון הזה.

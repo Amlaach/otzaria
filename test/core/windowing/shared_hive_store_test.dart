@@ -4,6 +4,7 @@ import 'dart:ui' as ui show IsolateNameServer;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:otzaria/core/error_log_file.dart';
 import 'package:otzaria/core/windowing/shared_hive_store.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
@@ -64,10 +65,15 @@ class _FakeOwner {
 void main() {
   setUp(() {
     WindowBus.namespace = _namespace;
+    // הרישום ללוג כבוי כאן כדי שהבדיקות לא יכתבו ל-errors.txt האמיתי.
+    SharedHiveUnavailable.logSink = (_) {};
     Hive.init('${Directory.systemTemp.path}/otzaria_shared_hive_test');
   });
 
   tearDown(() async {
+    SharedHiveUnavailable.logSink = ErrorLogFile.appendText;
+    SharedHiveUnavailable.resetLogForTest();
+    SharedHiveStore.ownerTimeout = const Duration(seconds: 8);
     WindowRole.isSecondary = false;
     WindowBus.instance.onRequest = null;
     WindowBus.instance.unregister();
@@ -260,6 +266,102 @@ void main() {
     await SharedHiveStore.instance.write('history', 'history', const []);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(owner.changedNotices, 1);
+  });
+
+  group('סיבת חוסר הזמינות', () {
+    /// רושם port בכינוי הבעלים עם ההתנהגות שנמסרה, או בלי מענה כלל.
+    ReceivePort fakeOwner({Object? Function()? reply}) {
+      final port = ReceivePort();
+      ui.IsolateNameServer.registerPortWithName(
+        port.sendPort,
+        '$_namespace.owner',
+      );
+      port.listen((message) {
+        if (reply == null) return;
+        ((message as Map)['reply'] as SendPort).send(reply());
+      });
+      addTearDown(() {
+        ui.IsolateNameServer.removePortNameMapping('$_namespace.owner');
+        port.close();
+      });
+      return port;
+    }
+
+    Future<SharedHiveUnavailableReason> reasonOfWrite() async {
+      try {
+        await SharedHiveStore.instance.write('history', 'history', const []);
+      } on SharedHiveUnavailable catch (e) {
+        return e.reason;
+      }
+      fail('הכתיבה הצליחה, ולא זו הנקודה');
+    }
+
+    setUp(() {
+      WindowRole.isSecondary = true;
+      WindowBus.instance.register();
+    });
+
+    test('אין כינוי בעלים רשום — noOwner', () async {
+      expect(await reasonOfWrite(), SharedHiveUnavailableReason.noOwner);
+    });
+
+    test('הבעלים אינו עונה — timeout', () async {
+      fakeOwner();
+      SharedHiveStore.ownerTimeout = const Duration(milliseconds: 50);
+      expect(await reasonOfWrite(), SharedHiveUnavailableReason.timeout);
+    });
+
+    test('הבעלים ענה בלי מטפל — noHandler', () async {
+      // ⚠️ זה בדיוק מה ש-`WindowBus` שולח כש-`onRequest` טרם נקבע:
+      // תשובה תקינה שתוכנה null.
+      fakeOwner(reply: () => const {'ok': true, 'result': null});
+      expect(await reasonOfWrite(), SharedHiveUnavailableReason.noHandler);
+    });
+
+    test('הבקשה זרקה אצל הבעלים — ownerError', () async {
+      fakeOwner(reply: () => const {'ok': false, 'error': 'boom'});
+      expect(await reasonOfWrite(), SharedHiveUnavailableReason.ownerError);
+    });
+
+    test('קריאה שלא הצליחה נושאת את הסיבה בערך עצמו', () async {
+      fakeOwner(reply: () => const {'ok': true, 'result': null});
+      final read = await SharedHiveStore.instance.read('history', 'history');
+      expect(read.authoritative, isFalse);
+      expect(read.reason, SharedHiveUnavailableReason.noHandler);
+    });
+
+    test('הבעלים הצהיר שגם הוא לא הצליח לקרוא — ownerReadFailed', () async {
+      fakeOwner(
+        reply: () => const {
+          'ok': true,
+          'result': {'revision': 0, 'value': null, 'authoritative': false},
+        },
+      );
+      final read = await SharedHiveStore.instance.read('history', 'history');
+      expect(read.reason, SharedHiveUnavailableReason.ownerReadFailed);
+    });
+
+    test('הלוג: המופע הראשון נרשם, חזרות מתקבצות לסיכום אחרי 5 דקות', () async {
+      final logged = <String>[];
+      var now = DateTime(2026, 1, 1, 12);
+      SharedHiveUnavailable.logSink = logged.add;
+      SharedHiveUnavailable.logClock = () => now;
+      addTearDown(() => SharedHiveUnavailable.logClock = DateTime.now);
+
+      await reasonOfWrite();
+      await reasonOfWrite();
+      await reasonOfWrite();
+      // הכתיבה ללוג נדחית מה-isolate הראשי.
+      await Future<void>.delayed(Duration.zero);
+      expect(logged, hasLength(1));
+      expect(logged.single, isNot(contains('אירע')));
+
+      now = now.add(const Duration(minutes: 5));
+      await reasonOfWrite();
+      await Future<void>.delayed(Duration.zero);
+      expect(logged, hasLength(2));
+      expect(logged.last, contains('אירע 3 פעמים'));
+    });
   });
 
   test('מפתח הכרטיסיות ייחודי לכל חלון, והראשון שומר על המפתח ההיסטורי', () {

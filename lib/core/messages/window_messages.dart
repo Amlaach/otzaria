@@ -8,9 +8,6 @@ abstract class WindowMessages {
   static const String cannotTransferTab =
       'לא ניתן להעביר את הכרטיסיה הזו לחלון אחר.';
 
-  static const String cannotTransferLastTab =
-      'זו הכרטיסיה האחרונה בחלון. העברתה תשאיר חלון ריק.';
-
   static const String transferFailed = 'העברת הכרטיסיה לחלון נכשלה.';
 
   /// היעד לא ענה בזמן. הכרטיסיה **לא** הוסרה כאן, אך ייתכן שנקלטה גם שם.
