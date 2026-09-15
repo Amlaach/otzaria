@@ -275,7 +275,7 @@ class PersonalNotesDatabase {
   Future<void> close() async {
     final db = _database;
     if (db != null) {
-      db.close();
+      closeWithCheckpoint(db);
       _database = null;
     }
   }

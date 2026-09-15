@@ -94,7 +94,8 @@ class UserStateDatabase {
 
   /// סוגר את החיבור; הפתיחה הבאה דרך [database] תפתח מחדש.
   void close() {
-    _database?.close();
+    final db = _database;
+    if (db != null) closeWithCheckpoint(db);
     _database = null;
   }
 

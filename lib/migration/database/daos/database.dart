@@ -20,6 +20,7 @@ import 'toc_dao.dart';
 import 'toc_text_dao.dart';
 import 'topic_dao.dart';
 import '../query_loader.dart';
+import '../sqlite3_utils.dart';
 
 class MyDatabase {
   // הקובץ מוחזק ברמת המופע, לא static. זה מאפשר ליצור כמה מופעים
@@ -294,14 +295,10 @@ class MyDatabase {
   }
 
   void close() {
-    // חיבור של חלון מוסתר נשאר פתוח, ואז הסגירה אינה האחרונה ו-SQLite לא ממזג
-    // את ה-WAL. מיזוג מפורש מכניס את הנתונים לקובץ הראשי בכל מקרה.
-    if (!_readOnly) {
-      try {
-        _database?.execute('PRAGMA wal_checkpoint(TRUNCATE)');
-      } catch (_) {}
+    final db = _database;
+    if (db != null) {
+      _readOnly ? db.close() : closeWithCheckpoint(db);
     }
-    _database?.close();
     _database = null;
   }
 
