@@ -285,6 +285,22 @@ class DirectErrorReport extends Equatable {
   /// תקרת גוף הבקשה לפי החוזה (§2.2): 256KB = 256×1024 בתים של UTF-8.
   static const int maxApiBodyBytes = 256 * 1024;
 
+  /// תקרות שדות התצוגה (UTF-16) שהאתר אוכף ב-v2 בדחייה (payload.js).
+  static const int maxSubjectLength = 500;
+  static const int maxTitleOrRefLength = 300;
+  static const int maxSelectedTextLength = 10000;
+  static const int maxContextTextLength = 20000;
+
+  /// מקצר שדה תצוגה לתקרה, עם '…' בסופו. לא חוצה זוג surrogate.
+  /// לעולם לא לשדות המדויקים של [TextCorrection].
+  static String fitDisplayField(String value, int maxLength) {
+    if (value.length <= maxLength) return value;
+    var end = maxLength - 1;
+    final last = value.codeUnitAt(end - 1);
+    if (last >= 0xD800 && last <= 0xDBFF) end--;
+    return '${value.substring(0, end)}…';
+  }
+
   final String id;
   final String senderEmail;
   final String subject;

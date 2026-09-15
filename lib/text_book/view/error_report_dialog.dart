@@ -658,6 +658,7 @@ $detailsSection
         ? 'unknown'
         : libraryVersion.trim();
     final correction = source == null ? null : reportData.correction;
+    const fit = DirectErrorReport.fitDisplayField;
     return DirectErrorReport(
       schemaVersion: DirectErrorReport.currentSchemaVersion,
       reportKind: correction == null
@@ -678,14 +679,24 @@ $detailsSection
       ),
       id: '${DateTime.now().microsecondsSinceEpoch}-${widgetHash(bookTitle, currentRef, reportData.selectedText)}',
       senderEmail: senderEmail,
-      subject: ReportMessages.reportSubject(bookTitle),
-      bookTitle: bookTitle,
-      currentRef: currentRef,
+      // שדות התצוגה מקוצרים כאן, לפני ה-digest: האתר דוחה חריגה ב-v2.
+      subject: fit(
+        ReportMessages.reportSubject(bookTitle),
+        DirectErrorReport.maxSubjectLength,
+      ),
+      bookTitle: fit(bookTitle, DirectErrorReport.maxTitleOrRefLength),
+      currentRef: fit(currentRef, DirectErrorReport.maxTitleOrRefLength),
       lineNumber: lineNumber,
       // שדות חופשיים; surrogate בודד היה פוסל את ה-digest של הדיווח כולו.
-      selectedText: replaceLoneSurrogates(reportData.selectedText),
+      selectedText: fit(
+        replaceLoneSurrogates(reportData.selectedText),
+        DirectErrorReport.maxSelectedTextLength,
+      ),
       errorDetails: replaceLoneSurrogates(reportData.errorDetails),
-      contextText: replaceLoneSurrogates(contextText),
+      contextText: fit(
+        replaceLoneSurrogates(contextText),
+        DirectErrorReport.maxContextTextLength,
+      ),
       filePath: bookDetails['נתיב הקובץ'] ?? '',
       sourceFolder: bookDetails['תיקיית המקור'] ?? '',
       libraryVersion: normalizedLibraryVersion,
