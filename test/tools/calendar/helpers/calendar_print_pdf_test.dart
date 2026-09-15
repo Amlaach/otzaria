@@ -16,8 +16,27 @@ String? _findNativeLibrary() {
       : Platform.isMacOS
       ? 'libopentype_shaper.dylib'
       : 'libopentype_shaper.so';
+  final configFile = File('.dart_tool/package_config.json');
+  if (!configFile.existsSync()) return null;
+
+  final packages =
+      jsonDecode(configFile.readAsStringSync())['packages'] as List;
+  final shaper = packages.cast<Map<String, dynamic>>().firstWhere(
+    (package) => package['name'] == 'opentype_shaper',
+    orElse: () => const {},
+  );
+  final rootUri = shaper['rootUri'] as String?;
+  if (rootUri == null) return null;
+  final packageRoot = Uri.parse(rootUri);
+  final resolvedRoot = packageRoot.hasScheme
+      ? packageRoot
+      : configFile.parent.uri.resolveUri(packageRoot);
+  final packageDirectory = Directory.fromUri(resolvedRoot);
+
   for (final profile in const ['release', 'debug']) {
-    final candidate = File('C:/opentype_shaper/rust/target/$profile/$name');
+    final candidate = File.fromUri(
+      packageDirectory.uri.resolve('rust/target/$profile/$name'),
+    );
     if (candidate.existsSync()) return candidate.absolute.path;
   }
   return null;
