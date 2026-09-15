@@ -294,6 +294,13 @@ class MyDatabase {
   }
 
   void close() {
+    // חיבור של חלון מוסתר נשאר פתוח, ואז הסגירה אינה האחרונה ו-SQLite לא ממזג
+    // את ה-WAL. מיזוג מפורש מכניס את הנתונים לקובץ הראשי בכל מקרה.
+    if (!_readOnly) {
+      try {
+        _database?.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      } catch (_) {}
+    }
     _database?.close();
     _database = null;
   }
