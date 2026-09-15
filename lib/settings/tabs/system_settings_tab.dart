@@ -1254,21 +1254,24 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
             );
           },
         ),
-        FutureBuilder<List<DirectErrorReport>>(
-          future: reportService.getSentReports(),
+        FutureBuilder<(List<DirectErrorReport>, int)>(
+          future: (
+            reportService.getSentReports(),
+            reportService.getSentReportsTotal(),
+          ).wait,
           builder: (context, snapshot) {
-            final sentReports = snapshot.data ?? const <DirectErrorReport>[];
+            final sentReports =
+                snapshot.data?.$1 ?? const <DirectErrorReport>[];
 
             return ExpandableSection(
               icon: FluentIcons.checkmark_circle_24_regular,
               title: context.settingsText('דיווחים שנשלחו'),
               hasContent: sentReports.isNotEmpty,
-              subtitle: sentReports.isEmpty
-                  ? context.settingsText('עדיין אין דיווחים שנשלחו דרך המערכת')
-                  : context.settingsText(
-                      'נשמרו {count} דיווחים שנשלחו',
-                      args: {'count': sentReports.length},
-                    ),
+              subtitle: _sentReportsSubtitle(
+                context,
+                shown: sentReports.length,
+                total: snapshot.data?.$2 ?? 0,
+              ),
               onTap: () => setState(
                 () => _isSentReportsExpanded = !_isSentReportsExpanded,
               ),
@@ -1431,6 +1434,27 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   //  דיווחים על תוספים
   // ════════════════════════════════════════════════════════════════════════════
 
+  /// ההיסטוריה שמורה עד תקרה קבועה, ולכן הספירה הכוללת מוצגת בנפרד.
+  String _sentReportsSubtitle(
+    BuildContext context, {
+    required int shown,
+    required int total,
+  }) {
+    if (shown == 0) {
+      return context.settingsText('עדיין אין דיווחים שנשלחו דרך המערכת');
+    }
+    if (total > shown) {
+      return context.settingsText(
+        'נשלחו {total} דיווחים, מוצגים {shown} האחרונים',
+        args: {'total': total, 'shown': shown},
+      );
+    }
+    return context.settingsText(
+      'נשמרו {count} דיווחים שנשלחו',
+      args: {'count': shown},
+    );
+  }
+
   String _pluginReportTypeLabel(BuildContext context, String reportType) {
     switch (reportType) {
       case 'bug':
@@ -1501,6 +1525,46 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
     } else {
       UiSnack.show(ReportMessages.queuedAfterFailure('אוצריא'));
     }
+  }
+
+  Future<void> _editPendingPluginReport(PluginReportRecord record) async {
+    var reportType = record.reportType;
+    var details = record.details;
+
+    final confirmed = await showTwoActionsDialog(
+      context: context,
+      title: context.settingsText('עריכת דיווח שמור'),
+      content: '',
+      cancelText: context.settingsText('ביטול'),
+      confirmText: context.settingsText('שמור'),
+      handleEnterKey: false,
+      customContent: SizedBox(
+        width: 560,
+        child: _PluginReportEditFields(
+          initialType: record.reportType,
+          initialDetails: record.details,
+          typeLabel: (type) => _pluginReportTypeLabel(context, type),
+          onChanged: (type, text) {
+            reportType = type;
+            details = text;
+          },
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    if (details.trim().isEmpty) {
+      UiSnack.showError(ReportMessages.detailsRequired);
+      return;
+    }
+
+    await PluginReportService().updatePendingReport(
+      record.reportId,
+      reportType: reportType,
+      details: details,
+    );
+    if (!mounted) return;
+    setState(() {});
+    UiSnack.showSuccess(ReportMessages.reportUpdated);
   }
 
   Future<void> _deletePendingPluginReport(PluginReportRecord record) async {
@@ -1788,21 +1852,24 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
             );
           },
         ),
-        FutureBuilder<List<PluginReportRecord>>(
-          future: reportService.getSentReports(),
+        FutureBuilder<(List<PluginReportRecord>, int)>(
+          future: (
+            reportService.getSentReports(),
+            reportService.getSentReportsTotal(),
+          ).wait,
           builder: (context, snapshot) {
-            final sentRecords = snapshot.data ?? const <PluginReportRecord>[];
+            final sentRecords =
+                snapshot.data?.$1 ?? const <PluginReportRecord>[];
 
             return ExpandableSection(
               icon: FluentIcons.checkmark_circle_24_regular,
               title: context.settingsText('דיווחים שנשלחו'),
               hasContent: sentRecords.isNotEmpty,
-              subtitle: sentRecords.isEmpty
-                  ? context.settingsText('עדיין אין דיווחים שנשלחו דרך המערכת')
-                  : context.settingsText(
-                      'נשמרו {count} דיווחים שנשלחו',
-                      args: {'count': sentRecords.length},
-                    ),
+              subtitle: _sentReportsSubtitle(
+                context,
+                shown: sentRecords.length,
+                total: snapshot.data?.$2 ?? 0,
+              ),
               onTap: () => setState(
                 () => _isPluginSentReportsExpanded =
                     !_isPluginSentReportsExpanded,
@@ -1872,6 +1939,11 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
               text: context.settingsText('צפה'),
               icon: FluentIcons.eye_24_regular,
               onPressed: () => _showPluginReportDetails(record, sent: false),
+            ),
+            ActionButton.neutral(
+              text: context.settingsText('ערוך'),
+              icon: FluentIcons.edit_24_regular,
+              onPressed: () => _editPendingPluginReport(record),
             ),
             ActionButton.neutral(
               text: context.settingsText('מחק'),
@@ -3069,6 +3141,77 @@ class _PendingReportEditFieldsState extends State<_PendingReportEditFields> {
               top: 12,
               bottom: 12,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PluginReportEditFields extends StatefulWidget {
+  final String initialType;
+  final String initialDetails;
+  final String Function(String type) typeLabel;
+  final void Function(String type, String details) onChanged;
+
+  const _PluginReportEditFields({
+    required this.initialType,
+    required this.initialDetails,
+    required this.typeLabel,
+    required this.onChanged,
+  });
+
+  @override
+  State<_PluginReportEditFields> createState() =>
+      _PluginReportEditFieldsState();
+}
+
+class _PluginReportEditFieldsState extends State<_PluginReportEditFields> {
+  late String _type = PluginReportService.normalizeReportType(
+    widget.initialType,
+  );
+  late final TextEditingController _detailsController = TextEditingController(
+    text: widget.initialDetails,
+  );
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  void _notifyChanged() => widget.onChanged(_type, _detailsController.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppSegmentedControl<String>(
+          expandToFillWidth: true,
+          showSelectedIcon: false,
+          options: [
+            for (final type in PluginReportService.reportTypes)
+              SegmentOption(value: type, label: widget.typeLabel(type)),
+          ],
+          currentValue: _type,
+          onChanged: (type) {
+            setState(() => _type = type);
+            _notifyChanged();
+          },
+        ),
+        const SizedBox(height: 12),
+        RtlTextField(
+          controller: _detailsController,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          minLines: 3,
+          maxLines: 8,
+          onChanged: (_) => _notifyChanged(),
+          decoration: InputDecoration(
+            labelText: context.settingsText('פירוט'),
+            isDense: true,
+            contentPadding: const EdgeInsets.only(top: 12, bottom: 12),
           ),
         ),
       ],

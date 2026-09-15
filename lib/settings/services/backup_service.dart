@@ -23,6 +23,7 @@ import 'package:otzaria/plugins/models/installed_plugin.dart';
 import 'package:otzaria/plugins/services/plugin_manifest_validator.dart';
 import 'package:otzaria/plugins/services/plugin_report_service.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/core/app_paths.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -622,6 +623,7 @@ class BackupService {
       queues[queue.box] = {
         'pending': _reportList(box.get(queue.pendingKey)),
         'sent': _reportList(box.get(queue.sentKey)),
+        'sentTotal': _sentTotal(box.get(SentReportsCounter.defaultKey)),
       };
     }
     return queues;
@@ -635,6 +637,8 @@ class BackupService {
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
   }
+
+  static int _sentTotal(Object? raw) => raw is int ? raw : 0;
 
   /// מזהה הדיווח, שנקרא `id` בדיווחי הטעות ו-`reportId` בדיווחי התוספים.
   static String? _reportId(Map<String, dynamic> report) =>
@@ -915,6 +919,13 @@ class BackupService {
 
       await box.put(queue.pendingKey, pending);
       await box.put(queue.sentKey, sent);
+      // המונה אינו ניתן למיזוג לפי מזהה; הגדול מבין השניים הוא הקירוב הטוב.
+      final total = [
+        _sentTotal(box.get(SentReportsCounter.defaultKey)),
+        _sentTotal(backedUp['sentTotal']),
+        sent.length,
+      ].reduce((a, b) => a > b ? a : b);
+      await box.put(SentReportsCounter.defaultKey, total);
     }
     return skipped;
   }

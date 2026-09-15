@@ -104,6 +104,8 @@ abstract class ReportMessages {
 
   static const String markedAsSent = 'הדיווח סומן כנשלח.';
   static const String reportUpdated = 'הדיווח עודכן.';
+  static const String detailsRequired =
+      'לא ניתן לשמור דיווח ללא פירוט. הדיווח לא שונה.';
   static const String removedFromQueue = 'הדיווח הוסר מהתור.';
   static const String deletedFromHistory = 'הדיווח נמחק מההיסטוריה.';
   static const String historyCleared = 'היסטוריית הדיווחים נוקתה.';

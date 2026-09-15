@@ -10,6 +10,7 @@ import 'package:otzaria/core/http_client_registry.dart';
 import 'package:otzaria/data/repository/hive_list_repository.dart';
 import 'package:otzaria/plugins/models/plugin_report_record.dart';
 import 'package:otzaria/services/offline_report_script_builder.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -26,10 +27,12 @@ class PluginReportService {
     http.Client? client,
     HiveListRepository<PluginReportRecord>? queueRepository,
     HiveListRepository<PluginReportRecord>? sentRepository,
+    SentReportsCounter? sentCounter,
   }) : _client = client ?? _shared,
        _queueRepository =
            queueRepository ?? _defaultRepository(pendingReportsKey),
-       _sentRepository = sentRepository ?? _defaultRepository(sentReportsKey);
+       _sentRepository = sentRepository ?? _defaultRepository(sentReportsKey),
+       _sentCounter = sentCounter ?? SentReportsCounter(boxName: queueBoxName);
 
   static final Uri endpoint = Uri.parse(
     'https://otzaria.org/api/plugin-reports',
@@ -64,6 +67,7 @@ class PluginReportService {
   final http.Client _client;
   final HiveListRepository<PluginReportRecord> _queueRepository;
   final HiveListRepository<PluginReportRecord> _sentRepository;
+  final SentReportsCounter _sentCounter;
 
   static final http.Client _shared = _createClient();
   static final Random _random = Random.secure();
@@ -199,9 +203,46 @@ class PluginReportService {
     return _sentRepository.load();
   }
 
+  /// כל הדיווחים שנשלחו אי-פעם — לא רק אלה שנשארו בהיסטוריה.
+  Future<int> getSentReportsTotal() async {
+    final total = await _sentCounter.read();
+    final kept = (await _sentRepository.load()).length;
+    return total > kept ? total : kept;
+  }
+
   Future<void> deletePendingReport(String reportId) async {
     final records = await _queueRepository.load();
     records.removeWhere((record) => record.reportId == reportId);
+    await _queueRepository.overwrite(records);
+  }
+
+  /// מעדכן סוג ופירוט של דיווח בתור. שינוי בתוכן מקבל `reportId` חדש: השרת
+  /// מסנן מזהה שכבר נקלט, והגרסה המתוקנת הייתה נבלעת כשליחה כפולה.
+  Future<void> updatePendingReport(
+    String reportId, {
+    required String reportType,
+    required String details,
+  }) async {
+    final records = await _queueRepository.load();
+    final index = records.indexWhere((record) => record.reportId == reportId);
+    if (index == -1) return;
+
+    final current = records[index];
+    final type = normalizeReportType(reportType);
+    final trimmed = details.trim();
+    final text = trimmed.length > maxDetailsLength
+        ? trimmed.substring(0, maxDetailsLength)
+        : trimmed;
+    if (text.isEmpty) {
+      throw Exception('details required');
+    }
+    if (type == current.reportType && text == current.details) return;
+
+    records[index] = current.copyWith(
+      reportId: generateReportId(),
+      reportType: type,
+      details: text,
+    );
     await _queueRepository.overwrite(records);
   }
 
@@ -217,6 +258,7 @@ class PluginReportService {
 
   Future<void> clearSentReports() async {
     await _sentRepository.clear();
+    await _sentCounter.reset();
   }
 
   /// מנסה לשלוח את הדיווחים השמורים; עוצר בכשל זמני ראשון, ומסיר מהתור
@@ -316,12 +358,17 @@ class PluginReportService {
 
   Future<void> _saveSentReport(PluginReportRecord record) async {
     final sentRecords = await _sentRepository.load();
+    final kept = sentRecords.length;
+    final isNew = sentRecords.every(
+      (item) => item.reportId != record.reportId,
+    );
     sentRecords.removeWhere((item) => item.reportId == record.reportId);
     sentRecords.insert(0, record);
     if (sentRecords.length > maxSentReportsToKeep) {
       sentRecords.removeRange(maxSentReportsToKeep, sentRecords.length);
     }
     await _sentRepository.overwrite(sentRecords);
+    if (isNew) await _sentCounter.increment(floor: kept);
   }
 
   Future<_SendAttemptResult> _trySend(PluginReportRecord record) async {

@@ -9,6 +9,7 @@ import 'package:otzaria/data/repository/hive_list_repository.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/core/messages/report_messages.dart';
 
 import '../models/direct_error_report_text_correction_test.dart'
@@ -180,6 +181,33 @@ void main() {
       expect(script.content, contains('% 8'));
       expect(script.content, contains('עד 8 דיווחים בדקה'));
       expect(script.content, contains('להריץ קובץ זה שוב בבטחה'));
+    });
+  });
+
+  group('DirectErrorReportService — ספירת הנשלחים (issue #1343)', () {
+    test('המונה ממשיך מעבר לתקרת ההיסטוריה', () async {
+      const max = DirectErrorReportService.maxSentReportsToKeep;
+      final repository = InMemoryDirectErrorReportRepository();
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      await repository.overwrite([
+        for (var i = 0; i < max + 3; i++) _buildReport(id: 'r-$i'),
+      ]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('', 200)),
+        queueRepository: repository,
+        sentRepository: sentRepository,
+        sentCounter: SentReportsCounter.inMemory(),
+      );
+
+      while ((await repository.load()).isNotEmpty) {
+        await service.flushPendingReports();
+      }
+
+      expect((await sentRepository.load()).length, max);
+      expect(await service.getSentReportsTotal(), max + 3);
+
+      await service.clearSentReports();
+      expect(await service.getSentReportsTotal(), 0);
     });
   });
 

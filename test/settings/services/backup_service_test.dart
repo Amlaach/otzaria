@@ -11,6 +11,7 @@ import 'package:otzaria/plugins/models/plugin_manifest.dart';
 import 'package:otzaria/plugins/services/plugin_report_service.dart';
 import 'package:otzaria/plugins/storage/plugin_system_database.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/personal_notes/storage/personal_notes_database.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
@@ -1227,6 +1228,23 @@ void main() {
         await afterRestart.closeHttpClient();
       },
     );
+
+    test('מונה הנשלחים עובר גיבוי ושחזור, והגדול מבין השניים נשמר', () async {
+      await reportsBox.put(DirectErrorReportService.sentReportsKey, [
+        report('sent-1'),
+      ]);
+      await reportsBox.put(SentReportsCounter.defaultKey, 250);
+      final path = await createSettingsBackup();
+
+      await reportsBox.clear();
+      await reportsBox.put(SentReportsCounter.defaultKey, 3);
+      await BackupService.restoreFromBackup(path);
+
+      expect(reportsBox.get(SentReportsCounter.defaultKey), 250);
+      final service = DirectErrorReportService();
+      expect(await service.getSentReportsTotal(), 250);
+      await service.closeHttpClient();
+    });
 
     test('דיווח שנשלח מאז אינו חוזר לתור בשחזור', () async {
       await reportsBox.put(DirectErrorReportService.pendingReportsKey, [

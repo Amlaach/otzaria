@@ -9,6 +9,7 @@ import 'package:otzaria/core/messages/report_messages.dart';
 import 'package:otzaria/data/repository/hive_list_repository.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/services/offline_report_script_builder.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 
 export 'package:otzaria/services/offline_report_script_builder.dart'
@@ -104,12 +105,15 @@ class DirectErrorReportService {
   final http.Client _client;
   final HiveListRepository<DirectErrorReport> _queueRepository;
   final HiveListRepository<DirectErrorReport> _sentRepository;
+  final SentReportsCounter _sentCounter;
 
   DirectErrorReportService({
     http.Client? client,
     HiveListRepository<DirectErrorReport>? queueRepository,
     HiveListRepository<DirectErrorReport>? sentRepository,
+    SentReportsCounter? sentCounter,
   }) : _client = client ?? http.Client(),
+       _sentCounter = sentCounter ?? SentReportsCounter(boxName: queueBoxName),
        _queueRepository =
            queueRepository ??
            HiveListRepository<DirectErrorReport>(
@@ -186,8 +190,16 @@ class DirectErrorReportService {
     await _sentRepository.overwrite(reports);
   }
 
+  /// כל הדיווחים שנשלחו אי-פעם — לא רק אלה שנשארו בהיסטוריה.
+  Future<int> getSentReportsTotal() async {
+    final total = await _sentCounter.read();
+    final kept = (await _sentRepository.load()).length;
+    return total > kept ? total : kept;
+  }
+
   Future<void> clearSentReports() async {
     await _sentRepository.clear();
+    await _sentCounter.reset();
   }
 
   /// מעדכן דיווח בתור. תוכן ששונה מקבל `report_id` חדש: ייתכן שהגרסה הקודמת
@@ -475,12 +487,15 @@ class DirectErrorReportService {
 
   Future<void> _saveSentReport(DirectErrorReport report) async {
     final sentReports = await _sentRepository.load();
+    final kept = sentReports.length;
+    final isNew = sentReports.every((item) => item.id != report.id);
     sentReports.removeWhere((item) => item.id == report.id);
     sentReports.insert(0, report);
     if (sentReports.length > maxSentReportsToKeep) {
       sentReports.removeRange(maxSentReportsToKeep, sentReports.length);
     }
     await _sentRepository.overwrite(sentReports);
+    if (isNew) await _sentCounter.increment(floor: kept);
   }
 
   /// הרשומה להיסטוריית הנשלחים: הצעת תיקון מסומנת אם השרת תמך בה.

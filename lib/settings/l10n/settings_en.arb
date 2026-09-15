@@ -295,6 +295,8 @@
   "דיווחים שנשלחו": "Sent Reports",
   "עדיין אין דיווחים שנשלחו דרך המערכת": "Nothing has been sent through the system yet",
   "נשמרו {count} דיווחים שנשלחו": "{count} sent reports saved",
+  "נשלחו {total} דיווחים, מוצגים {shown} האחרונים": "{total} reports sent, showing the last {shown}",
+  "פירוט": "Details",
   "נקה את כל ההיסטוריה": "Clear History",
   "ללא פירוט": "No Details",
   "צפה": "View",
