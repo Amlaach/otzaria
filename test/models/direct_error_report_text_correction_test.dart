@@ -215,6 +215,20 @@ void main() {
       expect(payload['error_details'], 'פירוט');
     });
 
+    test('created_at שמור (גם בלי אזור זמן) נשלח כלשונו אחרי שמירה בתור', () {
+      for (final stored in [
+        '2026-03-16T10:15:00.000',
+        '2026-03-16T10:15:00.123456Z',
+      ]) {
+        final json = {...legacyJson, 'createdAt': stored};
+        final resaved = DirectErrorReport.fromJson(
+          DirectErrorReport.fromJson(json).toJson(),
+        );
+        expect(resaved.toJson()['createdAt'], stored);
+        expect(resaved.toApiPayload()['created_at'], stored);
+      }
+    });
+
     test('[T1] שמירה חוזרת בתור ואז טעינה — עדיין payload ישן', () {
       final resaved = DirectErrorReport.fromJson(
         DirectErrorReport.fromJson(legacyJson).toJson(),

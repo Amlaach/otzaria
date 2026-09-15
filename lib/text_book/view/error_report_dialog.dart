@@ -689,7 +689,7 @@ $detailsSection
       filePath: bookDetails['נתיב הקובץ'] ?? '',
       sourceFolder: bookDetails['תיקיית המקור'] ?? '',
       libraryVersion: normalizedLibraryVersion,
-      createdAt: DateTime.now(),
+      createdAt: DateTime.now().toUtc(),
     );
   }
 

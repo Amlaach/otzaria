@@ -978,6 +978,23 @@ void main() {
     expect(report.contextText, 'הקשר�');
     expect(report.contentDigest, hasLength(64));
   });
+
+  test('created_at של דיווח חדש נשלח ב-UTC עם Z', () {
+    final report = ErrorReportHelper.buildDirectReport(
+      senderEmail: 'user@example.com',
+      reportData: const ReportedErrorData(selectedText: 'א', errorDetails: 'ב'),
+      bookTitle: 'ספר',
+      currentRef: 'א',
+      bookDetails: const {},
+      lineNumber: 1,
+      contextText: '',
+      libraryVersion: '27',
+    );
+
+    final createdAt = report.toApiPayload()['created_at'] as String;
+    expect(createdAt, endsWith('Z'));
+    expect(DateTime.parse(createdAt).isUtc, isTrue);
+  });
 }
 
 TextBookLoaded _loadedState() {
