@@ -170,6 +170,47 @@ void main() {
       expect(result, equals('אוצריא'));
     });
 
+    test('email recipients mirror the website routing', () {
+      expect(
+        ErrorReportHelper.emailRecipientsFor('SefariaToOtzaria'),
+        'corrections@sefaria.org,jewishoffice@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor('wikiSource'),
+        'otzaria.200@gmail.com,novartza@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor('local'),
+        'otzaria.200@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor(null),
+        'otzaria.200@gmail.com',
+      );
+    });
+
+    test('only sources that reach the Otzaria inbox allow a correction', () {
+      for (final folder in ['sefaria', 'SefariaToOtzaria', 'my-sefaria-x']) {
+        expect(ErrorReportHelper.reportReachesOtzaria(folder), isFalse);
+      }
+      for (final folder in [
+        'wiki_jewish_books',
+        'wikiSource',
+        'Pninim',
+        'Tashma',
+        'Ben-Yehuda',
+        'local',
+        '',
+        null,
+      ]) {
+        expect(
+          ErrorReportHelper.reportReachesOtzaria(folder),
+          isTrue,
+          reason: '$folder',
+        );
+      }
+    });
+
     test('identifies dicta source folder', () {
       expect(ErrorReportHelper.isDictaSourceFolder('DictaToOtzaria'), isTrue);
       expect(ErrorReportHelper.isDictaSourceFolder('dicta'), isTrue);

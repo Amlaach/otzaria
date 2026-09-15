@@ -364,16 +364,9 @@ class DirectErrorReportService {
   }
 
   bool _isSefariaReport(DirectErrorReport report) {
-    return _sefariaSourceFolders.contains(
-      report.sourceFolder.trim().toLowerCase(),
-    );
+    // הכלה ולא התאמה מדויקת: זהה לניתוב המייל בשרת (getEmailRecipients).
+    return report.sourceFolder.trim().toLowerCase().contains('sefaria');
   }
-
-  /// התאמה מדויקת, זהה לניתוב באתר (resolver.js) — לא הכלה.
-  static const Set<String> _sefariaSourceFolders = {
-    'sefaria',
-    'sefariatootzaria',
-  };
 
   String _resolveDirectReportTargetLabel(DirectErrorReport report) {
     return _isSefariaReport(report)

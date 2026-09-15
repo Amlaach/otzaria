@@ -322,6 +322,33 @@ class ErrorReportHelper {
         normalizedSource.contains('sefaria');
   }
 
+  /// נמעני המייל לפי מקור הספר, מופרדים בפסיק. סדר המפתחות חשוב, והמיפוי
+  /// חייב להישאר תואם ל-getEmailRecipients בשרת (Otzaria_Website).
+  static String emailRecipientsFor(String? sourceFolder) {
+    if (sourceFolder == null) return _fallbackMail;
+    const sourceToEmailMap = {
+      'sefariaToOtzaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
+      'sefaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
+      'wiki_jewish_books': '$_fallbackMail,WikiJewishBooks@gmail.com',
+      'wikiSource': '$_fallbackMail,novartza@gmail.com',
+      'Pninim': '$_fallbackMail,contact@pninim.org',
+      'Tashma': '$_fallbackMail,jewishoffice@gmail.com',
+      'Ben-Yehuda': '$_fallbackMail,editor@benyehuda.org',
+    };
+    final normalizedSource = sourceFolder.toLowerCase();
+    return sourceToEmailMap.entries
+            .firstWhereOrNull(
+              (entry) => normalizedSource.contains(entry.key.toLowerCase()),
+            )
+            ?.value ??
+        _fallbackMail;
+  }
+
+  /// האם דיווח על ספר מהמקור הזה מגיע לתיבת אוצריא. רק דיווח כזה נכנס
+  /// למערכת התיקונים באתר, ולכן רק לו מוצע מסלול "הצעת תיקון".
+  static bool reportReachesOtzaria(String? sourceFolder) =>
+      emailRecipientsFor(sourceFolder).split(',').contains(_fallbackMail);
+
   static bool isDictaSourceFolder(String? sourceFolder) {
     final normalizedSource = sourceFolder?.trim().toLowerCase() ?? '';
     return normalizedSource.contains('dicta');
@@ -865,42 +892,9 @@ $detailsSection
     );
 
     if (action == ErrorReportAction.sendEmail) {
-      final String? sourceFolder = bookDetails['תיקיית המקור'];
-      final normalizedSource = sourceFolder?.toLowerCase() ?? '';
-
-      // קביעת כתובות המייל לפי מקור הספר
-      // סדר המפתחות חשוב כדי לחקות את סדר הבדיקות המקורי
-      // חייב להישאר תואם ל-getEmailRecipients בשרת (Otzaria_Website)
-      final sourceToEmailMap = {
-        'sefariaToOtzaria':
-            'corrections@sefaria.org,jewishoffice@gmail.com', // שליחה לספריא עם עותק לתא שמע
-        'sefaria':
-            'corrections@sefaria.org,jewishoffice@gmail.com', // שליחה לספריא עם עותק לתא שמע
-        'wiki_jewish_books':
-            '$_fallbackMail,WikiJewishBooks@gmail.com', // שליחה גם לאוצריא וגם ל-WikiJewishBooks
-        'wikiSource':
-            '$_fallbackMail,novartza@gmail.com', // שליחה גם לאוצריא וגם ל-wikiSource
-        'Pninim':
-            '$_fallbackMail,contact@pninim.org', // שליחה גם לאוצריא וגם ל-Pninim
-        'Tashma':
-            '$_fallbackMail,jewishoffice@gmail.com', // שליחה גם לאוצריא וגם ל-Tashma
-        'Ben-Yehuda':
-            '$_fallbackMail,editor@benyehuda.org', // שליחה גם לאוצריא וגם ל-Ben-Yehuda
-      };
-
-      final emailAddress = sourceFolder == null
-          ? _fallbackMail
-          : sourceToEmailMap.entries
-                    .firstWhereOrNull(
-                      (entry) =>
-                          normalizedSource.contains(entry.key.toLowerCase()),
-                    )
-                    ?.value ??
-                _fallbackMail;
-
       final emailUri = Uri(
         scheme: 'mailto',
-        path: emailAddress,
+        path: emailRecipientsFor(bookDetails['תיקיית המקור']),
         query: encodeQueryParameters(<String, String>{
           'subject': ReportMessages.reportSubject(bookTitle),
           'body': emailBody,
@@ -1014,12 +1008,14 @@ $detailsSection
     );
     final isDictaSource = isDictaSourceFolder(bookDetails['תיקיית המקור']);
     // הצעת תיקון נבנית רק על השורה הגולמית מה-DB, לא על הטקסט המעובד שהוצג.
-    final source = await resolveReportSource(
-      book: effectiveBook,
-      lineIndex: currentLineNumber,
-      content: effectiveContent,
-      reportLine: reportLine,
-    );
+    final source = reportReachesOtzaria(bookDetails['תיקיית המקור'])
+        ? await resolveReportSource(
+            book: effectiveBook,
+            lineIndex: currentLineNumber,
+            content: effectiveContent,
+            reportLine: reportLine,
+          )
+        : null;
     final correctionTemplate = source == null
         ? null
         : buildCorrectionTemplate(source.originalLine, selectedText);

@@ -383,7 +383,7 @@ void main() {
     );
 
     test(
-      'sefaria label only for an exact source folder, like the website',
+      'sefaria label by containment, like the website email routing',
       () async {
         Future<String?> messageFor(String sourceFolder) async {
           final service = DirectErrorReportService(
@@ -397,10 +397,15 @@ void main() {
           return result.message;
         }
 
-        for (final folder in ['Sefaria', ' SEFARIATOOTZARIA ']) {
+        for (final folder in [
+          'Sefaria',
+          ' SEFARIATOOTZARIA ',
+          'sefaria-extra',
+          'mysefaria',
+        ]) {
           expect(await messageFor(folder), ReportMessages.sentToSefaria);
         }
-        for (final folder in ['sefaria-extra', 'mysefaria', 'sefariaBooks']) {
+        for (final folder in ['wikiSource', 'Tashma', '']) {
           expect(await messageFor(folder), ReportMessages.sentToOtzaria);
         }
       },
