@@ -59,6 +59,7 @@ class SettingsRepository {
   static const String keyCopyWithHeaders = 'key-copy-with-headers';
   static const String keyCopyHeaderFormat = 'key-copy-header-format';
   static const String keyIsFullscreen = 'key-is-fullscreen';
+  static const String keyRestoreAllWindows = 'key-restore-all-windows';
   static const String keyLibraryViewMode = 'key-library-view-mode';
   static const String keyLibraryShowPreview = 'key-library-show-preview';
   static const String keySearchShowPreview = 'key-search-show-preview';
@@ -224,6 +225,7 @@ class SettingsRepository {
     keyCopyWithHeaders,
     keyCopyHeaderFormat,
     keyIsFullscreen,
+    keyRestoreAllWindows,
     keyLibraryViewMode,
     keyLibraryShowPreview,
     keySearchShowPreview,

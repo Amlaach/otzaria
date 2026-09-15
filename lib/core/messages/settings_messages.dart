@@ -116,16 +116,6 @@ abstract class SettingsMessages {
   static String backupCreateError(Object error) =>
       'שגיאה ביצירת הגיבוי: $error';
 
-  /// ⚠️ הגיבוי נעצר במכוון. סעיף ריק בקובץ נראה תקין, ושחזור ממנו מוחק.
-  static const String backupSharedDataUnavailable =
-      'הגיבוי לא נוצר: לא ניתן לקרוא כרגע את ההיסטוריה, הסימניות ושולחנות '
-      'העבודה מהחלון הראשי. נסה שוב מהחלון הראשי, או אחרי שהוא סיים להיטען.';
-
-  /// שחזור וייבוא נעשים בחלון הראשי בלבד.
-  static const String restoreOnlyInMainWindow =
-      'שחזור וייבוא נתונים אפשריים רק בחלון הראשי של אוצריא. עבור לחלון '
-      'הראשי ונסה שוב.';
-
   static const String noBackupFileFound = 'לא נמצא קובץ גיבוי בתיקיית הגיבוי';
 
   static const String backupExported = 'קובץ הגיבוי נשמר במיקום שנבחר';

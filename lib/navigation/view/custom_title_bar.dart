@@ -635,7 +635,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
           _crossWindowDrag.applySnapshot(snapshot, generation),
       onDragFinishedAnywhere: _crossWindowDrag.end,
       onDragLeftStrip: _crossWindowDrag.notePointerLeftStrip,
-      onDroppedOutside: MultiWindowService.isSupported
+      onDroppedOutside: MultiWindowService.canDragTabsOut
           ? (tab) => _crossWindowDrag.handleDroppedOutside(
               tab,
               context.read<TabsBloc>(),
