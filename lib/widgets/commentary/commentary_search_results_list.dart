@@ -86,6 +86,7 @@ class _CommentarySearchResultsListState
         height: 1.5,
       ),
       highlightStyle: TextStyle(
+        fontFamily: settingsState.commentatorsFontFamily,
         fontWeight: FontWeight.bold,
         fontVariations: AppFonts.boldFontVariations(
           settingsState.commentatorsFontFamily,

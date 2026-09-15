@@ -145,6 +145,29 @@ Future<void> main() async {
       expect(find.text('תוספות'), findsOneWidget);
     });
 
+    rustTest('המילה המודגשת בגופן המפרשים ולא בגופן הכללי (issue #1367)', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        query: 'שבידו',
+        snippets: [_snippet('מאירי', 'כל שבידו נאמן', 0)],
+      );
+      final expected = SettingsState.initial().commentatorsFontFamily;
+      final root =
+          tester.widget<RichText>(find.byType(RichText).last).text as TextSpan;
+      final spans = <TextSpan>[];
+      root.visitChildren((span) {
+        if (span is TextSpan && span.text != null) spans.add(span);
+        return true;
+      });
+      final highlighted = spans.where((s) => s.text == 'שבידו');
+      expect(highlighted, hasLength(1));
+      for (final span in spans) {
+        expect(span.style?.fontFamily, expected, reason: span.text);
+      }
+    });
+
     rustTest('לחיצה על קטע מדווחת את ה-globalIndex שלו', (tester) async {
       int? tapped;
       await tester.pumpWidget(
