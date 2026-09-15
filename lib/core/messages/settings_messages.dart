@@ -51,6 +51,12 @@ abstract class SettingsMessages {
   static String unsupportedFilesSkipped(int count) =>
       '$count קבצים דולגו — ניתן לייבא רק TXT, PDF ו-Word';
 
+  static const folderHasNoBooks = 'לא נמצאו בתיקייה קבצי ספרים שאפשר לייבא';
+
+  static String folderImportCancelled(int copied) => copied == 0
+      ? 'ייבוא התיקייה בוטל'
+      : 'ייבוא התיקייה בוטל — $copied ספרים שכבר הועתקו נשארו בספרייה';
+
   static String bookDeleteError(Object error) => 'שגיאה במחיקת הספר: $error';
 
   static String bookDeleted(String title) => 'הספר "$title" נמחק';
