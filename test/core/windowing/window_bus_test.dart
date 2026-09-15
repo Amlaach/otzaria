@@ -2,6 +2,7 @@ import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 
 /// ⚠️ קידומת ייחודית לסוויטה. [IsolateNameServer] גלובלי לתהליך — בדיוק
@@ -215,6 +216,38 @@ void main() {
     expect(found.map((p) => p.slot), [2]);
     expect(found.single.title, 'בראשית');
     expect(found.single.tabCount, 3);
+  });
+
+  test('openUri נמסר לחלון היעד ומחזיר את תשובתו', () async {
+    // ⚠️ המארח הוא המנקז היחיד של תור ההפעלות החיצוניות, ולכן הקישור מגיע
+    // לחלון הפעיל האחרון רק דרך הבקשה הזו.
+    String? delivered;
+    final target = _FakePeer(2, (request) {
+      delivered = request['uri'] as String?;
+      return true;
+    });
+    expect(target.register(), isTrue);
+    addTearDown(target.dispose);
+
+    WindowBus.instance.register();
+    final answer = await WindowBus.instance.request(2, {
+      'type': MultiWindowService.requestOpenUri,
+      'uri': 'otzaria://library',
+    }, timeout: const Duration(milliseconds: 300));
+
+    expect(delivered, 'otzaria://library');
+    expect(answer, isTrue);
+  });
+
+  test('openUri למשבצת פנויה מחזיר null — המארח יטפל בעצמו', () async {
+    WindowBus.instance.register();
+    expect(
+      await WindowBus.instance.request(3, {
+        'type': MultiWindowService.requestOpenUri,
+        'uri': 'otzaria://library',
+      }, timeout: const Duration(milliseconds: 200)),
+      isNull,
+    );
   });
 
   test('peers מחזיר רשימה ריקה כשאין חלונות אחרים', () async {

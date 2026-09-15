@@ -285,15 +285,31 @@ Widget _buildBookDetailsContent(
           else
             Text(sourceInfo.text, style: const TextStyle(fontSize: 14)),
           if (bookDetails['נתיב הקובץ'] != BookDetailsService.bookNotFoundText)
-            DetailsInfoSection(
-              title: 'נתיב הקובץ:',
-              icon: FluentIcons.folder_open_24_regular,
-              value: bookDetails['נתיב הקובץ']!,
-              valueDirection: TextDirection.ltr,
-            ),
+            _buildFilePathSection(bookDetails['נתיב הקובץ']!),
         ],
       ),
     ),
+  );
+}
+
+/// נתיב קובץ בספריית אוצריא כפי שמוצג למשתמש: בלי הקידומת `אוצריא/` ובלי
+/// הסיומת. מחזיר null לנתיב שאינו בספרייה (למשל נתיב מוחלט של ספר אישי).
+String? libraryDisplayPath(String filePath) {
+  const libraryPrefix = 'אוצריא/';
+  if (!filePath.startsWith(libraryPrefix)) return null;
+  final relative = filePath.substring(libraryPrefix.length);
+  final lastSlash = relative.lastIndexOf('/');
+  final lastDot = relative.lastIndexOf('.');
+  return lastDot > lastSlash ? relative.substring(0, lastDot) : relative;
+}
+
+Widget _buildFilePathSection(String filePath) {
+  final libraryPath = libraryDisplayPath(filePath);
+  return DetailsInfoSection(
+    title: 'נתיב הקובץ:',
+    icon: FluentIcons.folder_open_24_regular,
+    value: libraryPath ?? filePath,
+    valueDirection: libraryPath == null ? TextDirection.ltr : null,
   );
 }
 

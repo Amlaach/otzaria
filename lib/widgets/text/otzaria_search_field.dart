@@ -466,12 +466,7 @@ class _OtzariaSearchFieldState extends State<OtzariaSearchField> {
         textInputAction: TextInputAction.search,
         textAlignVertical: TextAlignVertical.center,
         cursorColor: cs.onSurface.withValues(alpha: 0.87),
-        style: TextStyle(
-          fontSize: effectiveFontSize,
-          color: contentColor,
-          height: 1.0,
-          leadingDistribution: TextLeadingDistribution.even,
-        ),
+        style: TextStyle(fontSize: effectiveFontSize, color: contentColor),
         decoration: InputDecoration(
           filled: true,
           fillColor: fillColor,
@@ -494,12 +489,7 @@ class _OtzariaSearchFieldState extends State<OtzariaSearchField> {
             minHeight: effectiveHeight,
           ),
           hintText: widget.hintText,
-          hintStyle: TextStyle(
-            fontSize: effectiveFontSize,
-            color: hintColor,
-            height: 1.0,
-            leadingDistribution: TextLeadingDistribution.even,
-          ),
+          hintStyle: TextStyle(fontSize: effectiveFontSize, color: hintColor),
           border: noBorder,
           enabledBorder: noBorder,
           focusedBorder: noBorder,

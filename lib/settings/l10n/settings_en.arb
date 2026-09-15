@@ -85,6 +85,7 @@
   "העבר לשולחן עבודה": "Move to workspace",
   "העבר לחלון חדש": "Move to new window",
   "העבר לחלון קיים": "Move to existing window",
+  "חלון חדש": "New window",
 
   "תצוגת PDF": "PDF view",
   "תצוגת ספר בPDF": "Sefer view for PDFs",
@@ -269,8 +270,8 @@
   "סינכרון הספרייה באופן אוטומטי": "Sync the library automatically",
   "מסד הנתונים של הספרייה יתעדכן אוטומטית בטעינת הספרייה": "The library database updates automatically when the library loads",
   "סינכרון הספרייה לא יופעל אוטומטית, אך עדיין אפשר להפעיל סינכרון ידני": "The library will not sync automatically, but you can still run a manual sync",
-  "עדכון לגרסאות מפתחים": "Update to Developer Builds",
-  "בדיקת העדכונים הבאה תחפש גם גרסאות בדיקה — ייתכנו באגים": "The next update check will also look for developers builds — expect bugs",
+  "עדכון לגרסאות פיתוח": "Update to Development Builds",
+  "בדיקת העדכונים הבאה תחפש גם גרסאות בדיקה — ייתכנו באגים": "The next update check will also look for development builds — expect bugs",
   "בדיקת העדכונים הבאה תחפש גרסאות יציבות בלבד": "The next update check will look for stable builds only",
 
   "דיווחי טעויות": "Text Corrections",
@@ -959,6 +960,8 @@
   "פתיחת קישור": "Open link",
   "פתח חיפוש טקסט": "Open text search",
   "הספרייה עדיין נטענת": "The library is still loading",
+  "לא נמצאה ספרייה": "No library found",
+  "האיתור יהיה זמין לאחר התקנת הספרייה": "Find Sources will be available once the library is installed",
   "האיתור יהיה זמין בעוד רגע": "Find will be available in a moment",
   "נסה שוב": "Try again",
   "האיתור נכשל": "Find failed",

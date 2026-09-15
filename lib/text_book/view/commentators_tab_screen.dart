@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/shortcuts/shortcut_helper.dart';
+import 'package:otzaria/shortcuts/shortcut_validator.dart';
 import 'package:otzaria/models/link_types.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/text_book/utils/category_settings_utils.dart';
@@ -697,7 +698,7 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
 
               return Focus(
                 autofocus: true,
-                onKeyEvent: _handlePrintShortcut,
+                onKeyEvent: _handleTabShortcuts,
                 child: Scaffold(
                   body: Column(
                     children: [
@@ -920,12 +921,19 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
     setState(() => _selectedCommentatorsOverride = list);
   }
 
-  /// מטפל בקיצור ההדפסה המוגדר — פעיל רק בכרטיסיית המפרשים.
-  KeyEventResult _handlePrintShortcut(FocusNode node, KeyEvent event) {
+  /// מטפל בקיצורי ההדפסה והחיפוש המוגדרים — פעילים רק בכרטיסיית המפרשים.
+  KeyEventResult _handleTabShortcuts(FocusNode node, KeyEvent event) {
     final printShortcut =
         Settings.getValue<String>('key-shortcut-print') ?? 'ctrl+p';
     if (ShortcutHelper.matchesShortcut(event, printShortcut)) {
       _commentaryKey.currentState?.printDisplayedCommentaries();
+      return KeyEventResult.handled;
+    }
+    final searchShortcut =
+        Settings.getValue<String>(ShortcutValidator.currentWindowSearchKey) ??
+        'ctrl+f';
+    if (ShortcutHelper.matchesShortcut(event, searchShortcut)) {
+      _openSearchPane();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

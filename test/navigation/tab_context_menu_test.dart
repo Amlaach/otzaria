@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:isolate';
 import 'dart:ui' as ui;
 
@@ -129,7 +130,7 @@ void main() {
   });
 
   /// מיזוג חלון של כרטיסיה אחת חזרה לחלון המקור — המחווה הטבעית של
-  /// issue #1187. חלון משני שהתרוקן נסגר, ולכן אין מה לחסום.
+  /// issue #1187. חלון שהתרוקן נשאר פתוח על הספרייה, ולכן אין מה לחסום.
   group('העברת הכרטיסיה האחרונה בחלון', () {
     late _FakeRunner runner;
 
@@ -173,7 +174,7 @@ void main() {
       expect(tabsBloc.addedEvents.whereType<RemoveTab>().single.tab, same(tab));
     });
 
-    testWidgets('לחלון חדש — נחסמת, כי היא רק מחליפה חלון בחלון', (
+    testWidgets('לחלון חדש — עוברת, והחלון נשאר פתוח על הספרייה', (
       tester,
     ) async {
       final tab = ToolTab(toolId: 'builtin.calendar', title: 'לוח שנה');
@@ -183,11 +184,57 @@ void main() {
         state: TabsState(tabs: [tab], currentTabIndex: 0),
       );
 
-      entryOf(entries, 'העבר לחלון חדש').onTap!();
-      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        entryOf(entries, 'העבר לחלון חדש').onTap!();
+        await runner.opened.future.timeout(const Duration(seconds: 5));
+      });
+      await tester.pump();
 
-      expect(runner.openWindowCalls, 0);
+      expect(runner.openWindowCalls, 1);
+      expect(tabsBloc.addedEvents.whereType<RemoveTab>().single.tab, same(tab));
+    });
+  });
+
+  group('"חלון חדש"', () {
+    late _FakeRunner runner;
+
+    setUp(() => runner = _FakeRunner());
+
+    tearDown(() {
+      runner.uninstall();
+      MultiWindowService.debugSupportedOverride = null;
+    });
+
+    testWidgets('פותח חלון ריק ואינו נוגע בכרטיסיה', (tester) async {
+      MultiWindowService.debugSupportedOverride = true;
+      runner.install();
+      final tab = _StubTab('ספר א');
+      final entries = await buildEntries(
+        tester,
+        tab: tab,
+        state: TabsState(tabs: [tab], currentTabIndex: 0),
+      );
+
+      await tester.runAsync(() async {
+        entryOf(entries, 'חלון חדש').onTap!();
+        await runner.opened.future.timeout(const Duration(seconds: 5));
+      });
+      await tester.pump();
+
+      expect(runner.openWindowCalls, 1);
       expect(tabsBloc.addedEvents.whereType<RemoveTab>(), isEmpty);
+    });
+
+    testWidgets('אינו מופיע כשריבוי חלונות אינו נתמך', (tester) async {
+      MultiWindowService.debugSupportedOverride = false;
+      final tab = _StubTab('ספר א');
+      final entries = await buildEntries(
+        tester,
+        tab: tab,
+        state: TabsState(tabs: [tab], currentTabIndex: 0),
+      );
+
+      expect(entries.any((entry) => entry.label == 'חלון חדש'), isFalse);
     });
   });
 }
@@ -197,6 +244,7 @@ const String _namespace = 'otzaria.test.tabcontextmenu';
 
 class _FakeRunner {
   int openWindowCalls = 0;
+  final Completer<void> opened = Completer<void>();
 
   void install() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -206,6 +254,7 @@ class _FakeRunner {
               return {'count': 2, 'max': 4, 'engines': 2};
             case 'openWindow':
               openWindowCalls++;
+              if (!opened.isCompleted) opened.complete();
               return true;
             default:
               return null;

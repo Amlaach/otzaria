@@ -30,7 +30,6 @@
 #include <zstandard_windows/zstandard_windows_plugin_c_api.h>
 
 #include "flutter/generated_plugin_registrant.h"
-#include "jump_list_manager.h"
 #include "drag_preview_window.h"
 #include "splash_window.h"
 #include "startup_watchdog.h"
@@ -1011,6 +1010,37 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(slots));
           return;
         }
+        // המשבצת של החלון הגלוי שהופעל אחרון.
+        //
+        // ⚠️ חלון מוסתר (כזה שהמשתמש סגר) לעולם אינו נבחר — הוא היה קופץ
+        // בחזרה למסך בגלל קישור חיצוני. כשאין מועמד כזה מוחזרת המשבצת
+        // הגלויה הנמוכה ביותר, ורק אם גם היא חסרה — null.
+        if (call.method_name() == "lastActiveSlot") {
+          const auto& slots = WindowSlots();
+          const HWND last = Win32Window::LastActivatedWindow();
+          if (last && ::IsWindowVisible(last)) {
+            const auto it = slots.find(last);
+            if (it != slots.end()) {
+              result->Success(flutter::EncodableValue(it->second));
+              return;
+            }
+          }
+          int fallback = 0;
+          for (const auto& entry : slots) {
+            if (!::IsWindow(entry.first) || !::IsWindowVisible(entry.first)) {
+              continue;
+            }
+            if (fallback == 0 || entry.second < fallback) {
+              fallback = entry.second;
+            }
+          }
+          if (fallback > 0) {
+            result->Success(flutter::EncodableValue(fallback));
+          } else {
+            result->Success();
+          }
+          return;
+        }
 
         if (call.method_name() != "openWindow") {
           result->NotImplemented();
@@ -1247,42 +1277,6 @@ bool FlutterWindow::OnCreate() {
         result->NotImplemented();
       });
 
-  // ערוץ עדכון ה-Jump List: Dart שולח "updateTabs" עם רשימת כותרות הטאבים.
-  // העבודה עצמה רצה על thread עובד — ראו UpdateOpenTabsAsync.
-  jumplist_channel_ =
-      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          flutter_controller_->engine()->messenger(), "otzaria/jumplist",
-          &flutter::StandardMethodCodec::GetInstance());
-  jumplist_channel_->SetMethodCallHandler(
-      [](const flutter::MethodCall<flutter::EncodableValue>& call,
-         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
-             result) {
-        if (call.method_name() != "updateTabs") {
-          result->NotImplemented();
-          return;
-        }
-
-        std::vector<std::string> titles;
-        if (const auto* arguments =
-                std::get_if<flutter::EncodableMap>(call.arguments())) {
-          auto titles_it =
-              arguments->find(flutter::EncodableValue("titles"));
-          if (titles_it != arguments->end()) {
-            if (const auto* list =
-                    std::get_if<flutter::EncodableList>(&titles_it->second)) {
-              for (const auto& entry : *list) {
-                if (const auto* title = std::get_if<std::string>(&entry)) {
-                  titles.push_back(*title);
-                }
-              }
-            }
-          }
-        }
-
-        jump_list::UpdateOpenTabsAsync(std::move(titles));
-        result->Success(flutter::EncodableValue(true));
-      });
-
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   // NOTE: the main window is intentionally NOT shown here. It stays hidden
@@ -1341,7 +1335,6 @@ void FlutterWindow::OnDestroy() {
 
   splash_channel_.reset();
   multiwindow_channel_.reset();
-  jumplist_channel_.reset();
   process_control_channel_.reset();
   if (flutter_controller_) {
     // ⚠️ הריסת המנוע קורית **בתוך** ה-window proc של WM_DESTROY. נמדד

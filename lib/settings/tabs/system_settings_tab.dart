@@ -109,7 +109,7 @@ class SystemSettingsTab extends StatefulWidget {
     ),
     SettingsSearchEntry(
       id: 'system.updates.dev_channel',
-      title: 'עדכון לגרסאות מפתחים',
+      title: 'עדכון לגרסאות פיתוח',
       subtitle: 'קבלת גרסאות בדיקה (Beta)',
       tab: SettingsTab.system,
       cardId: 'system.updates',
@@ -1065,7 +1065,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
           ),
           SettingsActionTile.switchTile(
             icon: FluentIcons.beaker_24_regular,
-            title: context.settingsText('עדכון לגרסאות מפתחים'),
+            title: context.settingsText('עדכון לגרסאות פיתוח'),
             subtitle:
                 Settings.getValue<bool>(SettingsRepository.keyDevChannel) ??
                     false

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/navigation/view/main_window_screen.dart';
 
@@ -9,6 +10,93 @@ import 'package:otzaria/navigation/view/main_window_screen.dart';
 /// כלומר שמסך stateful שזז בעץ במהלך ה-swap *לא* נבנה מחדש (כשיש לו GlobalKey),
 /// וכן מתעדת שבלי GlobalKey הוא כן נבנה מחדש. שתי הקבוצות פועלות על הקוד האמיתי.
 void main() {
+  group('shouldResyncMainPage', () {
+    test('PageView שהתאפס לספרייה בעוד המצב "עיון" — מסונכרן מחדש', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: 0),
+        isTrue,
+      );
+    });
+
+    test('מוצג ומסומן על היעד — אין מה לעשות', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: 1),
+        isFalse,
+      );
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 1, shownPage: null),
+        isFalse,
+      );
+    });
+
+    test('המצב הלוגי פיגר אחרי ה-controller — מסונכרן', () {
+      expect(
+        shouldResyncMainPage(targetPage: 1, cachedPage: 0, shownPage: 1),
+        isTrue,
+      );
+    });
+  });
+
+  group('excludeOffscreenPagesFromFocus', () {
+    Future<PageController> pumpPages(
+      WidgetTester tester, {
+      required bool exclude,
+    }) async {
+      final controller = PageController(initialPage: 1);
+      addTearDown(controller.dispose);
+      Widget page(String name) => KeepAlivePage(
+        key: ValueKey(name),
+        child: Column(
+          children: [
+            for (var i = 0; i < 3; i++)
+              TextButton(onPressed: () {}, child: Text('$name $i')),
+          ],
+        ),
+      );
+      final pages = [page('library'), page('reading'), page('settings')];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PageView(
+            controller: controller,
+            physics: const NeverScrollableScrollPhysics(),
+            children: exclude
+                ? MainWindowScreenState.excludeOffscreenPagesFromFocus(pages, 1)
+                : pages,
+          ),
+        ),
+      );
+      // בונים את השכנים פעם אחת, כמו אחרי ביקור בספרייה ובהגדרות.
+      controller.jumpToPage(0);
+      await tester.pump();
+      controller.jumpToPage(2);
+      await tester.pump();
+      controller.jumpToPage(1);
+      await tester.pumpAndSettle();
+      return controller;
+    }
+
+    Future<void> pressTabs(WidgetTester tester) async {
+      for (var i = 0; i < 12; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pumpAndSettle();
+      }
+    }
+
+    testWidgets('בלי ההחרגה Tab גולל לעמוד חי שמחוץ למסך (בקרה)', (
+      tester,
+    ) async {
+      final controller = await pumpPages(tester, exclude: false);
+      await pressTabs(tester);
+      expect(controller.page, isNot(1));
+    });
+
+    testWidgets('Tab נשאר בעמוד המוצג (issue #1349)', (tester) async {
+      final controller = await pumpPages(tester, exclude: true);
+      await pressTabs(tester);
+      expect(controller.page, 1);
+    });
+  });
+
   group('MainWindowScreenState.buildTransitionPages', () {
     const library = Text('library');
     const reading = Text('reading');

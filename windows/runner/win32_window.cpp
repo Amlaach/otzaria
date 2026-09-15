@@ -122,6 +122,12 @@ namespace {
 HWND g_user_activated = nullptr;
 ULONGLONG g_user_activated_at = 0;
 
+// החלון האחרון שקיבל הפעלה, בלי קשר לשאלה מי יזם אותה.
+//
+// ⚠️ נפרד מ-[g_user_activated] במכוון: זה נועד לבחירה מפורשת בלחיצה
+// ומשמש שער חסימה, וכאן נדרשת גם הפעלה במקלדת (Alt-Tab).
+HWND g_last_activated = nullptr;
+
 // כמה זמן בחירת המשתמש "מוגנת" מפני הפעלה תוכניתית של חלון אחר שלנו.
 //
 // חלון בסדר גודל של חצי שנייה: ארוך מספיק כדי לכסות את ההפעלה החוזרת
@@ -141,6 +147,11 @@ bool IsOtzariaWindow(HWND window) {
 void Win32Window::NoteUserActivation(HWND window) {
   g_user_activated = window;
   g_user_activated_at = ::GetTickCount64();
+}
+
+HWND Win32Window::LastActivatedWindow() {
+  if (!::IsWindow(g_last_activated)) return nullptr;
+  return g_last_activated;
 }
 
 bool Win32Window::ShouldVetoActivation(HWND window) {
@@ -256,6 +267,8 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DESTROY:
+      // Windows ממחזר HWND — בלי האיפוס IsWindow היה מאשר חלון זר.
+      if (hwnd == g_last_activated) g_last_activated = nullptr;
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -312,6 +325,11 @@ Win32Window::MessageHandler(HWND hwnd,
       // ~16ms בין שלושה חלונות (783 הפעלות בהרצה של 40 שניות; עם הבדיקה
       // הזו: 77, ובלי לולאה). הגידור ב-`WA_INACTIVE` לבדו שבר רק את
       // המקרה הפשוט של שני חלונות.
+      // ⚠️ נרשם גם כשאין מה למקד: זהו מקור האמת ל"החלון הפעיל האחרון"
+      // שאליו מנותב קישור `otzaria://`.
+      if (LOWORD(wparam) != WA_INACTIVE && ::IsWindowVisible(hwnd)) {
+        g_last_activated = hwnd;
+      }
       if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr &&
           ::IsWindowVisible(hwnd) && ::GetFocus() != child_content_) {
         SetFocus(child_content_);

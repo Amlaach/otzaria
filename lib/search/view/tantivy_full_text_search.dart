@@ -91,9 +91,15 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
   /// פעולת החיפוש של חלונית הסינון — מוזנת לסרגל שבסרגל העליון.
   final NavPanelSearchHost _searchHost = NavPanelSearchHost();
 
+  final FocusNode _contentFocusNode = FocusNode(
+    debugLabel: 'search_tab_content',
+    skipTraversal: true,
+  );
+
   @override
   void dispose() {
     _searchHost.dispose();
+    _contentFocusNode.dispose();
     super.dispose();
   }
 
@@ -243,30 +249,29 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
     return identical(state.activePane, widget.tab);
   }
 
+  /// שדה החיפוש מוצג רק בדיאלוג, ואז ממקדים את תוכן הטאב. בלי פוקוס בתוכנה
+  /// המקלדת נשארת ב-WebView של תוסף שעזבו, וקיצורי התוכנה מתים (issue #1349).
+  void _focusTabContent() {
+    final field = widget.tab.searchFieldFocusNode;
+    if (field.enclosingScope != null && field.canRequestFocus) {
+      field.requestFocus();
+    } else if (!_contentFocusNode.hasFocus) {
+      _contentFocusNode.requestFocus();
+    }
+  }
+
   void _requestSearchFieldFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.tab.searchFieldFocusNode.canRequestFocus) {
-        // Check if this tab is the currently selected tab
-        final tabsState = context.read<TabsBloc>().state;
-        if (_isTabDisplayed(tabsState)) {
-          widget.tab.searchFieldFocusNode.requestFocus();
-          // Register as screen-level restorer so window events restore focus here
-          FocusRepository().setScreenRestorer(
-            restore: () {
-              if (mounted && widget.tab.searchFieldFocusNode.canRequestFocus) {
-                widget.tab.searchFieldFocusNode.requestFocus();
-              }
-            },
-            canRestore: () {
-              if (!mounted ||
-                  !widget.tab.searchFieldFocusNode.canRequestFocus) {
-                return false;
-              }
-              return _isTabDisplayed(context.read<TabsBloc>().state);
-            },
-          );
-        }
-      }
+      if (!mounted || !_isTabDisplayed(context.read<TabsBloc>().state)) return;
+      _focusTabContent();
+      // Register as screen-level restorer so window events restore focus here
+      FocusRepository().setScreenRestorer(
+        restore: () {
+          if (mounted) _focusTabContent();
+        },
+        canRestore: () =>
+            mounted && _isTabDisplayed(context.read<TabsBloc>().state),
+      );
     });
   }
 
@@ -296,24 +301,28 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
             setState(() => _facetBannerDismissed = false);
           }
         },
-        child: Scaffold(
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 800;
-              // במסך צר, בכניסה הראשונה של הטאב, סוגרים את עץ הקטגוריות
-              // כדי שהתוצאות יוצגו ולא יוסתרו ע"י העץ ברוחב מלא.
-              if (isNarrow &&
-                  !_appliedNarrowLeftPaneDefault &&
-                  widget.tab.isLeftPaneOpen.value) {
-                _appliedNarrowLeftPaneDefault = true;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) widget.tab.isLeftPaneOpen.value = false;
-                });
-              }
-              final collapseMenus = constraints.maxWidth < _kMenusCollapseWidth;
-              if (isNarrow) return _buildForSmallScreens(collapseMenus);
-              return _buildForWideScreens(collapseMenus);
-            },
+        child: Focus(
+          focusNode: _contentFocusNode,
+          child: Scaffold(
+            body: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 800;
+                // במסך צר, בכניסה הראשונה של הטאב, סוגרים את עץ הקטגוריות
+                // כדי שהתוצאות יוצגו ולא יוסתרו ע"י העץ ברוחב מלא.
+                if (isNarrow &&
+                    !_appliedNarrowLeftPaneDefault &&
+                    widget.tab.isLeftPaneOpen.value) {
+                  _appliedNarrowLeftPaneDefault = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) widget.tab.isLeftPaneOpen.value = false;
+                  });
+                }
+                final collapseMenus =
+                    constraints.maxWidth < _kMenusCollapseWidth;
+                if (isNarrow) return _buildForSmallScreens(collapseMenus);
+                return _buildForWideScreens(collapseMenus);
+              },
+            ),
           ),
         ),
       ),

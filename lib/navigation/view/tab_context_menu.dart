@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -153,6 +155,11 @@ List<AppContextMenuEntry> buildTabContextMenuEntries(
             ),
         ],
       ),
+    if (MultiWindowService.isSupported)
+      AppContextMenuEntry(
+        label: context.settingsText('חלון חדש'),
+        onTap: () => unawaited(const MultiWindowService().openEmptyWindow()),
+      ),
     const AppContextMenuEntry.divider(),
   ];
 
@@ -233,21 +240,10 @@ List<AppContextMenuEntry> buildTabContextMenuEntries(
 }
 
 /// בדיקות משותפות ל"העבר לחלון חדש" ול"העבר לחלון קיים": כרטיסיה שאינה
-/// ניתנת להעברה, כרטיסיה אחרונה, ומצב ה-JS של תוסף שאובד בהעברה.
-Future<bool> _confirmTabTransfer(
-  BuildContext context,
-  OpenedTab tab,
-  TabsState state, {
-  required bool opensNewWindow,
-}) async {
+/// ניתנת להעברה, ומצב ה-JS של תוסף שאובד בהעברה.
+Future<bool> _confirmTabTransfer(BuildContext context, OpenedTab tab) async {
   if (!MultiWindowService.canTransfer(tab)) {
     UiSnack.showError(WindowMessages.cannotTransferTab);
-    return false;
-  }
-  // רק לחלון חדש, ששם היא מחליפה חלון בחלון. לחלון קיים היא כן עוברת —
-  // חלון משני שהתרוקן נסגר בעקבותיה.
-  if (opensNewWindow && state.tabs.length <= 1) {
-    UiSnack.show(WindowMessages.cannotTransferLastTab);
     return false;
   }
   return confirmCloseTabs(context, [tab]);
@@ -262,12 +258,7 @@ Future<void> _moveTabToNewWindow(BuildContext context, OpenedTab tab) async {
     return;
   }
   if (!context.mounted) return;
-  if (!await _confirmTabTransfer(
-    context,
-    tab,
-    tabsBloc.state,
-    opensNewWindow: true,
-  )) {
+  if (!await _confirmTabTransfer(context, tab)) {
     return;
   }
 
@@ -285,12 +276,7 @@ Future<void> _moveTabToExistingWindow(
   int slot,
 ) async {
   final tabsBloc = context.read<TabsBloc>();
-  if (!await _confirmTabTransfer(
-    context,
-    tab,
-    tabsBloc.state,
-    opensNewWindow: false,
-  )) {
+  if (!await _confirmTabTransfer(context, tab)) {
     return;
   }
 

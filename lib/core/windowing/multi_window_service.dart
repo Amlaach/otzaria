@@ -148,6 +148,23 @@ class MultiWindowService {
     }
   }
 
+  /// פותח חלון חדש **ריק**, בלי כרטיסיה.
+  ///
+  /// התקרה נבדקת מראש כדי שהמשתמש לא ימתין ל-`openWindow` ורק אז יקבל
+  /// "אפשר לפתוח עד N חלונות". מחזיר true רק אם החלון נוצר בפועל.
+  Future<bool> openEmptyWindow() async {
+    if (!isSupported) return false;
+    if (!await canOpenAnotherWindow()) {
+      await reportOpenWindowFailure();
+      return false;
+    }
+    final opened = await openWindow();
+    if (!opened) {
+      await reportOpenWindowFailure();
+    }
+    return opened;
+  }
+
   /// המשבצות של חלונות אוצריא **שמוצגים על המסך** כרגע.
   ///
   /// ⚠️ "עונה על האפיק" אינו "פתוח": חלון שהמשתמש סגר מוסתר ולא נהרס,
@@ -163,6 +180,21 @@ class MultiWindowService {
       return slots?.toSet();
     } catch (e) {
       debugPrint('visibleSlots failed: $e');
+      return null;
+    }
+  }
+
+  /// המשבצת של החלון הגלוי שהופעל אחרון, או null כשאין כזה.
+  ///
+  /// ⚠️ הנייטיב הוא מקור האמת: `LastActiveWindow` הוא static פר-isolate,
+  /// ולכן כל חלון רואה בו את עצמו בלבד. נדרש כדי שקישור `otzaria://` לא
+  /// יצוף בחלון שרירותי — או גרוע מכך, בחלון שהמשתמש סגר.
+  Future<int?> lastActiveSlot() async {
+    if (!isSupported) return null;
+    try {
+      return await channel.invokeMethod<int>('lastActiveSlot');
+    } catch (e) {
+      debugPrint('lastActiveSlot failed: $e');
       return null;
     }
   }
@@ -535,6 +567,12 @@ class MultiWindowService {
 
   /// סוג בקשה באפיק: תיאור החלון לתצוגה בתפריט.
   static const String requestDescribe = 'describe';
+
+  /// סוג בקשה באפיק: טיפול בקישור `otzaria://` שנוקז בחלון המארח.
+  ///
+  /// ⚠️ רק המארח מנקז את תור ההפעלות החיצוניות, כי הניקוז הוא rename אטומי
+  /// והזוכה בין כמה מנטרים שרירותי. הוא מפנה את הקישור לחלון הפעיל האחרון.
+  static const String requestOpenUri = 'openUri';
 
   /// סוג בקשה באפיק: כרטיסיה נגררת מעל החלון הזה כרגע.
   ///

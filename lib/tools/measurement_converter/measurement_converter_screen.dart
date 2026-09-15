@@ -497,8 +497,9 @@ class _MeasurementConverterScreenState
                   final singleRow = barConstraints.maxWidth >= 560;
                   final isWideBar = barConstraints.maxWidth >= 700;
                   final isCompact = settingsState.compactMenuMode;
-                  final fieldHeight =
-                      isCompact ? AppInputTokens.compactHeight : 40.0;
+                  final fieldHeight = isCompact
+                      ? AppInputTokens.compactHeight
+                      : 40.0;
                   final fieldFontSize = AppInputTokens.fontSize(isCompact);
 
                   // סטטוס הסרגל: רחב=_sidebarVisible, צר=_narrowShowCategories
@@ -772,7 +773,8 @@ class _MeasurementConverterScreenState
                                                   visualDensity:
                                                       VisualDensity.compact,
                                                 )
-                                              : null,
+                                              // משבצת הסיומת קובעת את גובה המילוי; בלעדיה התיבה מתכווצת לגובה השורה
+                                              : const SizedBox.shrink(),
                                         ),
                                   ),
                                 ),

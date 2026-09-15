@@ -176,6 +176,7 @@ class _KeyboardShortcutsState extends State<KeyboardShortcuts> {
     final bookmarksShortcut = shortcutOf('key-shortcut-open-bookmarks');
     final historyShortcut = shortcutOf('key-shortcut-open-history');
     final workspaceShortcut = shortcutOf('key-shortcut-switch-workspace');
+    final newWindowShortcut = shortcutOf(ShortcutValidator.openNewWindowKey);
     final toggleNavPaneShortcut = shortcutOf('key-shortcut-toggle-nav-pane');
     final toggleCommentatorsPaneShortcut = shortcutOf(
       'key-shortcut-toggle-commentators-pane',
@@ -485,6 +486,14 @@ class _KeyboardShortcutsState extends State<KeyboardShortcuts> {
         context: context,
         builder: (context) => const WorkspaceSwitcherDialog(),
       );
+      return KeyEventResult.handled;
+    }
+
+    // חלון אוצריא נוסף — רק בפלטפורמה תומכת, אחרת הקיצור ממשיך הלאה.
+    if (MultiWindowService.isSupported &&
+        newWindowShortcut.isNotEmpty &&
+        ShortcutHelper.matchesShortcut(event, newWindowShortcut)) {
+      unawaited(const MultiWindowService().openEmptyWindow());
       return KeyEventResult.handled;
     }
 

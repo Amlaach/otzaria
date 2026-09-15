@@ -1044,7 +1044,8 @@ void main() {
         expect(
           results.map((r) => r['reference']),
           ['בית יוסף אורח חיים סימן ה', 'בית יוסף יורה דעה סימן ה'],
-          reason: 'הציטוט מדלג על רמת החלק — כמו "בית יוסף אורח חיים סימן ה" שכן עובד',
+          reason:
+              'הציטוט מדלג על רמת החלק — כמו "בית יוסף אורח חיים סימן ה" שכן עובד',
         );
       },
     );
@@ -1106,5 +1107,45 @@ void main() {
 
       expect(results, isEmpty);
     });
+
+    // issue #1359 — "בית יוסף תקיב": מספר סימן לבד, בלי "סימן" ובלי החלק.
+    test('עם alt_toc — מספר סימן בודד נמצא בחלק שבו הוא קיים', () async {
+      final bookId = await buildTurLikeBook(withAltToc: true);
+      final results = await repository.getTocEntriesForReference(
+        bookId,
+        'בית יוסף',
+        queryTokens: ['ד'],
+      );
+      expect(results.map((r) => r['reference']), ['בית יוסף אורח חיים סימן ד']);
+    });
+
+    test('עם alt_toc — מספר סימן בודד מחזיר את כל החלקים לבחירה', () async {
+      final bookId = await buildTurLikeBook(withAltToc: true);
+      final results = await repository.getTocEntriesForReference(
+        bookId,
+        'בית יוסף',
+        queryTokens: ['ה'],
+      );
+      expect(results.map((r) => r['reference']), [
+        'בית יוסף אורח חיים סימן ה',
+        'בית יוסף יורה דעה סימן ה',
+      ]);
+    });
+
+    test(
+      'עם alt_toc — טוקן בודד שה-alt_toc מוצא נשאר מחוץ ל-fallback',
+      () async {
+        final bookId = await buildTurLikeBook(
+          withAltToc: true,
+          decoyChildHeading: 'ציצית',
+        );
+        final results = await repository.getTocEntriesForReference(
+          bookId,
+          'בית יוסף',
+          queryTokens: ['ציצית'],
+        );
+        expect(results, isEmpty);
+      },
+    );
   });
 }

@@ -176,6 +176,8 @@ class _ScrollablePositionedListScrollbarState
     final canScroll =
         notification.metrics.maxScrollExtent > precisionErrorTolerance;
     if (canScroll != _canScroll && mounted) {
+      // המסילה יוצאת מהעץ, ו-MouseRegion שהוסר אינו מקבל onExit שיסתיר את התווית.
+      if (!canScroll) _hideLabel();
       setState(() => _canScroll = canScroll);
     }
     return false;

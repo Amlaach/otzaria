@@ -168,26 +168,43 @@ class WindowBus {
     Map<String, dynamic> body, {
     Duration timeout = const Duration(seconds: 3),
     String label = 'port',
+  }) async => (await requestPortDetailed(
+    target,
+    body,
+    timeout: timeout,
+    label: label,
+  )).result;
+
+  /// כמו [requestPort], אבל מבחין בין סוגי הכשל.
+  ///
+  /// ⚠️ `result: null, failure: null` פירושו **שהיעד ענה ותשובתו null** —
+  /// למשל כש-`onRequest` טרם נקבע. בלי ההבחנה הזו פקיעת זמן ו"אין מטפל"
+  /// נראו זהים לקורא, וההודעה "החלון הראשי לא זמין" לא אמרה מה קרה.
+  Future<({Object? result, WindowBusFailure? failure})> requestPortDetailed(
+    SendPort target,
+    Map<String, dynamic> body, {
+    Duration timeout = const Duration(seconds: 3),
+    String label = 'port',
   }) async {
     final reply = ReceivePort();
     try {
       target.send({'reply': reply.sendPort, 'body': body});
       final response = await reply.first.timeout(timeout);
       if (response is Map && response['ok'] == true) {
-        return response['result'];
+        return (result: response['result'], failure: null);
       }
       if (response is Map) {
         debugPrint('WindowBus $label returned error: ${response['error']}');
       }
-      return null;
+      return (result: null, failure: WindowBusFailure.error);
     } on TimeoutException {
       debugPrint(
         'WindowBus $label timed out after ${timeout.inMilliseconds}ms',
       );
-      return null;
+      return (result: null, failure: WindowBusFailure.timeout);
     } catch (e) {
       debugPrint('WindowBus $label request failed: $e');
-      return null;
+      return (result: null, failure: WindowBusFailure.error);
     } finally {
       reply.close();
     }
@@ -247,6 +264,15 @@ class WindowBus {
     final results = await Future.wait(futures);
     return results.whereType<WindowPeer>().toList();
   }
+}
+
+/// למה בקשה באפיק לא הביאה תשובה.
+enum WindowBusFailure {
+  /// היעד לא ענה בתוך ה-timeout.
+  timeout,
+
+  /// היעד ענה, אבל הבקשה זרקה אצלו.
+  error,
 }
 
 /// חלון אחר שעונה על האפיק.

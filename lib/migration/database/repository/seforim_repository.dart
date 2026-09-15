@@ -1244,6 +1244,9 @@ class SeforimRepository {
       final key = buildLineRefKey(ref.heRef, [bookTitle]);
       if (key == null) continue;
       entries.add((refKeyHash(key), ref.lineIndex));
+      for (final partial in partialLineRefKeys(ref.heRef, [bookTitle])) {
+        entries.add((refKeyHash(partial), ref.lineIndex));
+      }
     }
     await runInTransaction(() {
       db.execute('DELETE FROM line_ref WHERE bookId = ?', [bookId]);
@@ -1287,17 +1290,69 @@ class SeforimRepository {
   }
 
   /// בונה את האינדקס לספרים שיש להם שורות עם heRef אך אין להם שורות
-  /// באינדקס — ספרים אישיים שנוצרו לפני שהאינדקס נוסף.
+  /// באינדקס, או שחסרים להם המפתחות החלקיים — ספרים אישיים שנוצרו קודם.
   Future<void> backfillMissingLineRefIndexes() async {
     final db = await _database.database;
-    final rows = db.select(
-      "SELECT DISTINCT l.bookId FROM line l "
-      "WHERE l.heRef IS NOT NULL AND l.heRef <> '' "
-      "AND NOT EXISTS (SELECT 1 FROM line_ref lr WHERE lr.bookId = l.bookId)",
+    final missing = db
+        .select(
+          "SELECT DISTINCT l.bookId FROM line l "
+          "WHERE l.heRef IS NOT NULL AND l.heRef <> '' "
+          "AND NOT EXISTS (SELECT 1 FROM line_ref lr WHERE lr.bookId = l.bookId)",
+        )
+        .map((row) => row['bookId'] as int)
+        .toSet();
+    // מפתח חלקי דורש לפחות שלושה רכיבים ב-heRef, ולכן רק שורות כאלה נבדקות.
+    final candidates = db.select(
+      "SELECT DISTINCT l.bookId, b.title, l.heRef FROM line l "
+      "JOIN book b ON b.id = l.bookId WHERE l.heRef LIKE '%,%,%'",
     );
-    for (final row in rows) {
-      await rebuildLineRefIndex(row['bookId'] as int);
+    final checked = <int>{};
+    for (final row in candidates) {
+      final bookId = row['bookId'] as int;
+      if (missing.contains(bookId) || checked.contains(bookId)) continue;
+      final partial = partialLineRefKeys(
+        row['heRef'] as String,
+        [row['title'] as String],
+      );
+      if (partial.isEmpty) continue;
+      checked.add(bookId);
+      final indexed = db.select(
+        'SELECT 1 FROM line_ref WHERE bookId = ? AND refKeyHash = ? LIMIT 1',
+        [bookId, refKeyHash(partial.first)],
+      );
+      if (indexed.isEmpty) missing.add(bookId);
     }
+    for (final bookId in missing) {
+      await rebuildLineRefIndex(bookId);
+    }
+  }
+
+  /// מועמדי מפתח חלקי ([buildPartialRefKey]) בכל ספר — אחד לכל חלק שהושמט
+  /// ("שט ג" בחושן משפט וביורה דעה), השורה הראשונה של כל אחד. מסד שנבנה
+  /// לפני המפתחות החלקיים מחזיר map ריק.
+  Future<Map<int, List<LineRefCandidate>>> resolvePartialRefKeyInBooks(
+    List<int> bookIds,
+    String partialKey,
+  ) async {
+    final candidates = await _database.lineRefDao.candidatesForBooks(
+      bookIds,
+      refKeyHash(partialKey),
+    );
+    final keyTokens = refKeyTokens(partialKey);
+    final resolved = <int, List<LineRefCandidate>>{};
+    final seenParts = <(int, String)>{};
+    for (final candidate in candidates) {
+      final heRef = candidate.heRef;
+      if (heRef == null) continue;
+      final tokens = refKeyTokens(heRef);
+      if (!_endsWithTokens(tokens, keyTokens)) continue;
+      final part = tokens
+          .sublist(0, tokens.length - keyTokens.length)
+          .join(' ');
+      if (!seenParts.add((candidate.bookId, part))) continue;
+      (resolved[candidate.bookId] ??= []).add(candidate);
+    }
+    return resolved;
   }
 
   /// גרסת ספר יחיד של [resolveRefKeyInBooks].
@@ -2964,11 +3019,11 @@ extension BookAcronymRepository on SeforimRepository {
     // "סימן ה" תחת בית יוסף→אורח חיים).
     final altCache = await _buildAltTocCacheForBook(bookId, bookTitle);
     if (altCache.all.isNotEmpty) {
-      // בספר עם מבני כותרות חלופיים, טוקן בודד או ציטוט דף כבר מטופלים
-      // ב-AltToc. שאר הציטוטים יכולים לדלג על חלק ביניים, אך כולם חייבים
-      // להתאים לכותרת היעד עצמה כדי שלא יוחזרו תתי-כותרות של קטע אחר.
-      if (queryTokens.length == 1 ||
-          _isDafCitationForAltTocFallback(queryTokens)) {
+      // ציטוט דף, או טוקן בודד שה-AltToc כבר מוצא ("זהר לו"), מטופלים שם.
+      // אחרת ("בית יוסף תקיב") מותר לדלג על חלק ביניים, בהתאמה לכותרת היעד עצמה.
+      if (_isDafCitationForAltTocFallback(queryTokens) ||
+          (queryTokens.length == 1 &&
+              _searchAltTocFlat(altCache, queryTokens).isNotEmpty)) {
         return const [];
       }
       return _searchTocFlat(

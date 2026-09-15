@@ -253,7 +253,8 @@ class _BookRow {
       title: book.title,
       author: book.author ?? '',
       category:
-          book.category?.path ?? book.categoryPath ?? book.heCategories ?? '',
+          (book.category?.path ?? book.categoryPath ?? book.heCategories ?? '')
+              .replaceFirst(RegExp(r'^/+'), ''),
       fileType: book.fileType ?? '',
     );
   }

@@ -1,7 +1,13 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:collection/collection.dart' show mergeSort;
 import 'package:flutter/services.dart';
 import 'package:kosher_dart/kosher_dart.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:opentype_shaper/opentype_shaper.dart';
+import 'package:otzaria/printing/shaped_text/pdf_shaped_font.dart';
+import 'package:otzaria/printing/shaped_text/shaped_text_layout.dart';
+import 'package:otzaria/printing/shaped_text/shaped_text_widget.dart';
 import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
 import 'package:otzaria/tools/calendar/helpers/zmanim_helpers.dart';
 import 'package:otzaria/tools/calendar/helpers/calendar_date_helpers.dart';
@@ -45,21 +51,77 @@ Future<Uint8List> createCalendarPdf(
   PdfPageFormat format, {
   int count = 1,
 }) async {
-  final font = pw.Font.ttf(
-    await rootBundle.load('fonts/NotoSerifHebrew-VariableFont_wdth,wght.ttf'),
+  final primaryBytes = await _loadFont(
+    'fonts/NotoSerifHebrew-VariableFont_wdth,wght.ttf',
   );
-  final pdf = pw.Document();
+  final fallbackBytes = await _loadFont('fonts/Tinos-Regular.ttf');
+  final primaryShaper = ShaperFont.register(primaryBytes);
+  final fallbackShaper = ShaperFont.register(fallbackBytes);
+  try {
+    final pdf = pw.Document();
+    final font = _CalendarText([
+      PdfShapedFont(
+        pdf.document,
+        shaper: primaryShaper,
+        fontBytes: primaryBytes,
+      ),
+      PdfShapedFont(
+        pdf.document,
+        shaper: fallbackShaper,
+        fontBytes: fallbackBytes,
+      ),
+    ]);
 
-  switch (resolveCalendarPrintLayout(state.calendarView)) {
-    case CalendarPrintLayout.month:
-      await _addMonthPages(pdf, state, font, format, count);
-    case CalendarPrintLayout.week:
-      await _addWeekPages(pdf, state, font, format, count);
-    case CalendarPrintLayout.day:
-      await _addDayPages(pdf, state, font, format, count);
+    switch (resolveCalendarPrintLayout(state.calendarView)) {
+      case CalendarPrintLayout.month:
+        await _addMonthPages(pdf, state, font, format, count);
+      case CalendarPrintLayout.week:
+        await _addWeekPages(pdf, state, font, format, count);
+      case CalendarPrintLayout.day:
+        await _addDayPages(pdf, state, font, format, count);
+    }
+
+    return await pdf.save();
+  } finally {
+    primaryShaper.dispose();
+    fallbackShaper.dispose();
   }
+}
 
-  return pdf.save();
+Future<Uint8List> _loadFont(String path) async =>
+    (await rootBundle.load(path)).buffer.asUint8List();
+
+/// טקסט מעוצב (OpenType) — ניקוד, גרשיים וספרות יוצאים במקומם ובטקסט וקטורי.
+class _CalendarText {
+  _CalendarText(this.fonts);
+
+  final List<PdfShapedFont> fonts;
+
+  /// [singleLine] חותך לשורה אחת, כמו `maxLines: 1` בתאים הצרים.
+  pw.Widget call(
+    String text,
+    double fontSize, {
+    PdfColor color = PdfColors.black,
+    ShapedTextAlign align = ShapedTextAlign.start,
+    bool singleLine = false,
+  }) {
+    final widget = ShapedText(
+      text,
+      fonts: fonts,
+      fontSize: fontSize,
+      color: color,
+      align: align,
+    );
+    if (!singleLine) return widget;
+    final lineHeight = ShapedTextLayout(
+      fonts: [for (final font in fonts) font.shaper],
+      fontSize: fontSize,
+    ).lineHeight;
+    return pw.ConstrainedBox(
+      constraints: pw.BoxConstraints(maxHeight: lineHeight),
+      child: widget,
+    );
+  }
 }
 
 pw.Page _rtlPage(PdfPageFormat format, pw.Widget Function(pw.Context) build) =>
@@ -72,7 +134,7 @@ pw.Page _rtlPage(PdfPageFormat format, pw.Widget Function(pw.Context) build) =>
 Future<void> _addMonthPages(
   pw.Document pdf,
   CalendarState state,
-  pw.Font font,
+  _CalendarText font,
   PdfPageFormat format,
   int count,
 ) async {
@@ -86,14 +148,10 @@ Future<void> _addMonthPages(
           children: [
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 16),
-              child: pw.Text(
+              child: font(
                 _getMonthYearText(monthState),
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 24,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-                textAlign: pw.TextAlign.center,
+                24,
+                align: ShapedTextAlign.center,
               ),
             ),
             pw.Expanded(child: _buildCalendarGrid(monthState, font)),
@@ -107,7 +165,7 @@ Future<void> _addMonthPages(
 Future<void> _addWeekPages(
   pw.Document pdf,
   CalendarState state,
-  pw.Font font,
+  _CalendarText font,
   PdfPageFormat format,
   int count,
 ) async {
@@ -121,14 +179,10 @@ Future<void> _addWeekPages(
           children: [
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 16),
-              child: pw.Text(
+              child: font(
                 _getWeekRangeText(weekState),
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-                textAlign: pw.TextAlign.center,
+                18,
+                align: ShapedTextAlign.center,
               ),
             ),
             _buildWeekGrid(weekState, font),
@@ -142,7 +196,7 @@ Future<void> _addWeekPages(
 Future<void> _addDayPages(
   pw.Document pdf,
   CalendarState state,
-  pw.Font font,
+  _CalendarText font,
   PdfPageFormat format,
   int count,
 ) async {
@@ -152,111 +206,92 @@ Future<void> _addDayPages(
     final jewishDate = JewishDate.fromDateTime(date);
     final events = _eventsForDate(date, dayState);
 
+    // MultiPage: רשימת זמנים ארוכה ממשיכה לעמוד הבא; ב-Page היא חרגה והעמוד יצא ריק.
     pdf.addPage(
-      _rtlPage(
-        format,
-        (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 16),
-              child: pw.Text(
-                _getDayText(date, jewishDate),
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 20,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-                textAlign: pw.TextAlign.center,
-              ),
+      pw.MultiPage(
+        pageFormat: format,
+        textDirection: pw.TextDirection.rtl,
+        build: (context) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.only(bottom: 16),
+            child: font(
+              _getDayText(date, jewishDate),
+              20,
+              align: ShapedTextAlign.center,
             ),
-            pw.Container(
-              padding: const pw.EdgeInsets.only(bottom: 16),
-              child: pw.Text(
-                'עיר: ${dayState.selectedCity}',
-                style: pw.TextStyle(font: font, fontSize: 12),
-                textAlign: pw.TextAlign.center,
-              ),
+          ),
+          pw.Container(
+            padding: const pw.EdgeInsets.only(bottom: 16),
+            child: font(
+              'עיר: ${dayState.selectedCity}',
+              12,
+              align: ShapedTextAlign.center,
             ),
-            pw.Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final entry in dayState.dailyTimes.entries)
-                  pw.Container(
-                    width: 150,
-                    padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(
-                        color: PdfColors.grey300,
-                        width: 0.5,
-                      ),
-                      borderRadius: pw.BorderRadius.circular(6),
-                    ),
-                    child: pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text(
-                          entry.value,
-                          style: pw.TextStyle(
-                            font: font,
-                            fontSize: 10,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.SizedBox(width: 8),
-                        pw.Expanded(
-                          child: pw.Text(
-                            entry.key,
-                            style: pw.TextStyle(font: font, fontSize: 9),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    ),
+          ),
+          pw.Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final (name, time) in calendarPrintedZmanim(dayState))
+                pw.Container(
+                  width: 150,
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
                   ),
-              ],
-            ),
-            pw.SizedBox(height: 20),
-            pw.Text(
-              'אירועים',
-              style: pw.TextStyle(
-                font: font,
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-              ),
-              textAlign: pw.TextAlign.right,
-            ),
-            pw.SizedBox(height: 8),
-            if (events.isEmpty)
-              pw.Text(
-                'אין אירועים ליום זה',
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 11,
-                  color: PdfColors.grey700,
-                ),
-                textAlign: pw.TextAlign.right,
-              )
-            else
-              ...events.map(
-                (event) => pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 6),
-                  child: pw.Text(
-                    '• ${event.title}',
-                    style: pw.TextStyle(font: font, fontSize: 11),
-                    textAlign: pw.TextAlign.right,
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Column(
+                    children: [font(name, 9), font(time, 10)],
                   ),
                 ),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+          font('אירועים', 14),
+          pw.SizedBox(height: 8),
+          if (events.isEmpty)
+            font('אין אירועים ליום זה', 11, color: PdfColors.grey700)
+          else
+            ...events.map(
+              (event) => pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 6),
+                child: font('• ${event.title}', 11),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
+}
+
+/// הזמנים שהמסך מציג ליום — שהמשתמש הפעיל ושרלוונטיים לו — בשמם העברי.
+@visibleForTesting
+List<(String, String)> calendarPrintedZmanim(CalendarState state) {
+  final jewishCalendar = JewishCalendar.fromDateTime(
+    state.selectedGregorianDate,
+  )..inIsrael = state.inIsrael;
+  final zmanim = [
+    for (final def in kZmanimRegistry)
+      if (state.enabledZmanim.contains(def.id) &&
+          (def.isRelevant?.call(jewishCalendar) ?? true))
+        if (state.dailyTimes[def.id] case final time? when time.isNotEmpty)
+          (id: def.id, name: def.fullName, time: time),
+  ];
+  // כמו במסך: שעות לפי הסדר הכרונולוגי, זמני תאריך אחריהן, וחצות לילה בסוף.
+  int rank(({String id, String name, String time}) z) =>
+      z.id == 'chatzosLayla' ? 2 : (isClockTime(z.time) ? 0 : 1);
+  mergeSort(
+    zmanim,
+    compare: (a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      if (byRank != 0 || rank(a) != 0) return byRank;
+      return a.time.compareTo(b.time);
+    },
+  );
+  return [for (final z in zmanim) (z.name, z.time)];
 }
 
 CalendarState _getStateForDayOffset(CalendarState state, int offset) {
@@ -374,7 +409,7 @@ String _getWeekRangeText(CalendarState state) {
 
 // ─── Grid builders ─────────────────────────────────────────────────────────
 
-pw.Widget _buildCalendarGrid(CalendarState state, pw.Font font) {
+pw.Widget _buildCalendarGrid(CalendarState state, _CalendarText font) {
   final days = kHebrewDays;
   const cellHeight = 80.0;
 
@@ -387,7 +422,7 @@ pw.Widget _buildCalendarGrid(CalendarState state, pw.Font font) {
 
 pw.Widget _buildGregorianCalendarGrid(
   CalendarState state,
-  pw.Font font,
+  _CalendarText font,
   List<String> days,
   double cellHeight,
 ) {
@@ -422,7 +457,7 @@ pw.Widget _buildGregorianCalendarGrid(
 
 pw.Widget _buildHebrewCalendarGrid(
   CalendarState state,
-  pw.Font font,
+  _CalendarText font,
   List<String> days,
   double cellHeight,
 ) {
@@ -464,7 +499,7 @@ pw.Widget _buildHebrewCalendarGrid(
 pw.Widget _buildGridFromCells(
   List<pw.Widget> cells,
   List<String> days,
-  pw.Font font,
+  _CalendarText font,
 ) {
   final totalCells = ((cells.length / 7).ceil()) * 7;
   while (cells.length < totalCells) {
@@ -480,10 +515,7 @@ pw.Widget _buildGridFromCells(
                 child: pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 4),
                   alignment: pw.Alignment.center,
-                  child: pw.Text(
-                    day,
-                    style: pw.TextStyle(font: font, fontSize: 10),
-                  ),
+                  child: font(day, 10, align: ShapedTextAlign.center),
                 ),
               ),
             )
@@ -505,7 +537,7 @@ pw.Widget _buildDayCellPdf(
   String primaryLabel,
   String secondaryLabel,
   List<CustomEvent> events,
-  pw.Font font, {
+  _CalendarText font, {
   double height = 80,
   List<String> jewishEvents = const [],
 }) {
@@ -519,47 +551,24 @@ pw.Widget _buildDayCellPdf(
       crossAxisAlignment: pw.CrossAxisAlignment.end,
       children: [
         pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text(
-              secondaryLabel,
-              style: pw.TextStyle(
-                font: font,
-                fontSize: 8,
-                color: PdfColors.grey600,
-              ),
+            pw.Expanded(
+              child: font(secondaryLabel, 8, color: PdfColors.grey600),
             ),
-            pw.Text(
-              primaryLabel,
-              style: pw.TextStyle(
-                font: font,
-                fontSize: 11,
-                fontWeight: pw.FontWeight.bold,
-              ),
+            pw.Expanded(
+              child: font(primaryLabel, 11, align: ShapedTextAlign.end),
             ),
           ],
         ),
-        for (final je in jewishEvents)
-          pw.Text(
-            je,
-            style: pw.TextStyle(font: font, fontSize: 7),
-            maxLines: 1,
-            overflow: pw.TextOverflow.clip,
-            textAlign: pw.TextAlign.right,
-          ),
+        for (final je in jewishEvents) font(je, 7, singleLine: true),
         for (final event in events.take(2))
-          pw.Text(
-            '• ${event.title}',
-            style: pw.TextStyle(font: font, fontSize: 7),
-            maxLines: 1,
-            overflow: pw.TextOverflow.clip,
-          ),
+          font('• ${event.title}', 7, singleLine: true),
       ],
     ),
   );
 }
 
-pw.Widget _buildWeekGrid(CalendarState state, pw.Font font) {
+pw.Widget _buildWeekGrid(CalendarState state, _CalendarText font) {
   final startDate = state.selectedGregorianDate.subtract(
     Duration(days: state.selectedGregorianDate.weekday % 7),
   );
@@ -581,63 +590,20 @@ pw.Widget _buildWeekGrid(CalendarState state, pw.Font font) {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text(
-                kHebrewDays[date.weekday % 7],
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Text(
-                formatHebrewDay(jd.getJewishDayOfMonth()),
-                style: pw.TextStyle(font: font, fontSize: 11),
-              ),
-              pw.Text(
-                '${date.day}/${date.month}',
-                style: pw.TextStyle(
-                  font: font,
-                  fontSize: 8,
-                  color: PdfColors.grey600,
-                ),
-              ),
+              font(kHebrewDays[date.weekday % 7], 9),
+              font(formatHebrewDay(jd.getJewishDayOfMonth()), 11),
+              font('${date.day}/${date.month}', 8, color: PdfColors.grey600),
               pw.SizedBox(height: 4),
-              for (final je in jewishEvents)
-                pw.Text(
-                  je,
-                  style: pw.TextStyle(font: font, fontSize: 7),
-                  maxLines: 1,
-                  overflow: pw.TextOverflow.clip,
-                  textAlign: pw.TextAlign.right,
-                ),
+              for (final je in jewishEvents) font(je, 7, singleLine: true),
               if (jewishEvents.isNotEmpty) pw.SizedBox(height: 2),
               if (dailyTimes['sunrise'] case final sunrise?)
-                pw.Text(
-                  'זריחה $sunrise',
-                  style: pw.TextStyle(
-                    font: font,
-                    fontSize: 7,
-                    color: PdfColors.blue800,
-                  ),
-                ),
+                font('זריחה $sunrise', 7, color: PdfColors.blue800),
               if (dailyTimes['sunset'] case final sunset?)
-                pw.Text(
-                  'שקיעה $sunset',
-                  style: pw.TextStyle(
-                    font: font,
-                    fontSize: 7,
-                    color: PdfColors.blue800,
-                  ),
-                ),
+                font('שקיעה $sunset', 7, color: PdfColors.blue800),
               if (dailyTimes['sunrise'] != null || dailyTimes['sunset'] != null)
                 pw.SizedBox(height: 4),
               for (final event in events.take(3))
-                pw.Text(
-                  '• ${event.title}',
-                  style: pw.TextStyle(font: font, fontSize: 7),
-                  maxLines: 1,
-                  overflow: pw.TextOverflow.clip,
-                ),
+                font('• ${event.title}', 7, singleLine: true),
             ],
           ),
         ),

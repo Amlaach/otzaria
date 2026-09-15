@@ -1061,6 +1061,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
         if (state is FindRefNotReady) {
           return _buildNotReadyState();
         }
+        if (state is FindRefLibraryMissing) {
+          return _buildLibraryMissingState();
+        }
         if (state is FindRefError) {
           return _buildErrorState(state.message);
         }
@@ -1394,6 +1397,15 @@ class _FindRefDialogState extends State<FindRefDialog> {
         onPressed: _retrySearch,
         icon: FluentIcons.arrow_clockwise_24_regular,
       ),
+    );
+  }
+
+  Widget _buildLibraryMissingState() {
+    return _buildCenteredState(
+      icon: FluentIcons.library_24_regular,
+      iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      title: context.settingsText('לא נמצאה ספרייה'),
+      message: context.settingsText('האיתור יהיה זמין לאחר התקנת הספרייה'),
     );
   }
 

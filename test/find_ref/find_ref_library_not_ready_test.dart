@@ -103,6 +103,7 @@ void main() {
         final repository = FindRefRepository(
           isReferenceBooksCacheLoaded: () => false,
           warmUpReferenceBooksCache: () async {}, // warmUp שנכשל בשקט
+          libraryDatabaseExists: () async => true,
         );
 
         await expectLater(
@@ -111,6 +112,19 @@ void main() {
         );
       },
     );
+
+    test('אין קובץ ספרייה → ReferenceLibraryMissingException', () async {
+      final repository = FindRefRepository(
+        isReferenceBooksCacheLoaded: () => false,
+        warmUpReferenceBooksCache: () async {},
+        libraryDatabaseExists: () async => false,
+      );
+
+      await expectLater(
+        repository.findRefs('בראשית פרק א'),
+        throwsA(isA<ReferenceLibraryMissingException>()),
+      );
+    });
 
     test(
       'קאש טעון → אין חריגה, מוחזרת רשימה (ריקה = באמת אין תוצאות)',
@@ -142,6 +156,18 @@ void main() {
       act: (bloc) => bloc.add(const SearchRefRequested('בראשית')),
       wait: const Duration(milliseconds: 400),
       expect: () => [isA<FindRefLoading>(), isA<FindRefNotReady>()],
+    );
+
+    blocTest<FindRefBloc, FindRefState>(
+      'ReferenceLibraryMissingException → FindRefLibraryMissing',
+      build: () => FindRefBloc(
+        findRefRepository: _FakeRepository(
+          const ReferenceLibraryMissingException(),
+        ),
+      ),
+      act: (bloc) => bloc.add(const SearchRefRequested('בראשית')),
+      wait: const Duration(milliseconds: 400),
+      expect: () => [isA<FindRefLoading>(), isA<FindRefLibraryMissing>()],
     );
 
     blocTest<FindRefBloc, FindRefState>(

@@ -21,6 +21,9 @@ class ShortcutValidator {
   static const String openAdvancedSearchKey =
       'key-shortcut-open-advanced-search';
 
+  /// פתיחת חלון אוצריא נוסף — פעיל רק בפלטפורמה שתומכת בריבוי חלונות.
+  static const String openNewWindowKey = 'key-shortcut-open-new-window';
+
   /// דיווח על טעות בספר — פועל רק כשיש בחירה בטקסט או קטע נבחר.
   static const String reportErrorKey = 'key-shortcut-report-error';
 
@@ -186,6 +189,7 @@ class ShortcutValidator {
     'key-shortcut-save-group-bookmark',
     'key-shortcut-add-note',
     'key-shortcut-switch-workspace',
+    openNewWindowKey,
     'key-shortcut-print',
     'key-shortcut-toggle-pdf-view',
     zoomInKey,
@@ -255,6 +259,7 @@ class ShortcutValidator {
     'key-shortcut-save-group-bookmark': '',
     'key-shortcut-add-note': 'ctrl+n',
     'key-shortcut-switch-workspace': 'ctrl+k',
+    openNewWindowKey: 'ctrl+alt+n',
     'key-shortcut-print': 'ctrl+p',
     'key-shortcut-toggle-pdf-view': 'ctrl+shift+p',
     zoomInKey: 'ctrl+equal',
@@ -314,6 +319,7 @@ class ShortcutValidator {
     'key-shortcut-save-group-bookmark': 'שמור סימניה לכל הספרים הפתוחים',
     'key-shortcut-add-note': 'הוספת הערה',
     'key-shortcut-switch-workspace': 'החלף שולחן עבודה',
+    openNewWindowKey: 'חלון חדש',
     'key-shortcut-print': 'הדפסה',
     'key-shortcut-toggle-pdf-view': 'החלף מצב תצוגה (PDF/טקסט)',
     zoomInKey: 'הגדלת הטקסט / התצוגה',

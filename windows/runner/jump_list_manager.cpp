@@ -8,40 +8,20 @@
 #include <shobjidl.h>
 #include <wrl/client.h>
 
-#include <mutex>
-#include <optional>
+#include <string>
 #include <thread>
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
 
-std::mutex g_async_mutex;
-std::optional<std::vector<std::string>> g_pending_titles;
-bool g_worker_running = false;
-
-void RunPendingUpdates() {
-  for (;;) {
-    std::vector<std::string> titles;
-    {
-      std::lock_guard<std::mutex> lock(g_async_mutex);
-      if (!g_pending_titles.has_value()) {
-        g_worker_running = false;
-        return;
-      }
-      titles = std::move(*g_pending_titles);
-      g_pending_titles.reset();
-    }
-    const HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    if (SUCCEEDED(hr)) {
-      jump_list::UpdateOpenTabs(titles);
-      ::CoUninitialize();
-    }
+void RunAddUserTasks() {
+  const HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  if (SUCCEEDED(hr)) {
+    jump_list::AddUserTasks();
+    ::CoUninitialize();
   }
 }
-
-// כותרת הקטגוריה ב-Jump List (מתחת ל"משימות").
-const wchar_t kCategoryTitle[] = L"טאבים פתוחים";
 
 // PKEY_Title — מוגדר מקומית במקום להסתמך על <propkey.h>, שמספק רק הצהרה
 // (לא הגדרה) ללא INITGUID, ועלול להיכלל מראש דרך shell headers ולשבור את
@@ -53,25 +33,10 @@ const PROPERTYKEY kPropertyKeyTitle = {
      {0xAB, 0x91, 0x08, 0x00, 0x2B, 0x27, 0xB3, 0xD9}},
     2};
 
-std::wstring Utf16FromUtf8(const std::string& utf8) {
-  if (utf8.empty()) {
-    return std::wstring();
-  }
-  int size = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(),
-                                   static_cast<int>(utf8.size()), nullptr, 0);
-  if (size <= 0) {
-    return std::wstring();
-  }
-  std::wstring result(size, L'\0');
-  ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(),
-                        static_cast<int>(utf8.size()), result.data(), size);
-  return result;
-}
-
-// יוצר IShellLink לפריט טאב: מריץ את ה-exe הנוכחי עם
-// `otzaria://open/tab/<index>`, וכותרתו להצגה נקבעת דרך PKEY_Title.
-HRESULT CreateTabShellLink(int index, const std::wstring& title,
-                           IShellLinkW** out_link) {
+// יוצר IShellLink למשימה: מריץ את ה-exe הנוכחי עם ה-URI הנתון, וכותרתו
+// להצגה נקבעת דרך PKEY_Title.
+HRESULT CreateTaskShellLink(const std::wstring& arguments,
+                            const std::wstring& title, IShellLinkW** out_link) {
   *out_link = nullptr;
 
   ComPtr<IShellLinkW> link;
@@ -87,12 +52,10 @@ HRESULT CreateTabShellLink(int index, const std::wstring& title,
   }
   link->SetPath(exe_path);
   link->SetIconLocation(exe_path, 0);
-
-  std::wstring arguments = L"otzaria://open/tab/" + std::to_wstring(index);
   link->SetArguments(arguments.c_str());
 
   // הכותרת הנראית ב-Jump List נקבעת דרך PKEY_Title על ה-IPropertyStore של
-  // הקיצור — IShellLink::SetDescription לבדו אינו מספיק לפריטי קטגוריה.
+  // הקיצור — IShellLink::SetDescription לבדו אינו מספיק.
   ComPtr<IPropertyStore> store;
   hr = link.As(&store);
   if (FAILED(hr)) {
@@ -120,7 +83,7 @@ HRESULT CreateTabShellLink(int index, const std::wstring& title,
 
 }  // namespace
 
-bool jump_list::UpdateOpenTabs(const std::vector<std::string>& titles_utf8) {
+bool jump_list::AddUserTasks() {
   ComPtr<ICustomDestinationList> destination_list;
   HRESULT hr =
       ::CoCreateInstance(CLSID_DestinationList, nullptr, CLSCTX_INPROC_SERVER,
@@ -136,11 +99,6 @@ bool jump_list::UpdateOpenTabs(const std::vector<std::string>& titles_utf8) {
     return false;
   }
 
-  // רשימה ריקה — מסיימים בלי קטגוריה כדי לנקות את "טאבים פתוחים".
-  if (titles_utf8.empty()) {
-    return SUCCEEDED(destination_list->CommitList());
-  }
-
   ComPtr<IObjectCollection> collection;
   hr = ::CoCreateInstance(CLSID_EnumerableObjectCollection, nullptr,
                           CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&collection));
@@ -149,19 +107,13 @@ bool jump_list::UpdateOpenTabs(const std::vector<std::string>& titles_utf8) {
     return false;
   }
 
-  // לא מוסיפים מעבר למספר הפריטים שהמערכת מוכנה להציג — מעבר לכך
-  // AppendCategory נכשל.
-  size_t count = titles_utf8.size();
-  if (count > max_slots) {
-    count = max_slots;
+  ComPtr<IShellLinkW> new_window;
+  hr = CreateTaskShellLink(L"otzaria://window/new", L"חלון חדש", &new_window);
+  if (FAILED(hr)) {
+    destination_list->AbortList();
+    return false;
   }
-  for (size_t i = 0; i < count; ++i) {
-    ComPtr<IShellLinkW> link;
-    if (SUCCEEDED(CreateTabShellLink(static_cast<int>(i),
-                                     Utf16FromUtf8(titles_utf8[i]), &link))) {
-      collection->AddObject(link.Get());
-    }
-  }
+  collection->AddObject(new_window.Get());
 
   ComPtr<IObjectArray> items;
   hr = collection.As(&items);
@@ -170,7 +122,7 @@ bool jump_list::UpdateOpenTabs(const std::vector<std::string>& titles_utf8) {
     return false;
   }
 
-  hr = destination_list->AppendCategory(kCategoryTitle, items.Get());
+  hr = destination_list->AddUserTasks(items.Get());
   if (FAILED(hr)) {
     destination_list->AbortList();
     return false;
@@ -179,18 +131,26 @@ bool jump_list::UpdateOpenTabs(const std::vector<std::string>& titles_utf8) {
   return SUCCEEDED(destination_list->CommitList());
 }
 
-void jump_list::UpdateOpenTabsAsync(std::vector<std::string> titles_utf8) {
-  std::lock_guard<std::mutex> lock(g_async_mutex);
-  g_pending_titles = std::move(titles_utf8);
-  if (g_worker_running) {
-    return;
-  }
-  g_worker_running = true;
+namespace {
+std::thread g_tasks_thread;
+}  // namespace
+
+void jump_list::AddUserTasksAsync() {
   try {
-    std::thread(RunPendingUpdates).detach();
+    g_tasks_thread = std::thread(RunAddUserTasks);
   } catch (const std::exception&) {
-    // בלי thread ה-Jump List נשאר ישן; זה עדיף על עצירת ה-UI thread.
-    g_worker_running = false;
-    g_pending_titles.reset();
+    // בלי thread ה-Jump List נשאר בלי המשימות; זה עדיף על עצירת ה-UI thread.
+  }
+}
+
+void jump_list::WaitForPendingTasks(DWORD timeout_ms) {
+  if (!g_tasks_thread.joinable()) return;
+  // ExitProcess באמצע CommitList הורג את ה-thread בתוך קוד ה-Shell — מסלול
+  // ידוע לתקיעה ביציאה. ממתינים מעט, ואם עדיין רץ — מנתקים.
+  const HANDLE handle = g_tasks_thread.native_handle();
+  if (::WaitForSingleObject(handle, timeout_ms) == WAIT_OBJECT_0) {
+    g_tasks_thread.join();
+  } else {
+    g_tasks_thread.detach();
   }
 }

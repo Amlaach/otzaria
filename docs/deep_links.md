@@ -54,7 +54,7 @@
 | `otzaria://open/daily_page` | פותח את הדף היומי (PDF תלמוד בבלי בדף הנכון ליום) |
 | `otzaria://open/tool/<tool-id>` | פותח כרטיסיית כלי בעיון לפי מזהה מלא — תומך גם בתוספים |
 | `otzaria://open/plugin/<plugin-id>` | פותח כרטיסיית תוסף בעיון לפי מזהה התוסף |
-| `otzaria://open/tab/<index>` | מעבר לטאב פתוח לפי מיקומו (0-based). אינו פותח טאב חדש; אם המיקום לא קיים — מתעלם. נבנה אוטומטית ב-Jump List של שורת המשימות (Windows) |
+| `otzaria://open/tab/<index>` | מעבר לטאב פתוח לפי מיקומו (0-based). אינו פותח טאב חדש; אם המיקום לא קיים — מתעלם. נתמך לשימוש חיצוני; המיקום נפתר מול החלון הראשי |
 | `otzaria://open/book/<id>` | פותח ספר טקסט רשמי לפי מזהה מסד הנתונים. |
 | `otzaria://open/book/<id>?source=user` | פותח ספר טקסט אישי לפי מזהה מסד הנתונים. |
 | `otzaria://open/book/<id>?index=<n>` | פותח ספר רשמי בסעיף `n` (אינדקס לא שלילי). הוסף `source=user&` לפני `index` לספר אישי. |
@@ -64,6 +64,7 @@
 | `otzaria://open/pdf/<id>` | פותח ספר PDF רשמי לפי מזהה מסד הנתונים. |
 | `otzaria://open/pdf/<id>?source=user` | פותח ספר PDF אישי לפי מזהה מסד הנתונים. |
 | `otzaria://open/pdf/<id>?index=<n>` | פותח PDF רשמי בעמוד `n` (מספר עמוד חיובי). הוסף `source=user&` לפני `index` לספר אישי. |
+| `otzaria://window/new` | פותח חלון אוצריא חדש וריק (Windows בלבד; בפלטפורמות אחרות מתעלם). זו גם משימת "חלון חדש" ב-Jump List של שורת המשימות |
 
 **דוגמאות:**
 
@@ -436,7 +437,7 @@ _externalActivationWatchSub = queueFile.parent.watch().listen((event) {
 | `OpenScreenAction(Screen)` | `otzaria://open/library`, ... | מסך עליון |
 | `OpenToolAction(String toolId)` | `otzaria://open/calendar`, `/daily`, `/shamor_zachor`, `/measurements`, `/aramaic_dictionary`, `/acronyms_dictionary`, `/gematria`, `/notes`, `/tool/<id>`, ... | לשונית כלי |
 | `OpenPluginAction(String pluginId)` | `otzaria://open/plugin/<plugin-id>` | פתיחת תוסף ישירות (גם לא-מוצמד) |
-| `SwitchToTabAction(int index)` | `otzaria://open/tab/<index>` | מעבר לטאב פתוח קיים לפי מיקומו (Jump List של Windows) |
+| `SwitchToTabAction(int index)` | `otzaria://open/tab/<index>` | מעבר לטאב פתוח קיים לפי מיקומו |
 | `OpenBookAction(int bookId, {bool isUserBook, int? index, String? searchQuery, bool markSection, String? markText})` | `otzaria://open/book/<id>?source=user&index=<n>&q=<text>&mark&m=<text>` | ספר בעיון; `source=user` נדרש לספר אישי, וקישור ללא `source` נשאר רשמי לתאימות לאחור |
 | `OpenSettingsTabAction({SettingsTab? tab})` | `otzaria://open/settings`, `/settings/design`, `/settings/text`, ... | פתיחת הגדרות, אופציונלית עם ניווט לטאב |
 | `OpenHistoryAction()` | `otzaria://open/history` | דיאלוג היסטוריה |
@@ -449,6 +450,7 @@ _externalActivationWatchSub = queueFile.parent.watch().listen((event) {
 | `ShowInfoAction(InfoTopic topic, {int errorLimit, int fileLimit})` | `otzaria://info`, `otzaria://info/app`, `/library`, `/folders?files=<n>`, `/plugins`, `/errors?limit=<n>` | שאילתת מידע — אוסף דוח JSON ומציג בפופאפ, ללא ניווט |
 | `InstallPluginAction(PluginStoreInstallRequest)` | `otzaria://plugin/install?url=...` | התקנת תוסף מהחנות |
 | `InstallLocalPluginAction(String archivePath)` | `otzaria://plugin/install-local?path=<abs>` | התקנת תוסף מקובץ `.otzplugin` מקומי (לחיצה כפולה על קובץ משויך) |
+| `OpenNewWindowAction()` | `otzaria://window/new` | פתיחת חלון חדש וריק |
 
 לפענוח `plugin/install` הראוטר מעביר את ה‑URI ל‑[`PluginStoreLinkParser.parseUri`](../lib/plugins/services/plugin_store_link_parser.dart) (שמרנו אותו עצמאי כדי לא לשבור את הבדיקות הקיימות), ועוטף את התוצאה ב‑`InstallPluginAction`. אין יותר נפילה אחורה בין שני פרסרים — `ExternalUriRouter.parseUri` הוא נקודת הכניסה היחידה.
 

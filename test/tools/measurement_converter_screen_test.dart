@@ -66,7 +66,9 @@ void main() {
         if (child is RenderBox) {
           child.visitChildren((grandchild) {
             if (grandchild is RenderBox &&
-                grandchild.runtimeType.toString().contains('RenderCustomPaint')) {
+                grandchild.runtimeType.toString().contains(
+                  'RenderCustomPaint',
+                )) {
               containerSize = grandchild.size;
             }
           });
@@ -75,7 +77,12 @@ void main() {
       return containerSize ?? decRb.size;
     }
 
+    Size editableSize() => tester.getSize(
+      find.descendant(of: rtlFinder, matching: find.byType(EditableText)),
+    );
+
     final sizeWith = getContainerSize();
+    final editableWith = editableSize();
     expect(sizeWith.height, 40.0);
 
     // נלחץ על כפתור המחיקה (dismiss icon)
@@ -88,6 +95,8 @@ void main() {
     // הגובה חייב להישאר זהה לחלוטין (40.0) ולא להתכווץ ל-16.0!
     expect(sizeWithout.height, 40.0);
     expect(sizeWithout, equals(sizeWith));
+    // בפונט אמיתי גובה השורה אינו בדיוק fontSize, ורק משבצת הסיומת מחזיקה את הגובה
+    expect(editableSize().width, editableWith.width);
   });
 
   testWidgets('גודל תיבת ההקלדה נשמר גם במצב compactMenuMode', (
@@ -131,7 +140,9 @@ void main() {
         if (child is RenderBox) {
           child.visitChildren((grandchild) {
             if (grandchild is RenderBox &&
-                grandchild.runtimeType.toString().contains('RenderCustomPaint')) {
+                grandchild.runtimeType.toString().contains(
+                  'RenderCustomPaint',
+                )) {
               containerSize = grandchild.size;
             }
           });
@@ -158,7 +169,7 @@ void main() {
 class _TestSettingsBloc extends Bloc<SettingsEvent, SettingsState>
     implements SettingsBloc {
   _TestSettingsBloc([SettingsState? initialState])
-      : super(initialState ?? SettingsState.initial()) {
+    : super(initialState ?? SettingsState.initial()) {
     on<SettingsEvent>((event, emit) {});
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
+import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/find_ref/repository/reference_books_cache.dart';
@@ -14,19 +15,39 @@ void main() {
   const heRefsByBook = {
     12: {648: 'ישעיהו לב, יא', 650: 'ישעיהו לב, יג'},
     70: {5: 'ברכות ב., א'},
+    380: {
+      6846: 'טור, חושן משפט,  שט, א',
+      6848: 'טור, חושן משפט,  שט, ג',
+      7000: 'טור, יורה דעה,  שי, ב',
+      7100: 'טור, אבן העזר,  שי, ב',
+    },
   };
 
-  final titles = {12: 'ישעיהו', 70: 'ברכות'};
+  final titles = {12: 'ישעיהו', 70: 'ברכות', 380: 'טור'};
 
   late List<({List<int> bookIds, String refKey})> lookups;
 
-  FindRefRepository buildRepo({bool withIndex = true}) {
+  FindRefRepository buildRepo({
+    bool withIndex = true,
+    bool withPartialKeys = true,
+  }) {
     lookups = [];
     return FindRefRepository(
       dataRepository: MockDataRepository(),
       isReferenceBooksCacheLoaded: () => true,
       warmUpReferenceBooksCache: () async {},
       searchReferenceBooks: (query, {int limit = 50}) => [
+        if (query == 'טור חושן משפט' || query == 'טור חומ')
+          ReferenceBookHit(
+            bookId: 380,
+            title: 'טור',
+            normalizedTitle: 'טור',
+            filePath: '',
+            fileType: 'txt',
+            matchRank: 3,
+            matchedTerm: query,
+            orderIndex: 380,
+          ),
         for (final entry in titles.entries)
           if (entry.value.startsWith(query))
             ReferenceBookHit(
@@ -48,6 +69,27 @@ void main() {
           'dbLineId': 1,
         },
       ],
+      resolvePartialLineRefs: !withIndex || !withPartialKeys
+          ? null
+          : (bookIds, partialKey) async => {
+              for (final bookId in bookIds)
+                if ((heRefsByBook[bookId] ?? {}).entries
+                        .where(
+                          (line) => partialLineRefKeys(line.value, [
+                            titles[bookId]!,
+                          ]).contains(partialKey),
+                        )
+                        .toList()
+                    case final lines when lines.isNotEmpty)
+                  bookId: [
+                    for (final line in lines)
+                      (
+                        lineIndex: line.key,
+                        lineId: 1000 + line.key,
+                        heRef: line.value,
+                      ),
+                  ],
+            },
       resolveLineRefs: !withIndex
           ? null
           : (bookIds, refKey) async {
@@ -120,6 +162,52 @@ void main() {
     final results = await buildRepo(withIndex: false).findRefs('ישעיהו לב יא');
 
     expect(results, isNotEmpty);
+    expect(results.every((r) => !r.isSourceLine), isTrue);
+  });
+
+  // issue #1346 — ה-heRef של שורות הטור כולל את החלק ("טור, חושן משפט, שט, ג").
+  test('חלק מראש-התיבות ("טור חושן משפט") נכנס למפתח השורה', () async {
+    final results = await buildRepo().findRefs('טור חושן משפט שט ג');
+
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.segment, 6848);
+  });
+
+  test('ראשי-תיבות של החלק ("טור חומ") נפרשים לצורה שב-heRef', () async {
+    AcronymsCache.instance.setAcronymsForTesting({
+      380: ['טור חומ', 'טור חושן משפט'],
+    });
+    addTearDown(() => AcronymsCache.instance.setAcronymsForTesting({}));
+
+    final results = await buildRepo().findRefs('טור חומ שט ג');
+
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.segment, 6848);
+  });
+
+  test(
+    'בלי שם החלק ("טור שט ג") מגיע לשורה בחלק היחיד שבו היא קיימת',
+    () async {
+      final results = await buildRepo().findRefs('טור שט ג');
+
+      expect(results.first.isSourceLine, isTrue);
+      expect(results.first.segment, 6848);
+    },
+  );
+
+  test('הפניה שקיימת בכמה חלקים מוצעת בכל אחד מהם', () async {
+    final results = await buildRepo().findRefs('טור שי ב');
+
+    expect(
+      results.where((r) => r.isSourceLine).map((r) => r.segment),
+      unorderedEquals([7000, 7100]),
+    );
+  });
+
+  test('מסד בלי מפתחות חלקיים נשאר ברמת ה-TOC', () async {
+    final results = await buildRepo(
+      withPartialKeys: false,
+    ).findRefs('טור שט ג');
     expect(results.every((r) => !r.isSourceLine), isTrue);
   });
 }

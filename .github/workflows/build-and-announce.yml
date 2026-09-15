@@ -159,7 +159,12 @@ jobs:
           $clientId = '${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}'
           $clientSecret = '${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}'
           if ([string]::IsNullOrWhiteSpace($clientId) -or [string]::IsNullOrWhiteSpace($clientSecret)) {
-            throw "Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+            if ('${{ github.repository }}' -eq 'Otzaria/otzaria') {
+              throw "Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+            }
+            # פורק: secrets לא עוברים. קובץ ערכי הדמה שב-git מזוהה ע"י השירות כ"לא מוגדר".
+            Write-Host "::warning::Google Calendar secrets are missing - building without Google Calendar sync."
+            exit 0
           }
           $credentialsContent = @"
           class GoogleCalendarCredentials {
@@ -631,7 +636,12 @@ jobs:
           $clientId = '${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}'
           $clientSecret = '${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}'
           if ([string]::IsNullOrWhiteSpace($clientId) -or [string]::IsNullOrWhiteSpace($clientSecret)) {
-            throw "Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+            if ('${{ github.repository }}' -eq 'Otzaria/otzaria') {
+              throw "Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+            }
+            # פורק: secrets לא עוברים. קובץ ערכי הדמה שב-git מזוהה ע"י השירות כ"לא מוגדר".
+            Write-Host "::warning::Google Calendar secrets are missing - building without Google Calendar sync."
+            exit 0
           }
           $credentialsContent = @"
           class GoogleCalendarCredentials {
@@ -850,8 +860,13 @@ jobs:
           CLIENT_ID='${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}'
           CLIENT_SECRET='${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}'
           if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
-            echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
-            exit 1
+            if [ '${{ github.repository }}' = 'Otzaria/otzaria' ]; then
+              echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+              exit 1
+            fi
+            # פורק: secrets לא עוברים. קובץ ערכי הדמה שב-git מזוהה ע"י השירות כ"לא מוגדר".
+            echo "::warning::Google Calendar secrets are missing - building without Google Calendar sync."
+            exit 0
           fi
           cat > lib/tools/calendar/services/google_calendar_credentials.dart << EOF
           class GoogleCalendarCredentials {
@@ -1710,8 +1725,13 @@ jobs:
           CLIENT_ID='${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}'
           CLIENT_SECRET='${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}'
           if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
-            echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
-            exit 1
+            if [ '${{ github.repository }}' = 'Otzaria/otzaria' ]; then
+              echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+              exit 1
+            fi
+            # פורק: secrets לא עוברים. קובץ ערכי הדמה שב-git מזוהה ע"י השירות כ"לא מוגדר".
+            echo "::warning::Google Calendar secrets are missing - building without Google Calendar sync."
+            exit 0
           fi
           cat > lib/tools/calendar/services/google_calendar_credentials.dart << EOF
           class GoogleCalendarCredentials {
@@ -1898,8 +1918,13 @@ jobs:
           CLIENT_ID='${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}'
           CLIENT_SECRET='${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}'
           if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
-            echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
-            exit 1
+            if [ '${{ github.repository }}' = 'Otzaria/otzaria' ]; then
+              echo "::error::Google Calendar secrets are missing. Please set GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET."
+              exit 1
+            fi
+            # פורק: secrets לא עוברים. קובץ ערכי הדמה שב-git מזוהה ע"י השירות כ"לא מוגדר".
+            echo "::warning::Google Calendar secrets are missing - building without Google Calendar sync."
+            exit 0
           fi
           cat > lib/tools/calendar/services/google_calendar_credentials.dart << EOF
           class GoogleCalendarCredentials {
@@ -2687,7 +2712,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies for webhook script
-        run: pip install bs4 requests pyluach yemot-api
+        run: pip install bs4 requests pyluach astral yemot-api
 
       - name: Load release assets for a manual run
         if: github.event_name == 'workflow_dispatch'

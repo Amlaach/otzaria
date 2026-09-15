@@ -436,14 +436,6 @@ class CrossWindowTabDrag {
       return;
     }
 
-    // כרטיסיה אחרונה בחלון: הוצאתה הייתה משאירה חלון ריק ופותחת חדש —
-    // תזוזה בלי תועלת.
-    if (bloc.state.tabs.length <= 1) {
-      _hidePreview();
-      UiSnack.show(WindowMessages.cannotTransferLastTab);
-      return;
-    }
-
     // ⚠️ מסגרת מדויקת **רק** אחרי הצמדה. התצוגה היא בגודל כרטיסיה, ולכן
     // שימוש עיוור במסגרת שלה היה יוצר חלון אוצריא של 176×40.
     //
@@ -541,14 +533,6 @@ class CrossWindowTabDrag {
     if (!_canTransfer(tab)) {
       _hidePreview();
       UiSnack.showError(WindowMessages.cannotTransferTab);
-      return;
-    }
-
-    // כרטיסיה אחרונה בחלון: גרירתה החוצה הייתה משאירה חלון ריק ופותחת
-    // חדש — תזוזה בלי תועלת.
-    if (target.slot == null && tabsBloc.state.tabs.length <= 1) {
-      _hidePreview();
-      UiSnack.show(WindowMessages.cannotTransferLastTab);
       return;
     }
 

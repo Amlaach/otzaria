@@ -65,8 +65,18 @@ class RenderViewportAlignedBox extends RenderProxyBox {
     }
     _resolving = true;
     try {
+      // getOffsetToReveal מחזיר היסט גלילה גולמי; ב-viewport מעוגן (anchor)
+      // הציור מוסט ב-anchor * הציר הראשי, וללא ההוספה כל הפריטים נדחפים למעלה.
+      final anchorShift = viewport is RenderViewport
+          ? viewport.anchor *
+                (viewport.axis == Axis.vertical
+                    ? viewport.size.height
+                    : viewport.size.width)
+          : 0.0;
       final trueTop =
-          viewport.getOffsetToReveal(this, 0).offset - viewport.offset.pixels;
+          viewport.getOffsetToReveal(this, 0).offset -
+          viewport.offset.pixels +
+          anchorShift;
       final toViewport = super.getTransformTo(viewport);
       final reportedTop = MatrixUtils.transformPoint(
         toViewport,

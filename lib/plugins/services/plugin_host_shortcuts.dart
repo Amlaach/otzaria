@@ -50,7 +50,7 @@ class PluginHostShortcut {
 /// אותם לצינור המקלדת של Flutter כאילו הוקשו במסך רגיל.
 ///
 /// מועברים רק קיצורים שנצרכים גם כשתוסף פתוח (מעבר מסך, לשוניות, כלים).
-/// קיצורי עריכה כמו Ctrl+S / Ctrl+P נשארים לתוסף.
+/// לתוסף עדיפות: קיצור שטיפל בו, או שהוקש בשדה עריכה, נשאר שלו (#1336).
 class PluginHostShortcuts {
   const PluginHostShortcuts._();
 
@@ -65,6 +65,7 @@ class PluginHostShortcuts {
     'key-shortcut-open-reading-screen',
     'key-shortcut-open-new-search',
     ShortcutValidator.openAdvancedSearchKey,
+    ShortcutValidator.openNewWindowKey,
     'key-shortcut-open-settings',
     'key-shortcut-open-more',
     'key-shortcut-open-bookmarks',
@@ -192,15 +193,18 @@ class PluginHostShortcuts {
   /// למטה ולמעלה, modifiers למעלה. האירועים מסומנים `synthesized` ולכן
   /// מופצים מיד לעץ הפוקוס ול-late handlers.
   ///
-  /// מחזיר האם המקש הראשי אכן שוגר. מקש ש-Flutter כבר רואה כלחוץ (למשל
-  /// Ctrl שהמשתמש שחרר בתוך ה-WebView) לא משוגר שוב, כדי לא לשבור את
-  /// עקביות המצב של [HardwareKeyboard].
+  /// מחזיר האם המקש הראשי אכן שוגר.
   static bool dispatch(PluginHostShortcut shortcut) {
     final physical = physicalKeyForToken(shortcut.mainKey);
     final logical = _logicalKeyForToken(shortcut.mainKey);
     if (physical == null || logical == null) return false;
+    // Tab של Ctrl+Tab שעבר לתוסף שוחרר בתוך ה-WebView, ו-Flutter עדיין רואה
+    // אותו לחוץ. משחררים את הרישום המיושן, אחרת הקיצור נחסם לתמיד (#1349).
+    final staleLogical = HardwareKeyboard.instance.lookUpLayout(physical);
+    if (staleLogical != null) {
+      _send(ui.KeyEventType.up, physical, staleLogical);
+    }
     final pressed = HardwareKeyboard.instance.physicalKeysPressed;
-    if (pressed.contains(physical)) return false;
 
     final modifiers = <(PhysicalKeyboardKey, LogicalKeyboardKey)>[
       if (shortcut.ctrl)

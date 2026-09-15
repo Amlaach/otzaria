@@ -45,9 +45,15 @@ int? computePdfPrintEndPage({
   return pdfEndPage;
 }
 
-/// בודק אם נדרשת חיתוך טווח עמודים (startPage > 1 או endPage מוגדר).
-bool hasPdfPageRange({required int startPage, required int? endPage}) {
-  return startPage > 1 || endPage != null;
+/// בודק אם נדרש חיתוך טווח עמודים. טווח עד העמוד האחרון [totalPages] אינו
+/// חיתוך — אחרת כל PDF מוכן היה מרוסטר בפלט.
+bool hasPdfPageRange({
+  required int startPage,
+  required int? endPage,
+  int totalPages = 0,
+}) {
+  return startPage > 1 ||
+      (endPage != null && (totalPages == 0 || endPage < totalPages));
 }
 
 /// תווית סיכום לטווח עמודי ה-PDF שנבחר; כשמאוחדים כמה עמודים בגיליון,
