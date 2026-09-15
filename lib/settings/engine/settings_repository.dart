@@ -65,6 +65,9 @@ class SettingsRepository {
   static const String keySearchShowPreview = 'key-search-show-preview';
   static const String keyEnablePerBookSettings = 'key-enable-per-book-settings';
   static const String keyPdfBookViewByDefault = 'key-pdf-book-view-by-default';
+
+  /// הבחירה האחרונה במצב היד בצפיין ה-PDF — חלה על כל ספר שנפתח.
+  static const String keyPdfHandMode = 'key-pdf-hand-mode';
   static const String keyTalmudBavliOpenFormat = 'key-talmud-bavli-open-format';
   static const String keyOfflineMode = 'key-offline-mode';
   static const String keyAutoSync = 'key-auto-sync';
@@ -231,6 +234,7 @@ class SettingsRepository {
     keySearchShowPreview,
     keyEnablePerBookSettings,
     keyPdfBookViewByDefault,
+    keyPdfHandMode,
     keyTalmudBavliOpenFormat,
     keyOfflineMode,
     keyAutoSync,
