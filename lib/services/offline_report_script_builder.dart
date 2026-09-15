@@ -64,10 +64,12 @@ String _buildWindowsBatchScript(
   List<Map<String, dynamic>> payloads,
   String idField,
 ) {
-  final payloadJson = jsonEncode(payloads);
+  // שורת JSON לכל דיווח, שנשלחת כמות שהיא: פענוח וקידוד מחדש ב-PowerShell
+  // עלולים לשנות ערכים, והשרת מאמת digest על התוכן.
+  final payloadLines = payloads.map(jsonEncode).join('\n');
   final powerShellBody = _buildWindowsPowerShellBody(
     endpoint,
-    payloadJson,
+    payloadLines,
     idField,
   );
   // chcp 65001 כדי שהודעות ההתקדמות בעברית יוצגו בקונסול ולא כג'יבריש.
@@ -84,7 +86,7 @@ $powerShellBody''';
 
 String _buildWindowsPowerShellBody(
   String endpoint,
-  String payloadJson,
+  String payloadLines,
   String idField,
 ) {
   return '''Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -93,33 +95,34 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 \$endpoint = '$endpoint'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-\$payloadsJson = @'
-$payloadJson
+\$payloadLines = @'
+$payloadLines
 '@
 
-\$payloads = @(\$payloadsJson | ConvertFrom-Json)
-\$total = \$payloads.Count
+\$bodies = @(\$payloadLines -split "`r?`n" | Where-Object { \$_ -ne '' })
+\$total = \$bodies.Count
 \$sent = 0
 \$failed = 0
 \$index = 0
 \$lines = @()
-foreach (\$payload in \$payloads) {
+foreach (\$body in \$bodies) {
   \$index++
   Write-Host ('שולח דיווח ' + \$index + ' מתוך ' + \$total + '...')
+  \$reportId = '?'
+  try { \$reportId = (\$body | ConvertFrom-Json).$idField } catch {}
   try {
-    \$body = \$payload | ConvertTo-Json -Depth 10 -Compress
     \$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes(\$body)
     \$response = Invoke-WebRequest -Uri \$endpoint -Method Post -ContentType 'application/json; charset=utf-8' -Body \$bodyBytes -UseBasicParsing
     if (\$response.StatusCode -eq 200) {
       \$sent++
-      \$line = 'נשלח: ' + \$payload.$idField
+      \$line = 'נשלח: ' + \$reportId
     } else {
       \$failed++
-      \$line = 'נכשל: ' + \$payload.$idField + ' (סטטוס ' + \$response.StatusCode + ')'
+      \$line = 'נכשל: ' + \$reportId + ' (סטטוס ' + \$response.StatusCode + ')'
     }
   } catch {
     \$failed++
-    \$line = 'נכשל: ' + \$payload.$idField + ' (' + \$_.Exception.Message + ')'
+    \$line = 'נכשל: ' + \$reportId + ' (' + \$_.Exception.Message + ')'
   }
   \$lines += \$line
   Write-Host \$line
@@ -149,10 +152,12 @@ String _buildUnixShellScript(
     ..writeln('index=0')
     ..writeln('results=""')
     ..writeln('')
+    // הגוף מגיע ב-stdin ולא מ-heredoc בתוך $(): bash 3.2 (macOS) נכשל בפענוח
+    // heredoc עם גרשיים או סוגריים לא מאוזנים בתוך command substitution.
     ..writeln('send_one() {')
-    ..writeln('  local body="\$1"')
-    ..writeln('  local id="\$2"')
-    ..writeln('  local code line')
+    ..writeln('  local id="\$1"')
+    ..writeln('  local body code line')
+    ..writeln('  body="\$(cat)"')
     ..writeln('  index=\$((index + 1))')
     ..writeln('  echo "שולח דיווח \${index} מתוך \${total}..."')
     ..writeln(
@@ -180,10 +185,9 @@ String _buildUnixShellScript(
     final payloadJson = jsonEncode(payloads[index]);
     final delimiter = 'OTZARIA_PAYLOAD_$index';
     buffer
-      ..writeln('send_one "\$(cat <<\'$delimiter\'')
+      ..writeln("send_one ${_shellSingleQuote(ids[index])} <<'$delimiter'")
       ..writeln(payloadJson)
-      ..writeln(delimiter)
-      ..writeln(')" ${_shellSingleQuote(ids[index])}');
+      ..writeln(delimiter);
   }
 
   buffer

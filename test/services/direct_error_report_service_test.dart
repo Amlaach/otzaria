@@ -9,6 +9,11 @@ import 'package:otzaria/data/repository/hive_list_repository.dart';
 import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
+import 'package:otzaria/core/messages/report_messages.dart';
+
+import '../models/direct_error_report_text_correction_test.dart'
+    show buildCorrectionReport, trickyLine;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -179,6 +184,33 @@ void main() {
     });
   });
 
+  group('DirectErrorReportService — ספירת הנשלחים (issue #1343)', () {
+    test('המונה ממשיך מעבר לתקרת ההיסטוריה', () async {
+      const max = DirectErrorReportService.maxSentReportsToKeep;
+      final repository = InMemoryDirectErrorReportRepository();
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      await repository.overwrite([
+        for (var i = 0; i < max + 3; i++) _buildReport(id: 'r-$i'),
+      ]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('', 200)),
+        queueRepository: repository,
+        sentRepository: sentRepository,
+        sentCounter: SentReportsCounter.inMemory(),
+      );
+
+      while ((await repository.load()).isNotEmpty) {
+        await service.flushPendingReports();
+      }
+
+      expect((await sentRepository.load()).length, max);
+      expect(await service.getSentReportsTotal(), max + 3);
+
+      await service.clearSentReports();
+      expect(await service.getSentReportsTotal(), 0);
+    });
+  });
+
   group('DirectErrorReportService.flushPendingReports', () {
     test('automatic flush sends only retryable queued reports', () async {
       final repository = InMemoryDirectErrorReportRepository();
@@ -242,6 +274,7 @@ void main() {
         ]);
 
         final attemptedReportIds = <String>[];
+        final sentCounter = SentReportsCounter.inMemory();
         final service = DirectErrorReportService(
           client: MockClient((request) async {
             final payload = jsonDecode(request.body) as Map<String, dynamic>;
@@ -256,6 +289,7 @@ void main() {
           }),
           queueRepository: repository,
           sentRepository: sentRepository,
+          sentCounter: sentCounter,
         );
 
         final sentCount = await service.flushPendingReports(
@@ -264,8 +298,20 @@ void main() {
         final remainingReports = await repository.load();
 
         expect(sentCount, 1);
+        expect(
+          await service.getSentReportsTotal(),
+          1,
+          reason: 'דיווח שנדחה נשמר בהיסטוריה אך אינו נספר כנשלח',
+        );
         expect(attemptedReportIds, ['invalid-report', 'valid-report']);
-        expect((await sentRepository.load()).single.id, 'valid-report');
+        final history = await sentRepository.load();
+        expect(history.map((r) => r.id), ['valid-report', 'invalid-report']);
+        expect(history.first.rejectionReason, isNull);
+        expect(
+          history.last.rejectionReason,
+          ReportMessages.serverPermanentFailure(400),
+          reason: 'דיווח שנדחה לצמיתות לא נעלם בשקט — הוא נשמר בהיסטוריה',
+        );
         expect(
           remainingReports.map((report) => report.id).toList(),
           ['manual-report'],
@@ -335,11 +381,40 @@ void main() {
         );
 
         expect(result.status, DirectReportDeliveryStatus.sent);
-        expect(result.message, 'הדיווח נשלח בהצלחה לספריא.');
+        expect(result.message, 'הדיווח נקלט ויועבר לספריא. תודה!');
         expect(
           (await sentRepository.load()).single.id,
           'sefaria-success-report',
         );
+      },
+    );
+
+    test(
+      'sefaria label by containment, like the website email routing',
+      () async {
+        Future<String?> messageFor(String sourceFolder) async {
+          final service = DirectErrorReportService(
+            client: MockClient((request) async => http.Response('', 200)),
+            queueRepository: InMemoryDirectErrorReportRepository(),
+            sentRepository: InMemoryDirectErrorReportRepository(),
+          );
+          final result = await service.submitReport(
+            _buildReport(id: 'r-$sourceFolder', sourceFolder: sourceFolder),
+          );
+          return result.message;
+        }
+
+        for (final folder in [
+          'Sefaria',
+          ' SEFARIATOOTZARIA ',
+          'sefaria-extra',
+          'mysefaria',
+        ]) {
+          expect(await messageFor(folder), ReportMessages.sentToSefaria);
+        }
+        for (final folder in ['wikiSource', 'Tashma', '']) {
+          expect(await messageFor(folder), ReportMessages.sentToOtzaria);
+        }
       },
     );
 
@@ -558,6 +633,443 @@ void main() {
         expect(result.message, contains('לספריא'));
       },
     );
+  });
+
+  _textCorrectionServiceTests();
+}
+
+http.Response _utf8Response(String body) => http.Response.bytes(
+  utf8.encode(body),
+  200,
+  headers: const {'content-type': 'application/json; charset=utf-8'},
+);
+
+void _textCorrectionServiceTests() {
+  String supportedBody({bool replay = false}) => jsonEncode({
+    'success': true,
+    'accepted': true,
+    'correction_supported': true,
+    'duplicate': false,
+    'idempotent_replay': replay,
+    'message': 'הדיווח נקלט',
+  });
+
+  group('חוזה A — סיווג תשובות (§2.4)', () {
+    for (final status in [400, 409, 413, 422]) {
+      test('[T7/T9] $status הוא כשל קבוע — לא נכנס לתור', () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final service = DirectErrorReportService(
+          client: MockClient((_) async => http.Response('{}', status)),
+          queueRepository: repository,
+        );
+
+        final result = await service.submitReport(
+          buildCorrectionReport(id: 'perm-$status'),
+        );
+
+        expect(result.status, DirectReportDeliveryStatus.failed);
+        expect(await repository.load(), isEmpty);
+        if (status == 409) {
+          expect(result.message, ReportMessages.reportIdConflict);
+        }
+      });
+    }
+
+    for (final status in [408, 429, 500, 503]) {
+      test('[T10] $status הוא כשל זמני — נשמר בתור לניסיון חוזר', () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final service = DirectErrorReportService(
+          client: MockClient((_) async => http.Response('{}', status)),
+          queueRepository: repository,
+        );
+
+        final report = buildCorrectionReport(id: 'transient-$status');
+        final result = await service.submitReport(report);
+
+        expect(result.status, DirectReportDeliveryStatus.queued);
+        final queued = (await repository.load()).single;
+        expect(queued.correction, report.correction);
+        expect(queued.queueType, DirectErrorReportQueueType.automaticRetry);
+      });
+    }
+
+    test('[T7] 409 בשליחה מהתור משאיר את הדיווח בתור', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final report = buildCorrectionReport(id: 'conflict');
+      await repository.overwrite([report]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('{}', 409)),
+        queueRepository: repository,
+        sentRepository: InMemoryDirectErrorReportRepository(),
+      );
+
+      final result = await service.submitPendingReport(report);
+
+      expect(result.status, DirectReportDeliveryStatus.failed);
+      expect(result.message, ReportMessages.pendingReportIdConflict);
+      final kept = (await repository.load()).single;
+      expect(kept.id, isNot('conflict'), reason: 'שליחה חוזרת = מזהה חדש');
+      expect(kept.correction, report.correction);
+      expect(kept.queueType, DirectErrorReportQueueType.manual);
+    });
+
+    test('[T7] אחרי 409, "שלח" שוב שולח במזהה החדש ונקלט', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      await repository.overwrite([buildCorrectionReport(id: 'conflict')]);
+      final sentIds = <String>[];
+      final service = DirectErrorReportService(
+        client: MockClient((request) async {
+          final id = (jsonDecode(request.body) as Map)['report_id'] as String;
+          sentIds.add(id);
+          return id == 'conflict'
+              ? http.Response('{}', 409)
+              : _utf8Response(supportedBody());
+        }),
+        queueRepository: repository,
+        sentRepository: InMemoryDirectErrorReportRepository(),
+      );
+
+      await service.submitPendingReport((await repository.load()).single);
+      final second = await service.submitPendingReport(
+        (await repository.load()).single,
+      );
+
+      expect(second.isSent, isTrue);
+      expect(sentIds, hasLength(2));
+      expect(sentIds.last, isNot('conflict'));
+      expect(await repository.load(), isEmpty);
+    });
+
+    test(
+      '[T7] 409 בשליחה האוטומטית: מזהה חדש, נשאר בתור ולא נשלח שוב לבד',
+      () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        await repository.overwrite([
+          buildCorrectionReport(id: 'conflict').copyWith(
+            queueType: DirectErrorReportQueueType.automaticRetry,
+          ),
+        ]);
+        var calls = 0;
+        final service = DirectErrorReportService(
+          client: MockClient((_) async {
+            calls++;
+            return http.Response('{}', 409);
+          }),
+          queueRepository: repository,
+          sentRepository: sentRepository,
+        );
+
+        await service.flushPendingReports(onlyAutomaticRetry: true);
+        await service.flushPendingReports(onlyAutomaticRetry: true);
+
+        final kept = (await repository.load()).single;
+        expect(kept.id, isNot('conflict'));
+        expect(kept.queueType, DirectErrorReportQueueType.manual);
+        expect(calls, 1, reason: '409 הוא כשל קבוע — אין ניסיון חוזר אוטומטי');
+        expect(await sentRepository.load(), isEmpty);
+      },
+    );
+  });
+
+  group('תקרת גוף הבקשה (§2.2: 256KB)', () {
+    test('נמדדת בבתי UTF-8 ולא ביחידות UTF-16', () {
+      // 140,000 אותיות עבריות = 280,000 בתים, אך רק 140,000 יחידות UTF-16.
+      final report = buildCorrectionReport(errorDetails: 'א' * 140000);
+      expect(
+        report.apiBody.length,
+        lessThan(DirectErrorReport.maxApiBodyBytes),
+      );
+      expect(report.exceedsApiBodyLimit, isTrue);
+      expect(buildCorrectionReport().exceedsApiBodyLimit, isFalse);
+    });
+
+    test('גוף גדול מדי אינו נשלח, וההודעה ייעודית', () async {
+      var calls = 0;
+      final repository = InMemoryDirectErrorReportRepository();
+      final service = DirectErrorReportService(
+        client: MockClient((_) async {
+          calls++;
+          return http.Response('{}', 200);
+        }),
+        queueRepository: repository,
+      );
+
+      final result = await service.submitReport(
+        buildCorrectionReport(errorDetails: 'א' * 140000),
+      );
+
+      expect(calls, 0);
+      expect(result.status, DirectReportDeliveryStatus.failed);
+      expect(result.message, ReportMessages.bodyTooLarge(256));
+      expect(await repository.load(), isEmpty);
+    });
+
+    test('בשליחה מהתור: נשמר בהיסטוריה כנדחה עם ההצעה', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      final big = buildCorrectionReport(id: 'big', errorDetails: 'א' * 140000);
+      await repository.overwrite([big]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('{}', 200)),
+        queueRepository: repository,
+        sentRepository: sentRepository,
+      );
+
+      await service.flushPendingReports();
+
+      expect(await repository.load(), isEmpty);
+      final recorded = (await sentRepository.load()).single;
+      expect(recorded.correction, big.correction);
+      expect(recorded.rejectionReason, ReportMessages.bodyTooLarge(256));
+    });
+  });
+
+  group('כשל קבוע בשליחה מהתור אינו מאבד את ההצעה', () {
+    for (final status in [400, 413, 422]) {
+      test('$status: לא חוזר לתור, נשמר בהיסטוריה כנדחה עם ההצעה', () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        final report = buildCorrectionReport(id: 'rejected-$status');
+        await repository.overwrite([report]);
+        final service = DirectErrorReportService(
+          client: MockClient((_) async => http.Response('{}', status)),
+          queueRepository: repository,
+          sentRepository: sentRepository,
+        );
+
+        await service.flushPendingReports();
+
+        expect(await repository.load(), isEmpty);
+        final recorded = (await sentRepository.load()).single;
+        expect(recorded.id, report.id);
+        expect(recorded.correction, report.correction);
+        expect(
+          recorded.rejectionReason,
+          ReportMessages.serverPermanentFailure(status),
+        );
+        final restored = DirectErrorReport.fromJson(
+          jsonDecode(jsonEncode(recorded.toJson())) as Map<String, dynamic>,
+        );
+        expect(restored, recorded);
+      });
+    }
+  });
+
+  group('[T6] שליחה חוזרת באותו מזהה', () {
+    test(
+      '[T6] ניסיון חוזר אחרי כשל זמני שולח payload זהה בייט-לבייט',
+      () async {
+        final bodies = <String>[];
+        var calls = 0;
+        final repository = InMemoryDirectErrorReportRepository();
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        final service = DirectErrorReportService(
+          client: MockClient((request) async {
+            bodies.add(request.body);
+            calls++;
+            return calls == 1
+                ? http.Response('{}', 503)
+                : _utf8Response(supportedBody(replay: true));
+          }),
+          queueRepository: repository,
+          sentRepository: sentRepository,
+        );
+
+        final first = await service.submitReport(
+          buildCorrectionReport(id: 'retry-me'),
+        );
+        expect(first.isQueued, isTrue);
+        final sentCount = await service.flushPendingReports();
+
+        expect(sentCount, 1);
+        expect(bodies, hasLength(2));
+        expect(bodies[1], bodies[0]);
+        expect(await repository.load(), isEmpty);
+        expect((await sentRepository.load()).single.id, 'retry-me');
+      },
+    );
+  });
+
+  group('[T7] עריכה בתור מקבלת מזהה חדש', () {
+    test('[T7] שינוי תוכן = report_id ו-digest חדשים; ההצעה נשמרת', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final report = buildCorrectionReport(id: 'editable');
+      await repository.overwrite([report]);
+      final service = DirectErrorReportService(queueRepository: repository);
+
+      await service.updatePendingReport(
+        report.copyWith(errorDetails: 'הסבר חדש'),
+      );
+
+      final updated = (await repository.load()).single;
+      expect(updated.id, isNot('editable'));
+      expect(updated.errorDetails, 'הסבר חדש');
+      expect(updated.correction, report.correction);
+      expect(updated.correction!.originalLine, trickyLine);
+      expect(updated.contentDigest, isNot(report.contentDigest));
+    });
+
+    test(
+      'surrogate בודד בדיווח שמור אינו מפיל עריכה או ייצוא סקריפט',
+      () async {
+        final repository = InMemoryDirectErrorReportRepository();
+        final broken = buildCorrectionReport(
+          id: 'broken',
+          errorDetails: 'x\uD83D',
+        );
+        final valid = buildCorrectionReport(id: 'valid');
+        await repository.overwrite([broken, valid]);
+        final service = DirectErrorReportService(queueRepository: repository);
+
+        await service.updatePendingReport(
+          broken.copyWith(errorDetails: 'תקין'),
+        );
+        final updated = (await repository.load()).first;
+        expect(updated.id, isNot('broken'));
+        expect(updated.errorDetails, 'תקין');
+
+        final script = service.buildOfflineSendScript(
+          [broken, valid],
+          target: OfflineSendScriptTarget.unix,
+        );
+        expect(script.content, contains('valid'));
+        expect(script.content, isNot(contains('broken')));
+      },
+    );
+
+    test('[T7] עריכה שלא שינתה תוכן שומרת את המזהה', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final report = buildCorrectionReport(id: 'same');
+      await repository.overwrite([report]);
+      final service = DirectErrorReportService(queueRepository: repository);
+
+      await service.updatePendingReport(
+        report.copyWith(queueType: DirectErrorReportQueueType.manual),
+      );
+
+      expect((await repository.load()).single.id, 'same');
+    });
+  });
+
+  group('correction_supported — אתר חדש מול אתר ישן', () {
+    test('אתר חדש: "נקלט" ודגל serverAcceptedCorrection=true', () async {
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => _utf8Response(supportedBody())),
+        queueRepository: InMemoryDirectErrorReportRepository(),
+        sentRepository: sentRepository,
+      );
+
+      final result = await service.submitReport(buildCorrectionReport());
+
+      expect(result.isSent, isTrue);
+      expect(result.correctionNotSupported, isFalse);
+      expect(result.message, contains('נקלט'));
+      expect(result.message, isNot(contains('אושר')));
+      expect(
+        (await sentRepository.load()).single.serverAcceptedCorrection,
+        isTrue,
+      );
+    });
+
+    test(
+      'אתר ישן בלי correction_supported: ההצעה לא אובדת — נשמרת עם דגל והודעה',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final sentRepository = InMemoryDirectErrorReportRepository();
+        final service = DirectErrorReportService(
+          client: MockClient((request) async {
+            bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return http.Response('{"success":true}', 200);
+          }),
+          queueRepository: InMemoryDirectErrorReportRepository(),
+          sentRepository: sentRepository,
+        );
+
+        final report = buildCorrectionReport();
+        final result = await service.submitReport(report);
+
+        expect(result.isSent, isTrue);
+        expect(result.correctionNotSupported, isTrue);
+        expect(
+          result.message,
+          ReportMessages.correctionNotSupportedByServer('אוצריא'),
+        );
+        final saved = (await sentRepository.load()).single;
+        expect(saved.serverAcceptedCorrection, isFalse);
+        expect(saved.correction, report.correction);
+        // האתר הישן קיבל את ההצעה כטקסט בפירוט הטעות.
+        expect(bodies.single['error_details'], contains('מוצע: אֱלֹקִ֑ים'));
+      },
+    );
+
+    test('דיווח חופשי אינו מסומן גם בלי correction_supported', () async {
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('{"success":true}', 200)),
+        queueRepository: InMemoryDirectErrorReportRepository(),
+        sentRepository: sentRepository,
+      );
+
+      final result = await service.submitReport(_buildReport(id: 'free'));
+
+      expect(result.correctionNotSupported, isFalse);
+      expect(
+        (await sentRepository.load()).single.serverAcceptedCorrection,
+        isNull,
+      );
+    });
+
+    test('שליחה אוטומטית מהתור מסמנת גם היא את הדגל', () async {
+      final repository = InMemoryDirectErrorReportRepository();
+      final sentRepository = InMemoryDirectErrorReportRepository();
+      await repository.overwrite([
+        buildCorrectionReport(
+          id: 'queued',
+        ).copyWith(queueType: DirectErrorReportQueueType.automaticRetry),
+      ]);
+      final service = DirectErrorReportService(
+        client: MockClient((_) async => http.Response('', 200)),
+        queueRepository: repository,
+        sentRepository: sentRepository,
+      );
+
+      await service.flushPendingReports(onlyAutomaticRetry: true);
+
+      expect(
+        (await sentRepository.load()).single.serverAcceptedCorrection,
+        isFalse,
+      );
+    });
+  });
+
+  test('[T1] דיווח ישן מהתור נשלח ב-payload הישן בדיוק', () async {
+    final bodies = <Map<String, dynamic>>[];
+    final service = DirectErrorReportService(
+      client: MockClient((request) async {
+        bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response('', 200);
+      }),
+      queueRepository: InMemoryDirectErrorReportRepository(),
+      sentRepository: InMemoryDirectErrorReportRepository(),
+    );
+
+    final legacy = DirectErrorReport.fromJson({
+      'id': 'legacy',
+      'senderEmail': 'user@example.com',
+      'subject': 'legacy',
+      'bookTitle': 'legacy book',
+      'currentRef': 'legacy ref',
+      'lineNumber': 3,
+      'createdAt': '2026-03-16T10:15:00Z',
+    });
+    final result = await service.submitReport(legacy);
+
+    expect(result.isSent, isTrue);
+    expect(bodies.single, jsonDecode(jsonEncode(legacy.toApiPayload())));
+    expect(bodies.single.containsKey('schema_version'), isFalse);
+    expect(bodies.single.containsKey('content_digest'), isFalse);
   });
 }
 

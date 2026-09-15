@@ -17,6 +17,7 @@ import 'package:otzaria/text_book/bloc/text_book_bloc.dart';
 import 'package:otzaria/text_book/bloc/text_book_event.dart';
 import 'package:otzaria/text_book/bloc/text_book_state.dart';
 import 'package:otzaria/text_book/view/commentary_list_base.dart';
+import 'package:otzaria/text_book/view/error_report_dialog.dart';
 import 'package:otzaria/utils/ui/context_menu_utils.dart';
 import 'package:otzaria/text_display/models/text_display_profile.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
@@ -504,6 +505,71 @@ void main() {
       expect(args.content, const [
         '<b>תוכן</b> המפרש',
       ], reason: 'התוכן המדווח נשאר פסקת המפרש המלאה גם כשיש בחירה');
+    });
+
+    test('מפרש בשורה אחת: השורה הגולמית מוצמדת לאינדקס של ספר המפרש', () {
+      final args = ContextMenuUtils.commentaryReportArgs(
+        link: commentaryLink(),
+        rawContent: '<b>תוכן</b> המפרש',
+      );
+      expect(args.reportLine, '<b>תוכן</b> המפרש');
+      const snapshot = ReportSourceSnapshot(
+        bookId: 3,
+        lineIndex: 41,
+        heRef: null,
+        originalLine: '<b>תוכן</b> המפרש',
+      );
+      expect(
+        ErrorReportHelper.isSourceConsistentWithContent(
+          snapshot,
+          args.content,
+          reportLine: args.reportLine,
+        ),
+        isTrue,
+        reason: 'בלי reportLine הבדיקה השוותה ל-content[41] ברשימה של שורה אחת',
+      );
+      expect(
+        ErrorReportHelper.isSourceConsistentWithContent(
+          const ReportSourceSnapshot(
+            bookId: 3,
+            lineIndex: 41,
+            heRef: null,
+            originalLine: 'שורה אחרת ב-DB',
+          ),
+          args.content,
+          reportLine: args.reportLine,
+        ),
+        isFalse,
+      );
+    });
+
+    test('קישור-טווח: אין שורה גולמית יחידה — אין מסלול הצעת תיקון', () {
+      final link = Link(
+        heRef: 'רש"י על בראשית א:א',
+        index1: 1,
+        path2: 'אוצריא/תנך/פירושים/רשי.txt',
+        index2: 42,
+        index2End: 44,
+        connectionType: 'commentary',
+      );
+      final args = ContextMenuUtils.commentaryReportArgs(
+        link: link,
+        rawContent: 'א<br>ב<br>ג',
+      );
+      expect(args.reportLine, isNull);
+      expect(
+        ErrorReportHelper.isSourceConsistentWithContent(
+          const ReportSourceSnapshot(
+            bookId: 3,
+            lineIndex: 41,
+            heRef: null,
+            originalLine: 'א',
+          ),
+          args.content,
+          reportLine: args.reportLine,
+        ),
+        isFalse,
+      );
     });
   });
 }

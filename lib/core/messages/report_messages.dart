@@ -5,9 +5,25 @@
 abstract class ReportMessages {
   // ── שליחה ישירה (DirectErrorReportService) ─────────────────────────────
 
-  static const String sentToOtzaria = 'הדיווח נשלח בהצלחה לצוות אוצריא.';
-  static const String sentToSefaria = 'הדיווח נשלח בהצלחה לספריא.';
-  static const String sentSuccessTitle = 'הדיווח נשלח בהצלחה';
+  // "נקלט" ולא "אושר": הקליטה אינה הכרעה בתוכן הדיווח.
+  static const String sentToOtzaria = 'הדיווח נקלט אצל צוות אוצריא. תודה!';
+  static const String sentToSefaria = 'הדיווח נקלט ויועבר לספריא. תודה!';
+  static const String sentSuccessTitle = 'הדיווח נקלט';
+
+  static String correctionNotSupportedByServer(String targetLabel) =>
+      'הדיווח נקלט אצל $targetLabel, אך השרת עדיין אינו תומך בהצעת תיקון '
+      'מובנית. ההצעה נשלחה כטקסט בתוך פירוט הטעות ונשמרה בהיסטוריית '
+      'הדיווחים.';
+  static const String reportIdConflict =
+      'השרת כבר קלט דיווח אחר עם אותו מזהה, ולכן הדיווח לא נקלט. '
+      'ניתן לדווח שוב — דיווח חדש מקבל מזהה חדש.';
+  static const String pendingReportIdConflict =
+      'השרת כבר קלט דיווח אחר עם אותו מזהה, ולכן הדיווח לא נקלט. '
+      'הדיווח קיבל מזהה חדש ונשאר בתור — ניתן לשלוח אותו שוב.';
+
+  static String bodyTooLarge(int maxKb) =>
+      'הדיווח גדול מדי לשליחה (הגבול הוא ${maxKb}KB). יש לקצר את הפירוט '
+      'או את ההצעה — הטקסט לא ייחתך.';
 
   static String duplicateReport(String targetLabel) =>
       'דיווח זהה לזה כבר נשלח ל$targetLabel בעבר, ולכן לא נשלחה הודעה נוספת. '
@@ -56,6 +72,27 @@ abstract class ReportMessages {
 
   static String reportSubject(String bookTitle) => 'דיווח על טעות: $bookTitle';
 
+  static const String proposalIdentical =
+      'ההצעה זהה למקור. יש לשנות את הטקסט, לבחור "מחיקת הקטע" או "ללא הצעה".';
+
+  static String proposalTooLong(int maxLength) =>
+      'ההצעה ארוכה מדי (מעל $maxLength תווים). יש לקצר אותה — היא לא תיחתך.';
+
+  static String originalTooLong(int maxLength) =>
+      'השורה המקורית ארוכה מ-$maxLength תווים, ולכן לא ניתן להציע לה תיקון '
+      'מובנה. ניתן לשלוח דיווח חופשי.';
+
+  static const String invalidCharacters =
+      'הטקסט מכיל תו פגום (חצי מתו מורכב, כמו אימוג׳י שנקטע), ולכן לא ניתן '
+      'לשלוח אותו כהצעה מדויקת. יש למחוק את התו או לשלוח דיווח חופשי.';
+
+  static const String proposalNeedsDetailsOrChange =
+      'בלי הצעה יש לפרט מהי הטעות.';
+
+  static const String correctionWholeLineNotice =
+      'הקטע שסומן לא אותר באופן חד-משמעי בטקסט המקור (למשל בגלל ניקוד מוסתר, '
+      'עיצוב או מופע חוזר), ולכן ההצעה חלה על השורה כולה.';
+
   static String sendError(Object error) => 'שגיאה בשליחת הדיווח: $error';
 
   static String handleError(Object error) => 'שגיאה בטיפול בדיווח: $error';
@@ -67,6 +104,8 @@ abstract class ReportMessages {
 
   static const String markedAsSent = 'הדיווח סומן כנשלח.';
   static const String reportUpdated = 'הדיווח עודכן.';
+  static const String detailsRequired =
+      'לא ניתן לשמור דיווח ללא פירוט. הדיווח לא שונה.';
   static const String removedFromQueue = 'הדיווח הוסר מהתור.';
   static const String deletedFromHistory = 'הדיווח נמחק מההיסטוריה.';
   static const String historyCleared = 'היסטוריית הדיווחים נוקתה.';

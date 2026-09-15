@@ -9,6 +9,7 @@ import 'package:otzaria/data/repository/hive_list_repository.dart';
 import 'package:otzaria/plugins/models/plugin_report_record.dart';
 import 'package:otzaria/plugins/services/plugin_report_service.dart';
 import 'package:otzaria/services/offline_report_script_builder.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -38,11 +39,13 @@ void main() {
     required http.Client client,
     required _InMemoryPluginReportRepository queue,
     required _InMemoryPluginReportRepository sent,
+    SentReportsCounter? counter,
   }) {
     return PluginReportService(
       client: client,
       queueRepository: queue,
       sentRepository: sent,
+      sentCounter: counter ?? SentReportsCounter.inMemory(),
     );
   }
 
@@ -391,6 +394,122 @@ void main() {
     });
   });
 
+  group('PluginReportService.updatePendingReport (issue #1340)', () {
+    PluginReportService serviceFor(_InMemoryPluginReportRepository queue) =>
+        buildService(
+          client: MockClient((_) async => http.Response('{}', 200)),
+          queue: queue,
+          sent: _InMemoryPluginReportRepository(),
+        );
+
+    test('שינוי בתוכן: סוג ופירוט מתעדכנים ומתקבל reportId חדש', () async {
+      final queue = _InMemoryPluginReportRepository()
+        ..seed([_buildRecord('q-1'), _buildRecord('q-2')]);
+
+      await serviceFor(
+        queue,
+      ).updatePendingReport('q-1', reportType: 'crash', details: '  חדש  ');
+
+      final records = await queue.load();
+      expect(records, hasLength(2));
+      expect(records.first.reportId, isNot('q-1'));
+      expect(records.first.reportType, 'crash');
+      expect(records.first.details, 'חדש');
+      expect(records.first.pluginUid, _buildRecord('q-1').pluginUid);
+      expect(records.last.reportId, 'q-2');
+    });
+
+    test('בלי שינוי: המזהה נשמר', () async {
+      final original = _buildRecord('q-1');
+      final queue = _InMemoryPluginReportRepository()..seed([original]);
+
+      await serviceFor(queue).updatePendingReport(
+        'q-1',
+        reportType: original.reportType,
+        details: original.details,
+      );
+
+      expect((await queue.load()).single.reportId, 'q-1');
+    });
+
+    test('פירוט ריק נדחה והדיווח לא משתנה', () async {
+      final queue = _InMemoryPluginReportRepository()
+        ..seed([_buildRecord('q-1')]);
+
+      await expectLater(
+        serviceFor(
+          queue,
+        ).updatePendingReport('q-1', reportType: 'bug', details: '   '),
+        throwsException,
+      );
+      expect((await queue.load()).single.reportId, 'q-1');
+    });
+
+    test('סוג לא מוכר מנורמל ל-other', () async {
+      final queue = _InMemoryPluginReportRepository()
+        ..seed([_buildRecord('q-1')]);
+
+      await serviceFor(
+        queue,
+      ).updatePendingReport('q-1', reportType: 'weird', details: 'אחר');
+
+      expect((await queue.load()).single.reportType, 'other');
+    });
+  });
+
+  group('PluginReportService — ספירת הנשלחים מעבר לתקרה (issue #1343)', () {
+    test('המונה ממשיך מעבר לתקרת ההיסטוריה', () async {
+      final max = PluginReportService.maxSentReportsToKeep;
+      final queue = _InMemoryPluginReportRepository()
+        ..seed([for (var i = 0; i < max + 5; i++) _buildRecord('q-$i')]);
+      final sent = _InMemoryPluginReportRepository();
+      final service = buildService(
+        client: MockClient((_) async => http.Response('{}', 200)),
+        queue: queue,
+        sent: sent,
+      );
+
+      while ((await queue.load()).isNotEmpty) {
+        await service.flushPendingReports();
+      }
+
+      expect((await sent.load()).length, max);
+      expect(await service.getSentReportsTotal(), max + 5);
+    });
+
+    test('שליחה חוזרת של אותו מזהה לא נספרת פעמיים', () async {
+      final counter = SentReportsCounter.inMemory();
+      final service = buildService(
+        client: MockClient((_) async => http.Response('{}', 200)),
+        queue: _InMemoryPluginReportRepository(),
+        sent: _InMemoryPluginReportRepository(),
+        counter: counter,
+      );
+
+      await service.submitReport(_buildRecord('r-1'));
+      await service.submitReport(_buildRecord('r-1'));
+
+      expect(await counter.read(), 1);
+    });
+
+    test('מתקין בלי מונה: מתחיל מגודל ההיסטוריה, וניקוי מאפס', () async {
+      final sent = _InMemoryPluginReportRepository()
+        ..seed([_buildRecord('old-1'), _buildRecord('old-2')]);
+      final service = buildService(
+        client: MockClient((_) async => http.Response('{}', 200)),
+        queue: _InMemoryPluginReportRepository(),
+        sent: sent,
+      );
+
+      expect(await service.getSentReportsTotal(), 2);
+      await service.submitReport(_buildRecord('new'));
+      expect(await service.getSentReportsTotal(), 3);
+
+      await service.clearSentReports();
+      expect(await service.getSentReportsTotal(), 0);
+    });
+  });
+
   group('PluginReportService.buildOfflineSendScript', () {
     test('סקריפט Windows נבנה עם CRLF ומכיל את ה-payload והמזהה', () {
       final service = buildService(
@@ -410,7 +529,7 @@ void main() {
       expect(RegExp(r'[^\r]\n').hasMatch(script.content), isFalse);
       expect(script.content, contains('s-1'));
       expect(script.content, contains(PluginReportService.endpoint.toString()));
-      expect(script.content, contains(r'$payload.reportId'));
+      expect(script.content, contains(r'($body | ConvertFrom-Json).reportId'));
     });
 
     test('סקריפט Unix נשאר LF ומכיל את המזהה', () {

@@ -11,6 +11,7 @@ import 'package:otzaria/plugins/models/plugin_manifest.dart';
 import 'package:otzaria/plugins/services/plugin_report_service.dart';
 import 'package:otzaria/plugins/storage/plugin_system_database.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/personal_notes/storage/personal_notes_database.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
@@ -19,6 +20,9 @@ import 'package:otzaria/shortcuts/shortcut_validator.dart';
 import 'package:otzaria/tabs/tabs_repository.dart';
 import 'package:otzaria/workspaces/workspace_repository.dart';
 import 'package:path/path.dart' as p;
+
+import '../../models/direct_error_report_text_correction_test.dart'
+    show buildCorrectionReport, trickyLine;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -1187,6 +1191,58 @@ void main() {
       final service = DirectErrorReportService();
       expect((await service.getPendingReports()).single.id, 'pending-1');
       expect((await service.getSentReports()).single.id, 'sent-1');
+      await service.closeHttpClient();
+    });
+
+    test(
+      '[T5] הצעת תיקון בתור שורדת הפעלה מחדש וגיבוי/שחזור בלי שינוי',
+      () async {
+        final report = buildCorrectionReport(id: 'corr-backup');
+        final before = DirectErrorReportService();
+        await before.queueReport(report);
+        await before.closeHttpClient();
+
+        // "הפעלה מחדש": סגירת ה-box ופתיחתו מהדיסק, ומופע שירות חדש.
+        await reportsBox.close();
+        reportsBox = await Hive.openBox<dynamic>(
+          DirectErrorReportService.queueBoxName,
+        );
+
+        final afterRestart = DirectErrorReportService();
+        final reloaded = (await afterRestart.getPendingReports()).single;
+        expect(reloaded, equals(report));
+        expect(reloaded.toApiPayload(), report.toApiPayload());
+
+        final path = await createSettingsBackup();
+        await reportsBox.clear();
+        await BackupService.restoreFromBackup(path);
+
+        final restored = (await afterRestart.getPendingReports()).single;
+        expect(restored, equals(report));
+        expect(restored.correction!.originalLine, trickyLine);
+        expect(
+          restored.correction!.proposedText,
+          report.correction!.proposedText,
+        );
+        expect(restored.contentDigest, report.contentDigest);
+        await afterRestart.closeHttpClient();
+      },
+    );
+
+    test('מונה הנשלחים עובר גיבוי ושחזור, והגדול מבין השניים נשמר', () async {
+      await reportsBox.put(DirectErrorReportService.sentReportsKey, [
+        report('sent-1'),
+      ]);
+      await reportsBox.put(SentReportsCounter.defaultKey, 250);
+      final path = await createSettingsBackup();
+
+      await reportsBox.clear();
+      await reportsBox.put(SentReportsCounter.defaultKey, 3);
+      await BackupService.restoreFromBackup(path);
+
+      expect(reportsBox.get(SentReportsCounter.defaultKey), 250);
+      final service = DirectErrorReportService();
+      expect(await service.getSentReportsTotal(), 250);
       await service.closeHttpClient();
     });
 

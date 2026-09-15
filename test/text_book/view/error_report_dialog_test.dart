@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/models/direct_error_report.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/text_book/bloc/text_book_state.dart';
+import 'package:otzaria/utils/canonical_json.dart';
 import 'package:otzaria/text_book/view/error_report_dialog.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 // ignore: depend_on_referenced_packages
@@ -166,6 +168,47 @@ void main() {
       final result = ErrorReportHelper.resolveDirectReportTargetLabel('local');
 
       expect(result, equals('אוצריא'));
+    });
+
+    test('email recipients mirror the website routing', () {
+      expect(
+        ErrorReportHelper.emailRecipientsFor('SefariaToOtzaria'),
+        'corrections@sefaria.org,jewishoffice@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor('wikiSource'),
+        'otzaria.200@gmail.com,novartza@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor('local'),
+        'otzaria.200@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor(null),
+        'otzaria.200@gmail.com',
+      );
+    });
+
+    test('only sources that reach the Otzaria inbox allow a correction', () {
+      for (final folder in ['sefaria', 'SefariaToOtzaria', 'my-sefaria-x']) {
+        expect(ErrorReportHelper.reportReachesOtzaria(folder), isFalse);
+      }
+      for (final folder in [
+        'wiki_jewish_books',
+        'wikiSource',
+        'Pninim',
+        'Tashma',
+        'Ben-Yehuda',
+        'local',
+        '',
+        null,
+      ]) {
+        expect(
+          ErrorReportHelper.reportReachesOtzaria(folder),
+          isTrue,
+          reason: '$folder',
+        );
+      }
     });
 
     test('identifies dicta source folder', () {
@@ -955,6 +998,121 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('דיווח על טעות בספר'), findsOneWidget);
+    });
+  });
+
+  test('surrogate בודד בשדות החופשיים מוחלף ב-U+FFFD, וה-digest מחושב', () {
+    final report = ErrorReportHelper.buildDirectReport(
+      senderEmail: 'user@example.com',
+      reportData: const ReportedErrorData(
+        selectedText: 'א\uD83D',
+        errorDetails: 'פירוט \uDE00',
+      ),
+      bookTitle: 'ספר',
+      currentRef: 'א',
+      bookDetails: const {},
+      lineNumber: 1,
+      contextText: 'הקשר\uD83D',
+      libraryVersion: '27',
+    );
+
+    expect(report.selectedText, 'א�');
+    expect(report.errorDetails, 'פירוט �');
+    expect(report.contextText, 'הקשר�');
+    expect(report.contentDigest, hasLength(64));
+  });
+
+  test('created_at של דיווח חדש נשלח ב-UTC עם Z', () {
+    final report = ErrorReportHelper.buildDirectReport(
+      senderEmail: 'user@example.com',
+      reportData: const ReportedErrorData(selectedText: 'א', errorDetails: 'ב'),
+      bookTitle: 'ספר',
+      currentRef: 'א',
+      bookDetails: const {},
+      lineNumber: 1,
+      contextText: '',
+      libraryVersion: '27',
+    );
+
+    final createdAt = report.toApiPayload()['created_at'] as String;
+    expect(createdAt, endsWith('Z'));
+    expect(DateTime.parse(createdAt).isUtc, isTrue);
+  });
+  group('שדות תצוגה ארוכים — מקוצרים לתקרות האתר, שדות מדויקים לא', () {
+    ReportSourceSnapshot source(String line) => ReportSourceSnapshot(
+      bookId: 1,
+      lineIndex: 0,
+      heRef: null,
+      originalLine: line,
+    );
+
+    test('selected/context/title/ref/subject מקוצרים; correction שלם', () {
+      final line = 'א' * 15000;
+      final report = ErrorReportHelper.buildDirectReport(
+        senderEmail: 'user@example.com',
+        reportData: ReportedErrorData(
+          selectedText: line,
+          errorDetails: 'פירוט',
+          correction: TextCorrection.wholeLine(
+            originalLine: line,
+            proposedText: 'ב' * 15000,
+          ),
+        ),
+        bookTitle: 'ס' * 400,
+        currentRef: 'ר' * 400,
+        bookDetails: const {},
+        lineNumber: 1,
+        contextText: 'ה' * 25000,
+        libraryVersion: '27',
+        source: source(line),
+      );
+
+      final payload = report.toApiPayload();
+      expect((payload['selected_text'] as String).length, 10000);
+      expect(payload['selected_text'], endsWith('…'));
+      expect((payload['context_text'] as String).length, 20000);
+      expect((payload['book_title'] as String).length, 300);
+      expect((payload['current_ref'] as String).length, 300);
+      expect((payload['subject'] as String).length, lessThanOrEqualTo(500));
+      expect(payload['error_details'], startsWith('פירוט'));
+      final correction = payload['correction'] as Map<String, dynamic>;
+      expect(correction['original_line'], line);
+      expect(correction['proposed_text'], 'ב' * 15000);
+      expect(payload['content_digest'], report.contentDigest);
+    });
+
+    test('קיצור לא חוצה זוג surrogate', () {
+      final report = ErrorReportHelper.buildDirectReport(
+        senderEmail: 'user@example.com',
+        reportData: ReportedErrorData(
+          selectedText: '${'א' * 9998}😀😀',
+          errorDetails: '',
+        ),
+        bookTitle: 'ספר',
+        currentRef: 'א',
+        bookDetails: const {},
+        lineNumber: 1,
+        contextText: '',
+        libraryVersion: '27',
+      );
+
+      expect(report.selectedText, '${'א' * 9998}…');
+      expect(hasLoneSurrogate(report.selectedText), isFalse);
+    });
+
+    test('ערך בתוך התקרה נשאר כלשונו', () {
+      final text = 'א' * 10000;
+      final report = ErrorReportHelper.buildDirectReport(
+        senderEmail: 'user@example.com',
+        reportData: ReportedErrorData(selectedText: text, errorDetails: ''),
+        bookTitle: 'ספר',
+        currentRef: 'א',
+        bookDetails: const {},
+        lineNumber: 1,
+        contextText: '',
+        libraryVersion: '27',
+      );
+      expect(report.selectedText, text);
     });
   });
 }

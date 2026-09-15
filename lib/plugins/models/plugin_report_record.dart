@@ -56,6 +56,25 @@ class PluginReportRecord {
     };
   }
 
+  PluginReportRecord copyWith({
+    String? reportId,
+    String? reportType,
+    String? details,
+  }) {
+    return PluginReportRecord(
+      reportId: reportId ?? this.reportId,
+      pluginUid: pluginUid,
+      pluginName: pluginName,
+      pluginVersion: pluginVersion,
+      reportType: reportType ?? this.reportType,
+      details: details ?? this.details,
+      reporterEmail: reporterEmail,
+      appVersion: appVersion,
+      platform: platform,
+      createdAt: createdAt,
+    );
+  }
+
   /// גוף הבקשה לשרת — שמות השדות קבועים בחוזה מול האתר.
   Map<String, dynamic> toApiPayload() {
     return {
