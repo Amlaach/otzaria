@@ -7,10 +7,10 @@ import 'package:otzaria/models/link_types.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
 
-final RegExp _markerRegExp = RegExp(r'\(\d{1,3}\)');
+final RegExp _markerRegExp = RegExp(r'\(\d{1,4}\)');
 
 /// ההערה עצמה נפתחת באותו סמן שמודפס בגוף הספר, למשל "(9) לכאורה יש לעיין...".
-final RegExp _noteOpeningMarkerRegExp = RegExp(r'^\s*\(\s*(\d{1,3})\s*\)');
+final RegExp _noteOpeningMarkerRegExp = RegExp(r'^\s*\(\s*(\d{1,4})\s*\)');
 
 final RegExp _anchorOpenRegExp = RegExp(
   r'^<a(?:\s[^>]*[^/>])?>$',

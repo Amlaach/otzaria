@@ -130,9 +130,18 @@ void main() {
     });
 
     test('מתעלם ממספרים ללא סוגריים ומרצפים ארוכים', () {
-      const line = 'שנת (1990) וגם 9 בלבד';
+      const line = 'מספר (12345) וגם 9 בלבד';
 
       expect(addNumberedNoteMarkerLinks(line, lineIndex: 0), line);
+    });
+
+    test('עוטף סמן בן ארבע ספרות', () {
+      final result = addNumberedNoteMarkerLinks(
+        'טקסט (1077) המשך',
+        lineIndex: 4,
+      );
+
+      expect(result, contains('num=1077'));
     });
 
     test('לא עוטף סמן שכבר נמצא בתוך קישור', () {
