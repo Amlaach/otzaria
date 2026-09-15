@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/constants/database_constants.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
@@ -1618,6 +1619,21 @@ class FindRefRepository {
     return termTokens.sublist(start);
   }
 
+  /// "חומ" ← "חושן משפט": צורת החלק המלאה, כפי שהיא ב-heRef, מתוך כינוי אחר
+  /// של אותו ספר ("טור חושן משפט").
+  List<String> _spelledOutSection(int bookId, List<String> section) {
+    if (section.length != 1) return section;
+    final terms = AcronymsCache.instance.getAcronymsForBook(bookId) ?? const [];
+    for (final term in terms) {
+      final words = _tokenize(term);
+      for (var i = 1; i < words.length; i++) {
+        final tail = words.sublist(i);
+        if (hebrewAbbreviationMatchesWords(section.single, tail)) return tail;
+      }
+    }
+    return section;
+  }
+
   /// מיפוי bookId → השורה המדויקת שאליה מצביעה ההפניה, דרך אינדקס `line_ref`.
   ///
   /// שאילתה מאוגדת אחת לכל מפתח קנוני — לא פנייה לכל ספר מועמד. ריק כשאין
@@ -1632,6 +1648,7 @@ class FindRefRepository {
     if (resolve == null) return const {};
 
     final bookIdsByKey = <String, List<int>>{};
+    final bookIdsBySectionKey = <String, List<int>>{};
     for (final hit in bookHits) {
       if (hit.bookId <= 0 || hit.fileType == 'pdf') continue;
       // רכיב יחיד ("ישעיהו לב") הוא ברמת TOC — אין מה לחפש ברמת שורה.
@@ -1642,13 +1659,25 @@ class FindRefRepository {
       }
       if (remaining.length < 2) continue;
       final key = buildRefKey(remaining.join(' '));
-      if (key == null) continue;
-      (bookIdsByKey[key] ??= []).add(hit.bookId);
+      if (key != null) (bookIdsByKey[key] ??= []).add(hit.bookId);
+      // החלק שבזנב ראש-התיבות ("טור חושן משפט") הוא חלק מה-heRef של השורה.
+      final section = _spelledOutSection(
+        hit.bookId,
+        _acronymSectionTokens(hit),
+      );
+      if (section.isEmpty) continue;
+      final sectionKey = buildRefKey([...section, ...remaining].join(' '));
+      if (sectionKey != null) {
+        (bookIdsBySectionKey[sectionKey] ??= []).add(hit.bookId);
+      }
     }
 
     final resolved = <int, ({int lineIndex, int lineId, String? heRef})>{};
-    for (final entry in bookIdsByKey.entries) {
-      resolved.addAll(await _awaitCurrent(resolve(entry.value, entry.key)));
+    // מפתח עם החלק נפתר אחרון כדי שיגבר על המפתח בלעדיו.
+    for (final byKey in [bookIdsByKey, bookIdsBySectionKey]) {
+      for (final entry in byKey.entries) {
+        resolved.addAll(await _awaitCurrent(resolve(entry.value, entry.key)));
+      }
     }
     return resolved;
   }

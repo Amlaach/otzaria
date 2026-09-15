@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
+import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/find_ref/repository/reference_books_cache.dart';
@@ -14,9 +15,10 @@ void main() {
   const heRefsByBook = {
     12: {648: 'ישעיהו לב, יא', 650: 'ישעיהו לב, יג'},
     70: {5: 'ברכות ב., א'},
+    380: {6846: 'טור, חושן משפט,  שט, א', 6848: 'טור, חושן משפט,  שט, ג'},
   };
 
-  final titles = {12: 'ישעיהו', 70: 'ברכות'};
+  final titles = {12: 'ישעיהו', 70: 'ברכות', 380: 'טור'};
 
   late List<({List<int> bookIds, String refKey})> lookups;
 
@@ -27,6 +29,17 @@ void main() {
       isReferenceBooksCacheLoaded: () => true,
       warmUpReferenceBooksCache: () async {},
       searchReferenceBooks: (query, {int limit = 50}) => [
+        if (query == 'טור חושן משפט' || query == 'טור חומ')
+          ReferenceBookHit(
+            bookId: 380,
+            title: 'טור',
+            normalizedTitle: 'טור',
+            filePath: '',
+            fileType: 'txt',
+            matchRank: 3,
+            matchedTerm: query,
+            orderIndex: 380,
+          ),
         for (final entry in titles.entries)
           if (entry.value.startsWith(query))
             ReferenceBookHit(
@@ -121,5 +134,25 @@ void main() {
 
     expect(results, isNotEmpty);
     expect(results.every((r) => !r.isSourceLine), isTrue);
+  });
+
+  // issue #1346 — ה-heRef של שורות הטור כולל את החלק ("טור, חושן משפט, שט, ג").
+  test('חלק מראש-התיבות ("טור חושן משפט") נכנס למפתח השורה', () async {
+    final results = await buildRepo().findRefs('טור חושן משפט שט ג');
+
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.segment, 6848);
+  });
+
+  test('ראשי-תיבות של החלק ("טור חומ") נפרשים לצורה שב-heRef', () async {
+    AcronymsCache.instance.setAcronymsForTesting({
+      380: ['טור חומ', 'טור חושן משפט'],
+    });
+    addTearDown(() => AcronymsCache.instance.setAcronymsForTesting({}));
+
+    final results = await buildRepo().findRefs('טור חומ שט ג');
+
+    expect(results.first.isSourceLine, isTrue);
+    expect(results.first.segment, 6848);
   });
 }
