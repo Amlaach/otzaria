@@ -47,7 +47,7 @@ import 'package:otzaria/utils/text/ref_helper.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
 import 'package:otzaria/utils/ui/context_menu_utils.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:otzaria/widgets/text/rtl_text_field.dart';
+import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 import 'package:otzaria/widgets/feedback/app_future_builder.dart';
 import 'package:otzaria/widgets/feedback/scrollable_positioned_list_scrollbar.dart';
 import 'package:flutter/foundation.dart';
@@ -763,77 +763,44 @@ class CommentaryListBaseState extends State<CommentaryListBase> {
                   return ValueListenableBuilder<int>(
                     valueListenable: _currentSearchIndexNotifier,
                     builder: (context, currentIndex, _) {
-                      return RtlTextField(
+                      return OtzariaSearchField(
                         focusNode: _searchFocusNode,
                         controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'חפש בתוך המפרשים המוצגים...',
-                          prefixIcon: const Icon(
-                            OtzariaIcons.search_in_the_library_24_regular,
-                          ),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (query.isNotEmpty && total > 1) ...[
-                                if (currentIndex >= 0)
-                                  Text(
-                                    '${currentIndex + 1}/$total',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: const Icon(
-                                    FluentIcons.chevron_up_24_regular,
-                                  ),
-                                  iconSize: 20,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 24,
-                                    minHeight: 24,
-                                  ),
-                                  onPressed: currentIndex > 0
-                                      ? () {
-                                          _currentSearchIndexNotifier.value =
-                                              currentIndex - 1;
-                                          _scrollToSearchResult();
-                                        }
-                                      : null,
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    FluentIcons.chevron_down_24_regular,
-                                  ),
-                                  iconSize: 20,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 24,
-                                    minHeight: 24,
-                                  ),
-                                  onPressed: currentIndex < total - 1
-                                      ? () {
-                                          _currentSearchIndexNotifier.value =
-                                              currentIndex + 1;
-                                          _scrollToSearchResult();
-                                        }
-                                      : null,
-                                ),
-                              ],
-                              IconButton(
-                                icon: const Icon(
-                                  FluentIcons.dismiss_24_regular,
-                                ),
-                                tooltip: 'סגור חיפוש',
-                                onPressed: _clearSearchAndCloseField,
+                        hintText: 'חפש בתוך המפרשים המוצגים...',
+                        icon: OtzariaIcons.search_in_the_library_24_regular,
+                        trailingActions: [
+                          if (query.isNotEmpty && total > 1) ...[
+                            if (currentIndex >= 0)
+                              OtzariaSearchAction.resultCounter(
+                                current: currentIndex + 1,
+                                total: total,
+                                context: context,
                               ),
-                            ],
+                            OtzariaSearchAction.prevResult(
+                              onPressed: currentIndex > 0
+                                  ? () {
+                                      _currentSearchIndexNotifier.value =
+                                          currentIndex - 1;
+                                      _scrollToSearchResult();
+                                    }
+                                  : null,
+                            ),
+                            OtzariaSearchAction.nextResult(
+                              onPressed: currentIndex < total - 1
+                                  ? () {
+                                      _currentSearchIndexNotifier.value =
+                                          currentIndex + 1;
+                                      _scrollToSearchResult();
+                                    }
+                                  : null,
+                            ),
+                          ],
+                          OtzariaSearchAction.icon(
+                            iconData: FluentIcons.dismiss_24_regular,
+                            tooltip: 'סגור חיפוש',
+                            onPressed: _clearSearchAndCloseField,
                           ),
-                          isDense: true,
-                          border: OutlineInputBorder(
-                            borderRadius: AppTokens.borderRadiusAll,
-                          ),
-                        ),
+                        ],
                         onChanged: (value) {
                           if (_searchQueryNotifier.value != value) {
                             _searchQueryNotifier.value = value;

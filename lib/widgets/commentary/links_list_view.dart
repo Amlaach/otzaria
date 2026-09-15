@@ -22,7 +22,7 @@ import 'package:otzaria/utils/navigation/talmud_bavli_open_format.dart';
 import 'package:otzaria/text_display/models/text_display_profile.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
 import 'package:otzaria/utils/ui/context_menu_utils.dart';
-import 'package:otzaria/widgets/text/rtl_text_field.dart';
+import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 import 'package:otzaria/widgets/text/rtl_selection_shortcuts.dart';
 import 'package:otzaria/widgets/text/selection_copy_shortcuts.dart';
 import 'package:otzaria/widgets/smart_text/smart_text.dart';
@@ -383,29 +383,11 @@ class _LinksListViewState extends State<LinksListView> {
           padding: const EdgeInsets.all(8.0),
           child: Column(
             children: [
-              RtlTextField(
+              OtzariaSearchField(
                 controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'חפש בתוך הקישורים המוצגים...',
-                  prefixIcon: const Icon(
-                    OtzariaIcons.search_in_titles_24_regular,
-                  ),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(FluentIcons.dismiss_24_regular),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                      : null,
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: AppTokens.borderRadiusAll,
-                  ),
-                ),
+                hintText: 'חפש בתוך הקישורים המוצגים...',
+                icon: OtzariaIcons.search_in_titles_24_regular,
+                onClear: () => setState(() => _searchQuery = ''),
                 onChanged: (value) {
                   setState(() {
                     _searchQuery = value;
