@@ -215,6 +215,50 @@ void main() {
     expect(selected, contains('(ב) סמיכות'));
   });
 
+  testWidgets('תיבת הבחירה של פריט עוטפת את הטקסט שבתוכו', (tester) async {
+    await pumpScrolledView(tester);
+    for (var line = 1; line <= 4; line++) {
+      final text = find.byKey(ValueKey('html_${_title}_$line'));
+      if (text.evaluate().isEmpty) continue;
+      final textRect = tester.getRect(text);
+      final container = tester.getRect(
+        find
+            .ancestor(
+              of: text,
+              matching: find.byType(ViewportAlignedSelectionContainer),
+            )
+            .first,
+      );
+      expect(
+        container.top <= textRect.top + 0.5 &&
+            container.bottom >= textRect.bottom - 0.5,
+        isTrue,
+        reason: 'תיבת הבחירה $container אינה עוטפת את שורה $line ב-$textRect',
+      );
+    }
+  });
+
+  testWidgets('לחיצה משולשת בתחתית פסקה בוחרת אותה ולא את הפסקה שמתחת', (
+    tester,
+  ) async {
+    await pumpScrolledView(tester);
+    final bet = lineRect(tester, 2);
+    final target = Offset(bet.center.dx, bet.bottom - 6);
+
+    for (var i = 0; i < 3; i++) {
+      await tester.tapAt(target, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final registrar = scrollableRegistrar(tester);
+    final selected = registrar.selectables
+        .map((s) => s.getSelectedContent()?.plainText ?? '')
+        .join();
+    expect(selected, contains('סמיכות והוא עב'));
+    expect(selected, isNot(contains('או ירוק')));
+  });
+
   testWidgets('כל פריט ברשימה עטוף ב-ViewportAlignedSelectionContainer', (
     tester,
   ) async {
