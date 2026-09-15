@@ -216,10 +216,13 @@ class PluginRuntimeDispatcher {
   /// [deferred] - הבקשה נזכרה קודם ומתבצעת באיחור. רק אז שדה טקסט פעיל
   /// חוסם אותה: בבקשה ישירה המשתמש בדיוק עבר לטאב התוסף ועזב את השדה,
   /// ובאיחור הוא כבר עלול להקליד במקום אחר.
+  ///
+  /// [trustPageFocus] - ראה [PluginWebViewFocus.request].
   Future<bool> requestKeyboardFocus(
     String pluginId, {
     PluginInstanceId instanceId = PluginInstanceIds.defaultForeground,
     bool deferred = false,
+    bool trustPageFocus = true,
   }) async {
     final key = _keyOf(pluginId, instanceId);
     final instance = _instances[key];
@@ -241,7 +244,10 @@ class PluginRuntimeDispatcher {
           flutterOwnsKeyboard: deferred && flutterOwnsKeyboardNow(),
         )) {
       instance.pendingKeyboardFocus = false;
-      return PluginWebViewFocus.request(controller);
+      return PluginWebViewFocus.request(
+        controller,
+        trustPageFocus: trustPageFocus,
+      );
     }
     if (shouldRememberKeyboardFocusRequest(
       isBackground: isBackground,
@@ -252,6 +258,33 @@ class PluginRuntimeDispatcher {
       _instanceFor(pluginId, instanceId).pendingKeyboardFocus = true;
     }
     return false;
+  }
+
+  /// מחזיר את פוקוס המקלדת ל-WebView של המופע הפעיל של תוסף, אחרי שחלון
+  /// האפליקציה חזר ממיזעור.
+  ///
+  /// אין אף מסלול אחר שמבקש את ההעברה: המופע לא הושהה (ולכן
+  /// אין `plugin.resumed`), הטאב לא התחלף (ולכן אין בקשת מיקוד תוכן),
+  /// ו-`AppLifecycleState.resumed` מגיע כש-`FocusManager` כבר העביר את
+  /// `primaryFocus` ל-`rootScope` — ולכן [PluginWebViewFocusRestorer]
+  /// מוותר. מה שנמדד בלעדיה: הדף מקבל `focus` ומדווח `document.hasFocus()`
+  /// אמת, אבל אף הקשה אינה מגיעה אליו עד לחיצת עכבר.
+  ///
+  /// `trustPageFocus: false` מאותה סיבה — עדות הדף כוזבת כאן;
+  /// `deferred: true` כדי ששדה טקסט או דיאלוג של Flutter, שהמקלדת שייכת
+  /// להם בדין, לא יאבדו אותה.
+  /// בטאב מפוצל שני WebView-ים יכולים להיות גלויים. רק החלונית הפעילה
+  /// מועברת לכאן, כדי שלא נמסור את המקלדת לאחותה בסוף הלולאה.
+  Future<void> restoreKeyboardFocusAfterWindowRestore(
+    String pluginId, {
+    PluginInstanceId instanceId = PluginInstanceIds.defaultForeground,
+  }) async {
+    await requestKeyboardFocus(
+      pluginId,
+      instanceId: instanceId,
+      deferred: true,
+      trustPageFocus: false,
+    );
   }
 
   /// מבטל בקשות פוקוס שנזכרו. נדרש בעזיבת מסך העיון: בקשה ששרדה הייתה

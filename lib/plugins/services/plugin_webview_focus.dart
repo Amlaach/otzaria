@@ -114,10 +114,19 @@ class PluginWebViewFocus {
   /// מבקש פוקוס מקלדת ל-[controller]. מחזיר האם הבקשה הועברה בהצלחה —
   /// לא האם הפוקוס אכן עבר (הצד הנייטיבי בולע HRESULT כושל).
   /// כשל אינו נזרק: פוקוס הוא נוחות, לא תקינות.
-  static Future<bool> request(InAppWebViewController controller) async {
+  ///
+  /// [trustPageFocus] - האם עדותו של הדף על עצמו קבילה. אחרי שחלון
+  /// האפליקציה חוזר ממיזעור היא **אינה** קבילה: נמדד שהדף מקבל אירוע
+  /// `focus`, ש-`document.hasFocus()` מחזיר `true` ושה-`activeElement` שלו
+  /// הוא שדה העריכה — ובכל זאת אף הקשה אינה מגיעה אליו עד MoveFocus או
+  /// קליק. במסלול הזה בלבד מוותרים על השער.
+  static Future<bool> request(
+    InAppWebViewController controller, {
+    bool trustPageFocus = true,
+  }) async {
     // הדף כבר במיקוד (המשתמש הקדים ולחץ) — MoveFocus שמגיע אחרי קליק מבטל
     // את הפוקוס שהקליק נתן, וההקלדה נשברת (upstream #2736).
-    if (await _pageAlreadyHasFocus(controller)) return true;
+    if (trustPageFocus && await _pageAlreadyHasFocus(controller)) return true;
     try {
       if (usesPlatformViewFocusChannel(defaultTargetPlatform)) {
         final viewId = controller.getViewId();
