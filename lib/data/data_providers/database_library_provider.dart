@@ -3000,9 +3000,10 @@ class DatabaseLibraryProvider implements LibraryProvider {
           ...?categoriesByParent[pickedFolder.id],
         ]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
         for (final grandchild in grandchildren) {
-          final existing = library.subCategories
-              .where((c) => c.title == grandchild.title)
-              .firstOrNull;
+          final existing = _findMergeTarget(
+            library.subCategories,
+            grandchild.title,
+          );
           if (existing == null) {
             library.subCategories.add(
               _buildUserBooksCatalogCategoryRecursive(
@@ -3034,6 +3035,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
       unawaited(Sentry.captureException(e, stackTrace: stackTrace));
     }
   }
+
+  /// קטגוריית היעד למיזוג תיקייה אישית, בהשוואה שמתעלמת מגרשיים וגרש:
+  /// שם תיקייה ב-Windows לא יכול להכיל `"`, ולכן "תנך" חייב להתאים ל"תנ״ך".
+  Category? _findMergeTarget(List<Category> candidates, String folderTitle) {
+    final key = _mergeTitleKey(folderTitle);
+    return candidates.where((c) => _mergeTitleKey(c.title) == key).firstOrNull;
+  }
+
+  static String _mergeTitleKey(String title) =>
+      title.replaceAll(RegExp('''['"״׳’”“`]'''), '').trim();
 
   /// מצב המיזוג לפי קטגוריית-השורש. תיקיות בעלות אותו שם חולקות קטגוריה,
   /// ולכן כשמצביהן האפקטיביים חלוקים חוזרים לברירת המחדל הגלובלית.
@@ -3155,9 +3166,10 @@ class DatabaseLibraryProvider implements LibraryProvider {
       ...?categoriesByParent[dbCategory.id],
     ]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
     for (final child in children) {
-      final existingSubCategory = category.subCategories
-          .where((subCategory) => subCategory.title == child.title)
-          .firstOrNull;
+      final existingSubCategory = _findMergeTarget(
+        category.subCategories,
+        child.title,
+      );
       if (existingSubCategory == null) {
         final subCategory = _buildUserBooksCatalogCategoryRecursive(
           child,
