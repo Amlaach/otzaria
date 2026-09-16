@@ -1525,19 +1525,23 @@ class _PrintingScreenState extends State<PrintingScreen> {
           Navigator.of(context).pop(true);
         }
       case _PrintDestination.pdf:
-        await _saveToFile(_ExportFormat.pdf);
+        if (await _saveToFile(_ExportFormat.pdf) && context.mounted) {
+          Navigator.of(context).pop(true);
+        }
       case _PrintDestination.word:
         if (_editableExportRestricted) {
           UiSnack.showError(PdfMessages.editableExportRestricted);
           return;
         }
-        await _saveToFile(_ExportFormat.word);
+        if (await _saveToFile(_ExportFormat.word) && context.mounted) {
+          Navigator.of(context).pop(true);
+        }
     }
   }
 
-  Future<void> _saveToFile(_ExportFormat selectedFormat) async {
-    if (!await verifySaferModePassword(context)) return;
-    if (!mounted) return;
+  Future<bool> _saveToFile(_ExportFormat selectedFormat) async {
+    if (!await verifySaferModePassword(context)) return false;
+    if (!mounted) return false;
     try {
       final selectedExtension = selectedFormat.extension;
       final Uint8List bytes;
@@ -1564,16 +1568,19 @@ class _PrintingScreenState extends State<PrintingScreen> {
         extension: selectedExtension,
         bytes: bytes,
       );
-      if (path == null) return;
+      if (path == null) return false;
       UiSnack.showSuccess(successMessage);
+      return true;
     } on FileSystemException catch (e) {
       if (_isLockedFileException(e)) {
         UiSnack.showError(PdfMessages.fileLockedByAnotherApp);
-        return;
+        return false;
       }
       UiSnack.showError(PdfMessages.fileExportFailed(e.message));
+      return false;
     } catch (e) {
       UiSnack.showError(PdfMessages.fileExportFailed(e));
+      return false;
     }
   }
 
