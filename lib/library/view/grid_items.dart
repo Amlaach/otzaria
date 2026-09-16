@@ -255,12 +255,14 @@ class CategoryGridItem extends StatelessWidget {
   final Category category;
   final VoidCallback onCategoryClickCallback;
   final FocusNode? focusNode;
+  final bool isSelected;
 
   const CategoryGridItem({
     super.key,
     required this.category,
     required this.onCategoryClickCallback,
     this.focusNode,
+    this.isSelected = false,
   });
 
   @override
@@ -271,6 +273,7 @@ class CategoryGridItem extends StatelessWidget {
     return AppCard(
       onTap: onCategoryClickCallback,
       focusNode: focusNode,
+      selected: isSelected,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(

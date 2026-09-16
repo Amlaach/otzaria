@@ -119,3 +119,12 @@ class SelectBookForPreview extends LibraryEvent {
   @override
   List<Object?> get props => [book];
 }
+
+class SelectCategoryForPreview extends LibraryEvent {
+  final Category category;
+
+  const SelectCategoryForPreview(this.category);
+
+  @override
+  List<Object?> get props => [category];
+}

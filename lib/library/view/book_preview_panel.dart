@@ -58,6 +58,9 @@ class BookPreviewPanel extends StatefulWidget {
   final int searchDistance;
   final SearchMatchPolicy matchPolicy;
 
+  /// הכיתוב כשלא נבחר דבר.
+  final String emptyMessage;
+
   const BookPreviewPanel({
     super.key,
     this.book,
@@ -71,6 +74,7 @@ class BookPreviewPanel extends StatefulWidget {
     this.searchMode = SearchMode.exact,
     this.searchDistance = 0,
     this.matchPolicy = SearchMatchPolicy.standard,
+    this.emptyMessage = 'בחר ספר לתצוגה מקדימה',
   });
 
   @override
@@ -431,7 +435,7 @@ class _BookPreviewPanelState extends State<BookPreviewPanel> {
             ),
             const SizedBox(height: 16),
             Text(
-              'בחר ספר לתצוגה מקדימה',
+              widget.emptyMessage,
               style: TextStyle(
                 fontSize: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,

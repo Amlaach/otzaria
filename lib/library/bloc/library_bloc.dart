@@ -50,6 +50,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
     on<SelectTopics>(_onSelectTopics);
     on<UpdateSearchQuery>(_onUpdateSearchQuery);
     on<SelectBookForPreview>(_onSelectBookForPreview);
+    on<SelectCategoryForPreview>(_onSelectCategoryForPreview);
   }
 
   Future<void> _onLoadLibrary(
@@ -533,7 +534,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
         searchQuery: null,
         searchResults: null,
         selectedTopics: null,
-        clearPreviewBook: isCategoryChange,
+        previewCategory: isCategoryChange ? event.category : null,
       ),
     );
   }
@@ -552,7 +553,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
         searchQuery: null,
         searchResults: null,
         selectedTopics: null,
-        clearPreviewBook: true,
+        previewCategory: parent,
       ),
     );
   }
@@ -709,6 +710,19 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
     emit(
       state.copyWith(
         previewBook: event.book,
+        searchResults: state.searchResults,
+        searchCategoryResults: state.searchCategoryResults,
+      ),
+    );
+  }
+
+  void _onSelectCategoryForPreview(
+    SelectCategoryForPreview event,
+    Emitter<LibraryState> emit,
+  ) {
+    emit(
+      state.copyWith(
+        previewCategory: event.category,
         searchResults: state.searchResults,
         searchCategoryResults: state.searchCategoryResults,
       ),
