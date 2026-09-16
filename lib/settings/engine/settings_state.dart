@@ -28,6 +28,10 @@ class SettingsState extends Equatable {
   lineHeight; // מרווח בין שורות (1.0 = רגיל, 1.5 = מרווח וחצי, וכו')
   final bool showOtzarHachochma;
   final bool showHebrewBooks;
+
+  /// הצגת ספרי היברובוקס שירדו לתיקייה המקומית בתוצאות איתור הספר, גם
+  /// כשהצגת הקטלוג החיצוני כבויה (issue #1143).
+  final bool showLocalHebrewBooks;
   final bool showExternalBooks;
 
   /// המדיניות הגלובלית של תצוגת הטקסט (ניקוד, טעמים, פיסוק, שם הוי"ה,
@@ -112,6 +116,7 @@ class SettingsState extends Equatable {
     required this.lineHeight,
     required this.showOtzarHachochma,
     required this.showHebrewBooks,
+    this.showLocalHebrewBooks = true,
     required this.showExternalBooks,
     TextDisplayPolicy? textDisplayPolicy,
     required this.autoUpdateIndex,
@@ -166,6 +171,7 @@ class SettingsState extends Equatable {
       lineHeight: 1.5,
       showOtzarHachochma: false,
       showHebrewBooks: false,
+      showLocalHebrewBooks: true,
       showExternalBooks: false,
       autoUpdateIndex: true,
       defaultContinuousReadingMode: false,
@@ -210,6 +216,7 @@ class SettingsState extends Equatable {
     double? lineHeight,
     bool? showOtzarHachochma,
     bool? showHebrewBooks,
+    bool? showLocalHebrewBooks,
     bool? showExternalBooks,
     TextDisplayPolicy? textDisplayPolicy,
     bool? showTeamim,
@@ -291,6 +298,7 @@ class SettingsState extends Equatable {
       lineHeight: lineHeight ?? this.lineHeight,
       showOtzarHachochma: showOtzarHachochma ?? this.showOtzarHachochma,
       showHebrewBooks: showHebrewBooks ?? this.showHebrewBooks,
+      showLocalHebrewBooks: showLocalHebrewBooks ?? this.showLocalHebrewBooks,
       showExternalBooks: showExternalBooks ?? this.showExternalBooks,
       autoUpdateIndex: autoUpdateIndex ?? this.autoUpdateIndex,
       defaultContinuousReadingMode:
@@ -367,6 +375,7 @@ class SettingsState extends Equatable {
     lineHeight,
     showOtzarHachochma,
     showHebrewBooks,
+    showLocalHebrewBooks,
     showExternalBooks,
     textDisplayPolicy,
     autoUpdateIndex,

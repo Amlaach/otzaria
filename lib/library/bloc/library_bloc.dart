@@ -590,6 +590,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
       final category = state.currentCategory;
       final includeOtzar = event.showOtzarHachochma ?? false;
       final includeHebrewBooks = event.showHebrewBooks ?? false;
+      final includeLocalHebrewBooks = event.showLocalHebrewBooks ?? true;
 
       emit(
         state.copyWith(
@@ -605,6 +606,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
         category,
         includeOtzar: includeOtzar,
         includeHebrewBooks: includeHebrewBooks,
+        includeLocalHebrewBooks: includeLocalHebrewBooks,
       );
       final results = found.books;
 

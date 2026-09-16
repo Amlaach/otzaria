@@ -135,6 +135,9 @@
   "יוצגו ספרים מאוצר החכמה בתוצאות החיפוש במסך הספרייה": "Seforim from Otzar HaChochma will appear in the library search results",
   "היברובוקס בלבד": "HebrewBooks only",
   "יוצגו ספרים מהיברובוקס בתוצאות החיפוש במסך הספרייה": "Seforim from HebrewBooks will appear in the library search results",
+  "הצג ספרי היברובוקס שברשותך": "Show HebrewBooks Seforim You Own",
+  "ספרים מתיקיית היברובוקס יוצגו בתוצאות איתור הספר": "Seforim from the HebrewBooks folder will appear in the sefer search results",
+  "ספרים מתיקיית היברובוקס לא יוצגו בתוצאות איתור הספר": "Seforim from the HebrewBooks folder will not appear in the sefer search results",
 
   "הזן סיסמה": "Enter Password",
   "הנך במצב סייפר.\nהזן את הסיסמה כדי לגשת להגדרות": "You are in Safer Mode.\nEnter the password to access the settings",

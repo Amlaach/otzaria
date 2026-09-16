@@ -42,6 +42,10 @@ class DataRepository {
   /// ומוצגים בחיפוש גם כשהצגת ספרים חיצוניים כבויה.
   Future<List<Book>> get localHebrewBooks =>
       _localHebrewBooksFuture ??= FileSystemData.getLocalHebrewBooks();
+
+  @visibleForTesting
+  set localHebrewBooks(Future<List<Book>> value) =>
+      _localHebrewBooksFuture = value;
   Future<List<ExternalLibraryBook>> get otzarBooks =>
       _otzarBooksFuture ??= getOtzarBooks();
 
@@ -148,6 +152,8 @@ class DataRepository {
   ///   - [topics]: Optional list of topics to filter results
   ///   - [includeOtzar]: Whether to include Otzar HaChochma books
   ///   - [includeHebrewBooks]: Whether to include HebrewBooks.org books
+  ///   - [includeLocalHebrewBooks]: Whether to include HebrewBooks titles that
+  ///     have a local PDF, when the external catalog itself is excluded
   ///
   /// Returns a [Future] that completes with a list of [Book] objects matching the criteria
   Future<List<Book>> findBooks(
@@ -156,6 +162,7 @@ class DataRepository {
     List<String>? topics,
     bool includeOtzar = false,
     bool includeHebrewBooks = false,
+    bool includeLocalHebrewBooks = true,
     bool sortByRatio = true,
   }) async => (await findBooksAndCategories(
     query,
@@ -163,6 +170,7 @@ class DataRepository {
     topics: topics,
     includeOtzar: includeOtzar,
     includeHebrewBooks: includeHebrewBooks,
+    includeLocalHebrewBooks: includeLocalHebrewBooks,
     sortByRatio: sortByRatio,
   )).books;
 
@@ -175,6 +183,7 @@ class DataRepository {
     List<String>? topics,
     bool includeOtzar = false,
     bool includeHebrewBooks = false,
+    bool includeLocalHebrewBooks = true,
     bool sortByRatio = true,
   }) async {
     const empty = (books: <Book>[], categories: <Category>[]);
@@ -196,9 +205,9 @@ class DataRepository {
     }
     if (includeHebrewBooks) {
       allBooks.addAll(await hebrewBooks);
-    } else {
-      // ספרי היברובוקס שיש להם PDF מקומי הם ספרים שכבר נמצאים במחשב,
-      // ולכן מוצגים תמיד — גם כשהצגת ספרים חיצוניים כבויה.
+    } else if (includeLocalHebrewBooks) {
+      // ספרי היברובוקס שיש להם PDF מקומי הם ספרים שכבר נמצאים במחשב, ולכן
+      // מוצגים גם כשהצגת הקטלוג החיצוני כבויה — עד שהמשתמש מכבה זאת.
       allBooks.addAll(await localHebrewBooks);
     }
 

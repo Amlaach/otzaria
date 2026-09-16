@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart'
+    hide SwitchSettingsTile;
+import 'package:otzaria/settings/engine/settings_repository.dart';
+
+import '../../helpers/memory_settings_cache.dart';
 
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
@@ -15,11 +20,13 @@ class _FakeSettingsBloc extends Bloc<SettingsEvent, SettingsState>
     bool showExternalBooks = false,
     bool showOtzarHachochma = false,
     bool showHebrewBooks = false,
+    bool showLocalHebrewBooks = true,
   }) : super(
          SettingsState.initial().copyWith(
            showExternalBooks: showExternalBooks,
            showOtzarHachochma: showOtzarHachochma,
            showHebrewBooks: showHebrewBooks,
+           showLocalHebrewBooks: showLocalHebrewBooks,
          ),
        ) {
     on<SettingsEvent>((event, emit) {
@@ -30,6 +37,8 @@ class _FakeSettingsBloc extends Bloc<SettingsEvent, SettingsState>
         emit(state.copyWith(showOtzarHachochma: event.showOtzarHachochma));
       } else if (event is UpdateShowHebrewBooks) {
         emit(state.copyWith(showHebrewBooks: event.showHebrewBooks));
+      } else if (event is UpdateShowLocalHebrewBooks) {
+        emit(state.copyWith(showLocalHebrewBooks: event.showLocalHebrewBooks));
       }
     });
   }
@@ -57,6 +66,17 @@ Widget _wrap(SettingsBloc settingsBloc, {bool catalogExists = true}) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    await Settings.init(cacheProvider: MemorySettingsCache());
+  });
+
+  Future<void> setHebrewBooksPath(String path) =>
+      Settings.setValue<String>(SettingsRepository.keyHebrewBooksPath, path);
+
+  const localTileTitle = 'הצג ספרי היברובוקס שברשותך';
+
   testWidgets('מציג "אל תציג" כשהצגת ספרים חיצוניים כבויה', (tester) async {
     await tester.pumpWidget(_wrap(_FakeSettingsBloc()));
     await tester.pumpAndSettle();
@@ -148,5 +168,49 @@ void main() {
     expect(find.textContaining('חסר במערכת'), findsOneWidget);
     // תפריט המקורות אינו מוצג כשאין קטלוג.
     expect(find.text('אל תציג'), findsNothing);
+  });
+
+  testWidgets('מתג הספרים המקומיים מוצג רק כשהוגדרה תיקיית היברובוקס', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_FakeSettingsBloc()));
+    await tester.pumpAndSettle();
+    expect(find.text(localTileTitle), findsNothing);
+
+    await setHebrewBooksPath(r'C:\HebrewBooks');
+    await tester.pumpWidget(_wrap(_FakeSettingsBloc()));
+    await tester.pumpAndSettle();
+    expect(find.text(localTileTitle), findsOneWidget);
+  });
+
+  testWidgets('המתג מוסתר כשהיברובוקס כבר מוצג מהקטלוג', (tester) async {
+    await setHebrewBooksPath(r'C:\HebrewBooks');
+
+    await tester.pumpWidget(
+      _wrap(
+        _FakeSettingsBloc(showExternalBooks: true, showHebrewBooks: true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(localTileTitle), findsNothing);
+  });
+
+  testWidgets('כיבוי המתג משדר UpdateShowLocalHebrewBooks', (tester) async {
+    await setHebrewBooksPath(r'C:\HebrewBooks');
+    final settingsBloc = _FakeSettingsBloc();
+
+    await tester.pumpWidget(_wrap(settingsBloc));
+    await tester.pumpAndSettle();
+
+    // המתג הראשון בעמוד הוא "הצג תצוגה מקדימה"; זה של הספרים המקומיים אחרון.
+    await tester.tap(find.byType(Switch).last);
+    await tester.pumpAndSettle();
+
+    expect(settingsBloc.state.showLocalHebrewBooks, isFalse);
+    expect(
+      find.text('ספרים מתיקיית היברובוקס לא יוצגו בתוצאות איתור הספר'),
+      findsOneWidget,
+    );
   });
 }

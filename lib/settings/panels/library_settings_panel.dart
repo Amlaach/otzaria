@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart'
+    hide SwitchSettingsTile;
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/external_catalog/repository/external_catalog_repository.dart';
@@ -43,6 +45,21 @@ class LibrarySettingsPanel extends StatefulWidget {
       tab: SettingsTab.library,
       cardId: 'library.display',
       keywords: ['תצוגה מקדימה', 'preview', 'מופעל', 'לא מופעל'],
+    ),
+    SettingsSearchEntry(
+      id: 'library.external.local_hebrewbooks',
+      title: 'הצג ספרי היברובוקס שברשותך',
+      subtitle: 'ספרים מתיקיית היברובוקס יופיעו באיתור הספר',
+      tab: SettingsTab.library,
+      cardId: 'library.external',
+      keywords: [
+        'היברובוקס',
+        'hebrewbooks',
+        'מקומי',
+        'תיקייה',
+        'מופעל',
+        'לא מופעל',
+      ],
     ),
     SettingsSearchEntry(
       id: 'library.external.source_mode',
@@ -168,8 +185,13 @@ class _LibrarySettingsPanelState extends State<LibrarySettingsPanel> {
                 // כשהקטלוג חסר מוצג כפתור הורדה במקום תפריט המקורות.
                 if (_catalogExists == false)
                   _buildMissingCatalogTile(context)
-                else if (_catalogExists == true)
+                else if (_catalogExists == true) ...[
                   _buildSourceModeTile(context, state),
+                  // כשהקטלוג עצמו מוצג הספרים המקומיים כלולים בו ממילא.
+                  if (_hasHebrewBooksPath &&
+                      !(state.showExternalBooks && state.showHebrewBooks))
+                    _buildLocalHebrewBooksTile(context, state),
+                ],
               ],
             ),
           ],
@@ -192,6 +214,33 @@ class _LibrarySettingsPanelState extends State<LibrarySettingsPanel> {
           onPressed: _downloadCatalog,
         ),
       ],
+    );
+  }
+
+  /// האם הוגדרה תיקיית ספרי היברובוקס מקומיים.
+  bool get _hasHebrewBooksPath {
+    if (!Settings.isInitialized) return false;
+    final path = Settings.getValue<String>(
+      SettingsRepository.keyHebrewBooksPath,
+    );
+    return path != null && path.isNotEmpty;
+  }
+
+  /// מתג הצגת ספרי היברובוקס שכבר ירדו למחשב (issue #1143) — מיועד למי
+  /// שהגדיר את התיקייה עבור תוסף ואינו רוצה אותם באיתור הספר.
+  Widget _buildLocalHebrewBooksTile(BuildContext context, SettingsState state) {
+    return SettingsActionTile.switchTile(
+      icon: FluentIcons.document_folder_24_regular,
+      title: context.settingsText('הצג ספרי היברובוקס שברשותך'),
+      subtitle: context.settingsText(
+        state.showLocalHebrewBooks
+            ? 'ספרים מתיקיית היברובוקס יוצגו בתוצאות איתור הספר'
+            : 'ספרים מתיקיית היברובוקס לא יוצגו בתוצאות איתור הספר',
+      ),
+      value: state.showLocalHebrewBooks,
+      onChanged: (value) {
+        context.read<SettingsBloc>().add(UpdateShowLocalHebrewBooks(value));
+      },
     );
   }
 

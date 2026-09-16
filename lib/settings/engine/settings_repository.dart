@@ -26,6 +26,7 @@ class SettingsRepository {
   static const String keyLineHeight = 'key-line-height';
   static const String keyShowOtzarHachochma = 'key-show-otzar-hachochma';
   static const String keyShowHebrewBooks = 'key-show-hebrew-books';
+  static const String keyShowLocalHebrewBooks = 'key-show-local-hebrew-books';
   static const String keyShowExternalBooks = 'key-show-external-books';
   static const String keyShowTeamim = 'key-show-teamim';
   static const String keyReplaceHolyNames = 'key-replace-holy-names';
@@ -203,6 +204,7 @@ class SettingsRepository {
     keyLineHeight,
     keyShowOtzarHachochma,
     keyShowHebrewBooks,
+    keyShowLocalHebrewBooks,
     keyShowExternalBooks,
     keyShowTeamim,
     keyReplaceHolyNames,
@@ -355,6 +357,10 @@ class SettingsRepository {
       'showHebrewBooks': _settings.getValue<bool>(
         keyShowHebrewBooks,
         defaultValue: false,
+      ),
+      'showLocalHebrewBooks': _settings.getValue<bool>(
+        keyShowLocalHebrewBooks,
+        defaultValue: true,
       ),
       'showExternalBooks': _settings.getValue<bool>(
         keyShowExternalBooks,
@@ -643,6 +649,10 @@ class SettingsRepository {
 
   Future<void> updateShowHebrewBooks(bool value) async {
     await _settings.setValue(keyShowHebrewBooks, value);
+  }
+
+  Future<void> updateShowLocalHebrewBooks(bool value) async {
+    await _settings.setValue(keyShowLocalHebrewBooks, value);
   }
 
   Future<void> updateShowExternalBooks(bool value) async {
@@ -1163,6 +1173,7 @@ class SettingsRepository {
     await _settings.setValue(keyLineHeight, 1.5);
     await _settings.setValue(keyShowOtzarHachochma, false);
     await _settings.setValue(keyShowHebrewBooks, false);
+    await _settings.setValue(keyShowLocalHebrewBooks, true);
     await _settings.setValue(keyShowExternalBooks, false);
     await updateTextDisplayPolicy(TextDisplayPolicy.empty);
     await _settings.setValue(keyAutoUpdateIndex, true);

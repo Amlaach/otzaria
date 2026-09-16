@@ -479,6 +479,7 @@ class _LibraryBrowserState extends State<LibraryBrowser>
           listenWhen: (p, c) =>
               p.showExternalBooks != c.showExternalBooks ||
               p.showHebrewBooks != c.showHebrewBooks ||
+              p.showLocalHebrewBooks != c.showLocalHebrewBooks ||
               p.showOtzarHachochma != c.showOtzarHachochma,
           listener: (ctx, s) {
             final q = ctx.read<LibraryBloc>().state.searchQuery;
@@ -2639,6 +2640,7 @@ class _LibraryBrowserState extends State<LibraryBrowser>
       SearchBooks(
         showHebrewBooks: s.showExternalBooks && s.showHebrewBooks,
         showOtzarHachochma: s.showExternalBooks && s.showOtzarHachochma,
+        showLocalHebrewBooks: s.showLocalHebrewBooks,
       ),
     );
   }
