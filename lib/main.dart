@@ -1375,12 +1375,6 @@ class _AppBootstrapState extends State<AppBootstrap> {
           BlocProvider<IndexingBloc>(
             create: (_) => IndexingBloc.create(),
           ),
-          BlocProvider<HistoryBloc>(
-            create: (context) => HistoryBloc(
-              historyRepository,
-              currentTab: () => context.read<TabsBloc>().state.currentTab,
-            ),
-          ),
           BlocProvider<TabsBloc>(
             create: (_) {
               final bloc = StartupTimeline.instance.phaseSync(
@@ -1424,6 +1418,14 @@ class _AppBootstrapState extends State<AppBootstrap> {
               }
               return bloc;
             },
+          ),
+          // ⚠️ אחרי TabsBloc: ה-context של create רואה רק ספקים שמעליו,
+          // ו-currentTab קורא את TabsBloc בכל לכידה של ההיסטוריה.
+          BlocProvider<HistoryBloc>(
+            create: (context) => HistoryBloc(
+              historyRepository,
+              currentTab: () => context.read<TabsBloc>().state.currentTab,
+            ),
           ),
           BlocProvider<NavigationBloc>(
             create: (context) {
