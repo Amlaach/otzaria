@@ -9,8 +9,8 @@ import 'package:otzaria/widgets/misc/middle_click_autoscroll.dart';
 
 /// מחליק את גלילת גלגלת העכבר ברשימה שמתחתיו.
 ///
-/// מחבר נקישות ליעד מצטבר ומניע אליו [ScrollActivity] אחת בתנועת קפיץ
-/// מרוסן-קריטית, כך שהמרחק נשמר במלואו ונפרס על פריימים בהאצה והאטה.
+/// מחבר נקישות ליעד מצטבר ומניע אליו [ScrollActivity] אחת בדעיכה
+/// אקספוננציאלית, כך שהמרחק נשמר במלואו ונפרס על פריימים בהאטה.
 class SmoothWheelScroll extends StatefulWidget {
   const SmoothWheelScroll({super.key, required this.child});
 
@@ -22,10 +22,10 @@ class SmoothWheelScroll extends StatefulWidget {
 
 class _SmoothWheelScrollState extends State<SmoothWheelScroll>
     with SingleTickerProviderStateMixin {
-  /// קצב הקפיץ המרוסן-קריטית (1/ms): התאוצה עולה, מגיעה לשיא סביב 1/r
-  /// ודועכת, כך שאין זינוק בפריים הראשון ואין זנב זוחל. 0.035 ≈ 130ms
-  /// ל-94% מהדרך.
-  static const double _springRate = 0.035;
+  /// קצב הדעיכה (1/ms): הצעד הגדול ביותר הוא הראשון והתנועה מאטה משם,
+  /// כמו החלקת הגלילה של דפדפן. 0.0225 ≈ 133ms ל-95% מהדרך, ו-31%
+  /// בפריים הראשון — בטווח שדפדפן נותן.
+  static const double _decayRate = 0.0225;
 
   /// מתחת לזה אין מה להחליק — נוחתים על היעד ועוצרים.
   static const double _epsilon = 0.5;
@@ -38,10 +38,6 @@ class _SmoothWheelScrollState extends State<SmoothWheelScroll>
   final Set<ScrollableState> _nestedScrollables = {};
 
   double _target = 0.0;
-
-  /// המהירות הנוכחית (פיקסלים למילישנייה, חתומה). נשמרת בין פריימים כדי
-  /// שנקישה חדשה תצטרף לתנועה במקום להתחיל אותה מאפס.
-  double _velocity = 0.0;
 
   @override
   void initState() {
@@ -144,7 +140,6 @@ class _SmoothWheelScrollState extends State<SmoothWheelScroll>
     final wasActive = _activity != null;
     if (!wasActive) {
       _target = position.pixels;
-      _velocity = 0.0;
       if (!_beginActivity(position)) {
         position.pointerScroll(event.scrollDelta.dy);
         event.respond(allowPlatformDefault: false);
@@ -193,26 +188,19 @@ class _SmoothWheelScrollState extends State<SmoothWheelScroll>
       return false;
     }
 
-    // בהיפוך כיוון המהירות הקודמת הייתה דוחפת צעד אחד לכיוון ההפוך.
-    if (_velocity * remaining < 0) _velocity = 0.0;
-
-    // הפתרון הסגור של קפיץ מרוסן-קריטית: e(t) = (e₀ + (r·e₀ − v₀)·t)·e^(−r·t).
-    // מדויק בכל frameMs, ולכן גם פריים ארוך לא מייצר חריגה או קפיצה.
-    final decay = math.exp(-_springRate * frameMs);
-    final slope = _springRate * remaining - _velocity;
-    var nextRemaining = (remaining + slope * frameMs) * decay;
-    final passedTarget = nextRemaining * remaining <= 0;
-    if (passedTarget || nextRemaining.abs() <= _epsilon) {
+    // e(t) = e₀·e^(−r·t) — מדויק בכל frameMs, ולכן פריים ארוך אינו מייצר
+    // חריגה, ואין צורך לשמר מהירות בין פריימים: היא נגזרת מהמרחק שנותר.
+    final step = remaining * (1 - math.exp(-_decayRate * frameMs));
+    // צעד תת-פיקסלי כבר אינו נראה כתנועה אלא כרעד — נוחתים ומסיימים.
+    if (step.abs() <= _epsilon) {
       activity.moveTo(_target, velocity: 0.0);
-      _velocity = 0.0;
       return false;
     }
-    _velocity = _springRate * nextRemaining - slope * decay;
 
     final before = position.pixels;
     final overscroll = activity.moveTo(
-      before + (remaining - nextRemaining),
-      velocity: _velocity * 1000,
+      before + step,
+      velocity: step / frameMs * 1000,
     );
     final moved = (position.pixels - before).abs() > _epsilon;
     if (!moved && overscroll.abs() > _epsilon) return false;
@@ -247,7 +235,6 @@ class _SmoothWheelScrollState extends State<SmoothWheelScroll>
 
   void _finish() {
     _ticker.stop();
-    _velocity = 0.0;
     final activity = _activity;
     if (activity == null) return;
     _activity = null;
