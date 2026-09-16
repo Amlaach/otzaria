@@ -154,6 +154,19 @@ bool isReadingHeaderLine(String line) {
   return headerPattern.hasMatch(line);
 }
 
+/// שורה מיושרת במפורש (`text-align` / `<center>`) היא בלוק: בתוך פסקה רציפה
+/// היישור אובד. עוגנים ריקים ו-`<br>` בתחילתה אינם משנים זאת.
+bool isAlignedBlockLine(String line) => _alignedBlockPattern.hasMatch(line);
+
+final RegExp _alignedBlockPattern = RegExp(
+  r'^\s*(?:(?:<a\b[^>]*>\s*</a>|<br\s*/?>)\s*)*'
+  r'<(?:center\b|div\b[^>]*\btext-align\s*:)',
+  caseSensitive: false,
+);
+
+bool _breaksReadingParagraph(String line) =>
+    isReadingHeaderLine(line) || isAlignedBlockLine(line);
+
 bool _isLineLoaded(List<bool>? loadedLineFlags, int index) {
   if (loadedLineFlags == null) {
     return true;
@@ -193,7 +206,8 @@ bool _isLoadedParagraphLine(
   int index, {
   List<bool>? loadedLineFlags,
 }) =>
-    _isLineLoaded(loadedLineFlags, index) && !isReadingHeaderLine(lines[index]);
+    _isLineLoaded(loadedLineFlags, index) &&
+    !_breaksReadingParagraph(lines[index]);
 
 ReadingSegment _buildLoadedParagraphSegment(
   List<String> lines,
@@ -273,7 +287,7 @@ List<ReadingSegment> _buildContinuousSegments(
     }
 
     final line = lines[index];
-    if (isReadingHeaderLine(line)) {
+    if (_breaksReadingParagraph(line)) {
       flushParagraph();
       segments.add(
         ReadingSegment(
@@ -286,7 +300,7 @@ List<ReadingSegment> _buildContinuousSegments(
               end: line.length,
             ),
           ],
-          isHeader: true,
+          isHeader: isReadingHeaderLine(line),
           isLoaded: true,
         ),
       );
@@ -308,7 +322,7 @@ List<ReadingSegment> _buildContinuousSegments(
 /// מבטיח שהמיפוי שורה↔סגמנט הוא 1:1 ולא נדרשת המרה).
 ///
 /// במצב רציף (`continuous: true`) — שורות עוקבות שאינן כותרת מתמזגות
-/// לפסקה אחת; כותרת (`<h1>`–`<h6>`) שוברת פסקה.
+/// לפסקה אחת; כותרת (`<h1>`–`<h6>`) ושורה מיושרת שוברות פסקה.
 List<ReadingSegment> buildReadingSegments(
   List<String> lines, {
   required bool continuous,
