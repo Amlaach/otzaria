@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'dart:ui';
 
@@ -620,11 +621,13 @@ class _BookPreviewPanelState extends State<BookPreviewPanel> {
     }
     return Stack(
       children: [
-        PdfViewer.file(
-          filePath,
+        PdfViewer(
+          PdfFontFallback.documentRef(
+            filePath,
+            passwordProvider: () => passwordDialog(context),
+          ),
           key: ValueKey('pdf_${widget.book!.title}'),
           initialPageNumber: widget.initialPdfPage ?? 1,
-          passwordProvider: () => passwordDialog(context),
           controller: _pdfController!,
           params: PdfViewerParams(
             backgroundColor: Theme.of(context).colorScheme.surface,

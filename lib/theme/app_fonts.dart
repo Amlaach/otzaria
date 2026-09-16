@@ -683,6 +683,24 @@ class AppFonts {
   static SystemFontFamilyFaces? pluginSystemFamilyFaces(String fontFamily) =>
       _pluginSystemFamiliesCache?[fontFamily];
 
+  /// כמו [pluginSystemFamilyFaces], בהשוואה שמתעלמת מרישיות ומכל מה שאינו
+  /// אות לטינית או ספרה — כך נכתבים שמות גופן בתוך PDF ("LevenimMT").
+  static SystemFontFamilyFaces? pluginSystemFamilyFacesByCompactName(
+    String name,
+  ) {
+    final key = _compactFontName(name);
+    if (key.isEmpty) return null;
+    for (final faces
+        in _pluginSystemFamiliesCache?.values ??
+            const <SystemFontFamilyFaces>[]) {
+      if (_compactFontName(faces.family) == key) return faces;
+    }
+    return null;
+  }
+
+  static String _compactFontName(String name) =>
+      name.replaceAll(RegExp('[^A-Za-z0-9]'), '').toLowerCase();
+
   /// בייטים של קובץ גופן מהדיסק, או null כשאינו קריא.
   static Uint8List? readFontBytes(String path) => _readFontBytesSync(path);
 
