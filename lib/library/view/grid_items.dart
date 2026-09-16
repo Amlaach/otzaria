@@ -757,7 +757,6 @@ class BookActionsMenuButton extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MyGridView
-//  • ריווח top: 8 או מרווח מתאים
 //  • FocusTraversalGroup כדי לנווט Tab בסדר קריאה (ולא קפיצה ציגזג)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -768,8 +767,12 @@ const double kLibraryGridSpacing = 14;
 /// ולטור האייקונים בלי גלישה.
 const double kNarrowGridCardMinHeight = 112;
 
-/// השוליים האופקיים של רשת הספרייה — משמשים גם בחישוב רוחב התא בפועל.
-const double _kGridHorizontalPadding = 30;
+/// השוליים של רשת הספרייה — משמשים גם בחישוב רוחב התא בפועל.
+const double _kGridPadding = 30;
+
+/// השוליים העליונים מעט קטנים יותר, כדי שהשורה הראשונה לא תיראה נמוכה מדי
+/// מתחת לסרגל.
+const double _kGridTopPadding = 24;
 
 /// ניווט חיצים בין כרטיסי הרשת בלבד — הפוקוס עובר ברצף בין הכרטיסים
 /// ולא בורח לכפתורי הסרגל/הצד (המסלול הכיווני של Flutter אינו תחום לרשת).
@@ -876,7 +879,7 @@ class MyGridView extends StatelessWidget {
         // עם רצפת גובה שמותירה מקום לשם הספר, למחבר ולטור האייקונים.
         final double childAspectRatio;
         if (width < 800) {
-          final gridWidth = width - 2 * _kGridHorizontalPadding;
+          final gridWidth = width - 2 * _kGridPadding;
           final cellWidth =
               (gridWidth - kLibraryGridSpacing * (crossAxisCount - 1)) /
               crossAxisCount;
@@ -893,12 +896,11 @@ class MyGridView extends StatelessWidget {
           child: FocusTraversalGroup(
             policy: ReadingOrderTraversalPolicy(),
             child: Padding(
-              // top: 8 או מרווח מתאים; horizontal: 45 או רוחב אף
-              padding: const EdgeInsets.only(
-                top: 8,
-                left: _kGridHorizontalPadding,
-                right: _kGridHorizontalPadding,
-                bottom: 8,
+              padding: const EdgeInsets.fromLTRB(
+                _kGridPadding,
+                _kGridTopPadding,
+                _kGridPadding,
+                _kGridPadding,
               ),
               child: GridView.builder(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
