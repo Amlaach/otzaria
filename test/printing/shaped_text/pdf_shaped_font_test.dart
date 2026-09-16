@@ -156,7 +156,53 @@ void main() {
       expect(out.lengthSync(), greaterThan(1000));
     });
   }, skip: skipReason);
+
+  /// Ts הוא מצב טקסט שנשאר בתוקף עד שנכתב שוב, ולכן כל בלוק חייב לכתוב אותו.
+  test(
+    'כל בלוק טקסט כותב rise משלו',
+    () async {
+      const word = 'וַיֹּ֕אמֶר';
+      final file = File(_riseFontPath);
+      final shaper = ShaperFont.register(file.readAsBytesSync());
+      addTearDown(shaper.dispose);
+      final document = PdfDocument(compress: false);
+      final pdfFont = PdfShapedFont(
+        document,
+        shaper: shaper,
+        fontBytes: file.readAsBytesSync(),
+      );
+      final run = shaper.shape(word, rtl: true, script: 'hebr');
+      expect(
+        [for (var i = 0; i < run.glyphCount; i++) run.yOffset(i)],
+        contains(isNot(0)),
+        reason: 'אין במילה סימן מוזז אנכית',
+      );
+
+      final page = PdfPage(document, pageFormat: PdfPageFormat.a5);
+      pdfFont.drawShapedRun(
+        page.getGraphics()..setFillColor(PdfColors.black),
+        run,
+        x: 60,
+        y: 300,
+        fontSize: 48,
+      );
+      final text = String.fromCharCodes(await document.save());
+
+      final blocks = 'BT '.allMatches(text).length;
+      expect(blocks, greaterThan(1), reason: 'הריצה לא פוצלה לפי ההזזה');
+      expect(' Ts '.allMatches(text).length, blocks);
+      expect(text, contains('0 Ts'));
+    },
+    skip: libraryPath == null
+        ? 'the native shaper is not built'
+        : File(_riseFontPath).existsSync()
+        ? null
+        : 'the rise test font is missing',
+  );
 }
+
+/// גופן מוטמע שיש בו הזזה אנכית אמיתית לסימן.
+const String _riseFontPath = 'fonts/NotoSerifHebrew-VariableFont_wdth,wght.ttf';
 
 extension on Directory {
   File childFile(String name) => File('$path${Platform.pathSeparator}$name');
