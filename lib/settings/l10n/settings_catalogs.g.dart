@@ -83,6 +83,7 @@ const Map<String, Map<String, String>> kSettingsCatalogs = {
     'איתור ספר או מחבר ב{category}': 'Find a book or author in {category}',
     'אל תציג': 'Never Show',
     'אל תציג התראות עבור אירועים בלוח השנה': 'Do not show alerts for calendar events',
+    'אל תציג טיפים נוספים': 'Don\'t Show More Tips',
     'אמת סיסמה': 'Confirm Password',
     'אמת סיסמה נוכחית': 'Confirm the Current Password',
     'אני מוכן': 'I\'m Ready',

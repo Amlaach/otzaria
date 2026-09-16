@@ -470,6 +470,8 @@ class _LiveTipOverlay extends StatelessWidget {
                   title: tip.title,
                   description: tip.description,
                   onDismiss: () => context.read<TourCubit>().dismissLiveTip(),
+                  onDismissAll: () =>
+                      context.read<TourCubit>().dismissAllLiveTips(),
                 ),
               ),
             ],

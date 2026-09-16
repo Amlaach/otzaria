@@ -43,6 +43,7 @@ void main() {
     title: 'טיפ',
     description: 'תיאור הטיפ',
     onDismiss: () {},
+    onDismissAll: () {},
   );
 
   TextDirection directionOf(WidgetTester tester, Type type) =>

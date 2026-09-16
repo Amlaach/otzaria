@@ -497,6 +497,41 @@ void main() {
     },
   );
 
+  test(
+    'dismissAllLiveTips — שום טיפ לא מוצג עוד, גם אחרי הפעלה מחדש',
+    () async {
+      await Settings.setValue<String>(TourSteps.statusKey, TourSteps.completed);
+      await Settings.setValue<int>(LiveTipStorage.launchCountKey, 20);
+      final firstCubit = TourCubit(delayedTipSchedules: _fastSchedules);
+      await firstCubit.recordInteraction(
+        TourInteraction(type: TourInteractionType.textSelected),
+      );
+      await firstCubit.recordInteraction(
+        TourInteraction(type: TourInteractionType.textSelected),
+      );
+      expect(firstCubit.state.activeLiveTipId, isNotNull);
+
+      firstCubit.dismissAllLiveTips();
+      expect(firstCubit.state.activeLiveTipId, isNull);
+      await firstCubit.close();
+
+      final secondCubit = TourCubit(delayedTipSchedules: _fastSchedules);
+      expect(
+        secondCubit.state.resolvedTips,
+        containsAll(LiveTipId.values),
+      );
+      secondCubit.registerSession();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      for (var i = 0; i < 2; i++) {
+        await secondCubit.recordInteraction(
+          TourInteraction(type: TourInteractionType.textSelected),
+        );
+      }
+      expect(secondCubit.state.activeLiveTipId, isNull);
+      await secondCubit.close();
+    },
+  );
+
   test('TourCubit מציג טיפ הצג לצד אחרי דילוג חוזר בין שני ספרים', () async {
     await Settings.setValue<String>(TourSteps.statusKey, TourSteps.completed);
     final cubit = TourCubit();
