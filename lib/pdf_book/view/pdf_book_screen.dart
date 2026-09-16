@@ -1747,6 +1747,8 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                               () => TrackpadPanRecognizer(
                                 onPanDelta: _handleTrackpadPanDelta,
                                 onPanEnd: _trackpadPanAxisLock.reset,
+                                canPanHorizontally: () =>
+                                    widget.tab.canPanHorizontally,
                               ),
                               (recognizer) {},
                             ),

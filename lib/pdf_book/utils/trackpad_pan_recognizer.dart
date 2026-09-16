@@ -19,6 +19,7 @@ class TrackpadPanRecognizer extends OneSequenceGestureRecognizer {
   TrackpadPanRecognizer({
     required this.onPanDelta,
     required this.onPanEnd,
+    this.canPanHorizontally,
     super.debugOwner,
   }) : super(supportedDevices: {PointerDeviceKind.trackpad});
 
@@ -27,6 +28,10 @@ class TrackpadPanRecognizer extends OneSequenceGestureRecognizer {
 
   /// סוף מחווה שנתבעה - כאן מאפסים את נעילת הציר.
   final void Function() onPanEnd;
+
+  /// האם למסמך יש לאן לגלול לרוחב. כשלא - מחווה אופקית נמסרת
+  /// הלאה, למעבר בין כרטיסיות.
+  final bool Function()? canPanHorizontally;
 
   /// מרחק ה-pan המצטבר שממנו המחווה נתבעת בזירה. חייב להיות קטן מסף
   /// הקבלה של ScaleGestureRecognizer (pan slop, ~36px) כדי לנצח אותו.
@@ -61,6 +66,12 @@ class TrackpadPanRecognizer extends OneSequenceGestureRecognizer {
           }
           _pendingPan += event.panDelta;
           if (_pendingPan.distance < _acceptDistance) {
+            return;
+          }
+          if (_pendingPan.dx.abs() > _pendingPan.dy.abs() &&
+              !(canPanHorizontally?.call() ?? true)) {
+            _claim = _PanClaim.rejected;
+            resolve(GestureDisposition.rejected);
             return;
           }
           _claim = _PanClaim.accepted;
