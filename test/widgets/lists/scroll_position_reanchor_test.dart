@@ -42,6 +42,7 @@ int _topIndex(ItemPositionsListener listener) =>
 Future<int> _scrollAndResize(
   WidgetTester tester, {
   required bool enabled,
+  double distance = 1500,
 }) async {
   final controller = ItemScrollController();
   final listener = ItemPositionsListener.create();
@@ -57,7 +58,7 @@ Future<int> _scrollAndResize(
   await tester.pumpAndSettle();
   await tester.drag(
     find.byType(ScrollablePositionedList),
-    const Offset(0, -1500),
+    Offset(0, -distance),
   );
   await tester.pumpAndSettle();
   // הטיימר שממתין לרגיעת הגלילה אינו מתזמן פריימים, ולכן pumpAndSettle לבדו
@@ -66,7 +67,7 @@ Future<int> _scrollAndResize(
   await tester.pumpAndSettle();
 
   final before = _topIndex(listener);
-  expect(before, greaterThan(20), reason: 'הגלילה לא הזיזה מספיק');
+  expect(before, greaterThan(0), reason: 'הגלילה לא הזיזה');
 
   await tester.pumpWidget(
     _buildList(
@@ -89,6 +90,67 @@ void main() {
 
     testWidgets('בלי עיגון מחדש ההיסט בפיקסלים סוחף את המיקום', (tester) async {
       expect(await _scrollAndResize(tester, enabled: false), isNot(0));
+    });
+
+    // עיגון בונה מחדש את כל טווח המטמון, ועל נקישת גלגלת בודדת זה היה פי 38
+    // בניות פריט. מתחת למסך שלם מהעוגן ההיסט עצמו קטן, ולכן גם הסחיפה.
+    testWidgets('גלילה קצרה ממסך אינה מעגנת, והסחיפה נשארת קטנה', (
+      tester,
+    ) async {
+      final anchored = await _scrollAndResize(
+        tester,
+        enabled: true,
+        distance: 120,
+      );
+      final bare = await _scrollAndResize(
+        tester,
+        enabled: false,
+        distance: 120,
+      );
+      expect(anchored.abs(), lessThan(bare.abs()));
+      expect(anchored.abs(), lessThanOrEqualTo(2));
+    });
+
+    // כל עיגון בונה מחדש את טווח המטמון כולו. בלי הסף, נקישת גלגלת בודדת
+    // שאחריה עצירה שילמה פי 38 בניות פריט על תזוזה של פריט או שניים.
+    testWidgets('נקישת גלגלת בודדת אינה בונה את הפריטים מחדש', (tester) async {
+      final controller = ItemScrollController();
+      final listener = ItemPositionsListener.create();
+      var builds = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 600,
+            height: 400,
+            child: ScrollPositionReanchor(
+              scrollController: controller,
+              positionsListener: listener,
+              child: ScrollablePositionedList.builder(
+                itemScrollController: controller,
+                itemPositionsListener: listener,
+                itemCount: 2000,
+                itemBuilder: (context, index) {
+                  builds++;
+                  return SizedBox(height: 30, child: Text('$index'));
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      builds = 0;
+      await tester.drag(
+        find.byType(ScrollablePositionedList),
+        const Offset(0, -60),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(ScrollPositionReanchor.idleDelay);
+      await tester.pumpAndSettle();
+
+      expect(builds, lessThan(10), reason: 'העיגון בנה מחדש את טווח המטמון');
     });
 
     testWidgets('קפיצה לאינדקס אחרי שינוי הרוחב מדויקת', (tester) async {

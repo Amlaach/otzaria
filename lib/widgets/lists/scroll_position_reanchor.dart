@@ -58,8 +58,13 @@ class _ScrollPositionReanchorState extends State<ScrollPositionReanchor> {
   @override
   Widget build(BuildContext context) {
     return NotificationListener<ScrollNotification>(
-      onNotification: (_) {
+      onNotification: (notification) {
         if (!widget.enabled) return false;
+        final metrics = notification.metrics;
+        // `pixels` הוא ההיסט מהעוגן, והוא מתאפס בכל עיגון. כל עוד לא
+        // התרחקנו ממנו מסך שלם, שינוי רוחב יזיז את הטקסט פחות ממסך —
+        // ועיגון כאן היה בונה מחדש את כל טווח המטמון על כל נקישת גלגלת.
+        if (metrics.pixels.abs() < metrics.viewportDimension) return false;
         _idleTimer?.cancel();
         _idleTimer = Timer(ScrollPositionReanchor.idleDelay, _reanchor);
         return false;
