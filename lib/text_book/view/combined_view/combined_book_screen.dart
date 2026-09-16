@@ -775,9 +775,11 @@ class _CombinedViewState extends State<CombinedView> {
         return _textBookBloc.repository.getSiblingCommentaries(
           sourceBookTitle: utils.getTitleFromPath(sourceLink.path2),
           sourceCategoryId: sourceLink.targetCategoryId,
+          sourceIsUserBook: sourceLink.targetIsUserBook,
           sourceLineIndex: sourceLink.index2 - 1,
           currentBookTitle: state.book.title,
           currentCategoryId: state.book.categoryId,
+          currentIsUserBook: state.book.isUserBook,
         );
       },
     );

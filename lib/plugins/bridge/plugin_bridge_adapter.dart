@@ -457,10 +457,10 @@ class PluginBridgeDependencies {
   /// ממשיך במסלולי ה-TOC הקיימים.
   final Future<int?> Function(TextBook book, String ref)? resolveRefToLine;
 
-  /// מחזיר את מבני ה-AltToc של ספר לפי כותרתו. אופציונלי — אם לא סופק,
+  /// מחזיר את מבני ה-AltToc של ספר. אופציונלי — אם לא סופק,
   /// האדפטר משתמש ב-[DatabaseLibraryProvider.instance]. קיים בעיקר להזרקה
   /// בבדיקות (ה-DB אינו זמין בהן).
-  final Future<List<AltTocStructure>> Function(String bookTitle)?
+  final Future<List<AltTocStructure>> Function(TextBook book)?
   altStructuresProvider;
 
   /// מחזיר את ערכי מבנה ה-AltToc עם ה-lineIndex, לבניית העץ. אופציונלי —
@@ -1216,7 +1216,10 @@ class PluginBridgeAdapter {
           if (bookId is! String || bookId.isEmpty) {
             throw Exception('error.invalid_params: bookId required');
           }
-          final structures = await _loadAltStructures(bookId);
+          final book = _findPluginBook(library, args);
+          final structures = book is TextBook
+              ? await _loadAltStructures(book)
+              : const <AltTocStructure>[];
           // ה-id הפנימי של ה-DB אינו יציב בין גרסאות ספרייה — לא נחשף לתוסף.
           return structures
               .map(
@@ -1230,6 +1233,7 @@ class PluginBridgeAdapter {
           if (bookId is! String || bookId.isEmpty) {
             throw Exception('error.invalid_params: bookId required');
           }
+          final book = _findPluginBook(library, args);
           final rawKey = args['structureKey'];
           if (rawKey != null && (rawKey is! String || rawKey.isEmpty)) {
             throw Exception(
@@ -1237,7 +1241,9 @@ class PluginBridgeAdapter {
             );
           }
           final structureKey = rawKey as String?;
-          final structures = await _loadAltStructures(bookId);
+          final structures = book is TextBook
+              ? await _loadAltStructures(book)
+              : const <AltTocStructure>[];
           if (structures.isEmpty) {
             // ספר בלי AltToc (או ספר אישי/קובץ). key שלא קיים → שגיאה.
             if (structureKey != null) {
@@ -1703,11 +1709,11 @@ class PluginBridgeAdapter {
   }
 
   /// טוען את מבני ה-AltToc של ספר (דרך התלות המוזרקת או ה-DB).
-  Future<List<AltTocStructure>> _loadAltStructures(String bookId) {
+  Future<List<AltTocStructure>> _loadAltStructures(TextBook book) {
     final provider =
         _dependencies.altStructuresProvider ??
         DatabaseLibraryProvider.instance.getAlternativeStructuresForBook;
-    return provider(bookId);
+    return provider(book);
   }
 
   /// טוען את ערכי מבנה ה-AltToc עם ה-lineIndex (דרך התלות המוזרקת או ה-DB).

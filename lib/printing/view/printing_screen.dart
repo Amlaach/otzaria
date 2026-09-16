@@ -374,10 +374,11 @@ class _PrintingScreenState extends State<PrintingScreen> {
   }
 
   Future<void> _loadAltHeaders() async {
-    if (widget.createPdfOverride != null) return;
+    final book = widget.book;
+    if (widget.createPdfOverride != null || book == null) return;
     try {
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.bookId);
+          .getAlternativeStructuresForBook(book);
       if (structures.isEmpty || !mounted) return;
 
       // שימוש ב-structure הראשון בלבד - ריבוי structures מערבב ערכים

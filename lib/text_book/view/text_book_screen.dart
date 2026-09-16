@@ -949,7 +949,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
     try {
       final textBookBloc = context.read<TextBookBloc>();
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.tab.book.title);
+          .getAlternativeStructuresForBook(widget.tab.book);
       final dibburim = await loadDibburimForBook(widget.tab.book);
 
       if (!mounted) return;

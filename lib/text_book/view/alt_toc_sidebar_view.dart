@@ -27,7 +27,7 @@ import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class AltTocSidebarView extends StatefulWidget {
-  final Book book;
+  final TextBook book;
   final void Function() closeLeftPaneCallback;
   final ItemScrollController scrollController;
 
@@ -255,7 +255,7 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
     });
     try {
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.book.title);
+          .getAlternativeStructuresForBook(widget.book);
       if (mounted) {
         setState(() {
           _structures = [

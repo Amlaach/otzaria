@@ -11,6 +11,7 @@ import 'package:otzaria/data/data_providers/cache_database_holder.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/data/data_providers/database_library_provider.dart';
+import 'package:otzaria/models/books.dart';
 import 'package:otzaria/library/models/library.dart' as library_models;
 import 'package:otzaria/migration/models/author.dart';
 import 'package:otzaria/migration/models/book.dart' as migration_models;
@@ -1148,12 +1149,16 @@ void main() {
         final db = sqlite3.sqlite3.open(dbPath);
 
         try {
-          db.execute('CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT)');
+          db.execute(
+            'CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT, categoryId INTEGER)',
+          );
           db.execute(
             'CREATE TABLE alt_toc_structure (id INTEGER PRIMARY KEY, bookId INTEGER, key TEXT, title TEXT, heTitle TEXT)',
           );
 
-          db.execute("INSERT INTO book (id, title) VALUES (1, 'בראשית')");
+          db.execute(
+            "INSERT INTO book (id, title, categoryId) VALUES (1, 'בראשית', 5)",
+          );
           db.execute(
             "INSERT INTO alt_toc_structure (id, bookId, key, title, heTitle) VALUES (9, 1, 'chapters', 'Chapters', 'פרקים')",
           );
@@ -1173,6 +1178,54 @@ void main() {
           db.close();
           await tempDir.delete(recursive: true);
         }
+      },
+    );
+
+    test(
+      'loadAlternativeStructuresRowsForTesting מבחין בין ספרים בשם זהה לפי קטגוריה',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp('otzaria_db_alt');
+        final dbPath = path.join(tempDir.path, 'db.sqlite');
+        final db = sqlite3.sqlite3.open(dbPath);
+
+        try {
+          db.execute(
+            'CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT, categoryId INTEGER)',
+          );
+          db.execute(
+            'CREATE TABLE alt_toc_structure (id INTEGER PRIMARY KEY, bookId INTEGER, key TEXT, title TEXT, heTitle TEXT)',
+          );
+          db.execute(
+            "INSERT INTO book (id, title, categoryId) VALUES (1, 'הקדמה', 5), (2, 'הקדמה', 7)",
+          );
+          db.execute(
+            "INSERT INTO alt_toc_structure (id, bookId, key) VALUES (10, 1, 'a'), (20, 2, 'b')",
+          );
+
+          final rows =
+              DatabaseLibraryProvider.loadAlternativeStructuresRowsForTesting(
+                dbPath: dbPath,
+                bookTitle: 'הקדמה',
+                categoryId: 7,
+              );
+
+          expect(rows.map((r) => r['id']), [20]);
+        } finally {
+          db.close();
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'getAlternativeStructuresForBook לא מחזיר לספר אישי את מבני הספר הרשמי בשם זהה',
+      () async {
+        final structures = await DatabaseLibraryProvider.instance
+            .getAlternativeStructuresForBook(
+              TextBook(title: 'בראשית', categoryId: 1, isUserBook: true),
+            );
+
+        expect(structures, isEmpty);
       },
     );
 
@@ -1493,7 +1546,7 @@ void main() {
           );
 
           final structures = await provider.getAlternativeStructuresForBook(
-            'בראשית',
+            TextBook(title: 'בראשית', categoryId: catId),
           );
 
           expect(structures, hasLength(1));

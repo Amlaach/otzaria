@@ -990,9 +990,11 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
           return bloc.repository.getSiblingCommentaries(
             sourceBookTitle: utils.getTitleFromPath(sourceLink.path2),
             sourceCategoryId: sourceLink.targetCategoryId,
+            sourceIsUserBook: sourceLink.targetIsUserBook,
             sourceLineIndex: sourceLink.index2 - 1,
             currentBookTitle: state.book.title,
             currentCategoryId: state.book.categoryId,
+            currentIsUserBook: state.book.isUserBook,
           );
         },
       );

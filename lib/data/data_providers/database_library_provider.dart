@@ -907,14 +907,15 @@ List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
 List<Map<String, dynamic>> _loadAlternativeStructuresRowsInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
 
     final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? LIMIT 1',
-      [bookTitle],
+      'SELECT id FROM book WHERE title = ? AND (?2 IS NULL OR categoryId = ?2) LIMIT 1',
+      [bookTitle, categoryId],
     ).toMapList();
 
     if (bookResults.isEmpty) {
@@ -941,11 +942,13 @@ List<Map<String, dynamic>> _loadAlternativeStructuresRowsInIsolate({
 Future<List<Map<String, dynamic>>> _runAlternativeStructuresInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   return Isolate.run(
     () => _loadAlternativeStructuresRowsInIsolate(
       dbPath: dbPath,
       bookTitle: bookTitle,
+      categoryId: categoryId,
     ),
   );
 }
@@ -1511,10 +1514,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   static List<Map<String, dynamic>> loadAlternativeStructuresRowsForTesting({
     required String dbPath,
     required String bookTitle,
+    int? categoryId,
   }) {
     return _loadAlternativeStructuresRowsInIsolate(
       dbPath: dbPath,
       bookTitle: bookTitle,
+      categoryId: categoryId,
     );
   }
 
@@ -3681,13 +3686,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
     return name;
   }
 
-  /// Get all alternative TOC structures available in the database for a specific book
+  /// מבני ה-AltToc של [book] מהספרייה הרשמית. ספר אישי ממוספר אחרת מספר
+  /// רשמי בשם זהה, ולכן לעולם אינו מקבל את מבניו.
   Future<List<AltTocStructure>> getAlternativeStructuresForBook(
-    String bookTitle,
+    TextBook book,
   ) async {
+    if (book.isUserBook) return [];
     if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
       return [];
     }
+    final bookTitle = book.title;
 
     // לא להעביר ל-Isolate.run closure שנוצר בתוך instance method הזה -
     // הקומפיילר של Dart עלול לתפוס את `this` בכל זאת (כולל ה-FfiDatabase
@@ -3700,6 +3708,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       final results = await _runAlternativeStructuresInIsolate(
         dbPath: dbPath,
         bookTitle: bookTitle,
+        categoryId: book.categoryId,
       );
 
       return results.map((json) => AltTocStructure.fromJson(json)).toList();
