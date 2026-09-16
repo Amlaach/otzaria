@@ -430,6 +430,9 @@ Future<void> _initializeSentry() async {
   // ה-uncloak רץ כ-task נייטיבי על אותו thread; חסימה לפניו משאירה את
   // החלון בלתי-נראה (נמדד גם אחרי שני endOfFrame) — נותנים לו לרוץ קודם.
   await Future<void>.delayed(const Duration(seconds: 2));
+  if (Settings.getValue<bool>(SettingsRepository.keyOfflineMode) ?? false) {
+    return;
+  }
   try {
     final info = await PackageInfo.fromPlatform();
     StartupTimeline.instance.mark('sentry:init');
