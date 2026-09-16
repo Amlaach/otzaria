@@ -639,9 +639,11 @@ void main() {
                 ? a
                 : b,
           );
+      // ה-tooltip הוא של ה-IconButton עצמו (IconButton.tooltip), ולכן הכפתור
+      // הוא אב של ה-Tooltip ולא צאצא שלו (issue #1399).
       tester
           .widget<IconButton>(
-            find.descendant(of: xOfRight, matching: find.byType(IconButton)),
+            find.ancestor(of: xOfRight, matching: find.byType(IconButton)),
           )
           .onPressed!();
       await tester.pump();

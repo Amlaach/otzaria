@@ -28,6 +28,12 @@ class ActionButton extends StatelessWidget {
   final FocusNode? focusNode;
   final bool autofocus;
 
+  /// הודעת tooltip לכפתור. עדיף על עטיפה חיצונית ב-[Tooltip]: הכפתור מקבל
+  /// את הבלון בצומת סמנטיקה משלו (ראו [build]), ולכן אפשר להציבו בתוך עוגן
+  /// overlay אחר — למשל `MenuAnchor.builder` — בלי שהעוגנים יתמזגו לצומת
+  /// אחד ובלון יישאר בלי אב (issue #1399).
+  final String? tooltip;
+
   const ActionButton.recommended({
     super.key,
     required this.text,
@@ -38,6 +44,7 @@ class ActionButton extends StatelessWidget {
     this.textAlign = TextAlign.start,
     this.focusNode,
     this.autofocus = false,
+    this.tooltip,
   }) : _variant = _Variant.recommended;
 
   const ActionButton.neutral({
@@ -50,6 +57,7 @@ class ActionButton extends StatelessWidget {
     this.textAlign = TextAlign.start,
     this.focusNode,
     this.autofocus = false,
+    this.tooltip,
   }) : _variant = _Variant.neutral;
 
   const ActionButton.ghost({
@@ -62,6 +70,7 @@ class ActionButton extends StatelessWidget {
     this.textAlign = TextAlign.start,
     this.focusNode,
     this.autofocus = false,
+    this.tooltip,
   }) : _variant = _Variant.ghost;
 
   const ActionButton.warning({
@@ -74,6 +83,7 @@ class ActionButton extends StatelessWidget {
     this.textAlign = TextAlign.start,
     this.focusNode,
     this.autofocus = false,
+    this.tooltip,
   }) : _variant = _Variant.warning;
 
   Color _loadingColor(ColorScheme cs) => switch (_variant) {
@@ -143,6 +153,22 @@ class ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final button = _buildButton(context);
+    final tooltip = this.tooltip;
+    if (tooltip == null || tooltip.isEmpty) return button;
+    // Tooltip אינו יוצר צומת סמנטיקה משלו: ההודעה ועוגן ה-OverlayPortal של
+    // הבלון מתמזגים לצומת הסמנטיקה הקרוב מעליו. כשהכפתור יושב בתוך עוגן
+    // overlay אחר (MenuAnchor וכדומה), שני העוגנים נוחתים באותו צומת, ולצומת
+    // יש מקום לעוגן אחד בלבד — הבלון שנפתח נשלח למערכת ההפעלה בלי אב, Windows
+    // דוחה את עדכון עץ הנגישות והעץ קופא עד קריסה (issue #1399). המכולה נותנת
+    // ל-tooltip צומת משלו, כפי ש-IconButton עושה עם ה-tooltip הפנימי שלו.
+    return Semantics(
+      container: true,
+      child: Tooltip(message: tooltip, child: button),
+    );
+  }
+
+  Widget _buildButton(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final leading = iconWidget ?? (icon != null ? RtlIcon(icon!) : null);
     final style = _buttonStyle(cs);
