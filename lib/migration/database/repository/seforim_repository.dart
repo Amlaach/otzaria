@@ -46,6 +46,10 @@ class SeforimRepository {
   /// קאש בזיכרון לערכי AltToc (כותרות-משנה) לכל ספר.
   final Map<int, _TocBookCache> _altTocCache = <int, _TocBookCache>{};
 
+  /// האם `idx_line_book_index` קיים. חיבור ה-RO של ה-worker אינו יכול
+  /// ליצור אותו, ולכן הוא נבדק ולא מונח.
+  bool? _hasLineBookIndexCache;
+
   SeforimRepository(this._database);
 
   /// מבטל את ערך הקאש של [getTocEntriesForReference] ו-[getAltTocEntriesForReference].
@@ -3193,6 +3197,74 @@ extension BookAcronymRepository on SeforimRepository {
     return end;
   }
 
+  bool _hasLineBookIndex(sqlite3.Database db) {
+    return _hasLineBookIndexCache ??= db
+        .select(
+          "SELECT 1 FROM sqlite_master "
+          "WHERE type = 'index' AND name = 'idx_line_book_index'",
+        )
+        .isNotEmpty;
+  }
+
+  /// מיפוי `line.id → line.lineIndex` לספר, מהאינדקס המכסה: `JOIN line`
+  /// קרא עמוד 16KB של טקסט לכל ערך TOC. [neededLineIds] רק לנסיגה.
+  Map<int, int> _lineIndexesForBook(
+    sqlite3.Database db,
+    int bookId,
+    Iterable<int> neededLineIds,
+  ) {
+    if (!_hasLineBookIndex(db)) {
+      return _lineIndexesByIds(db, neededLineIds);
+    }
+    final rows = db.select(
+      'SELECT id, lineIndex FROM line WHERE bookId = ?',
+      [bookId],
+    );
+    return {
+      for (final row in rows) row['id'] as int: row['lineIndex'] as int,
+    };
+  }
+
+  /// מיפוי לפי rowid — מסלול הנסיגה כשאין אינדקס מכסה, ואין אז דרך
+  /// זולה יותר מקריאת השורות עצמן.
+  Map<int, int> _lineIndexesByIds(sqlite3.Database db, Iterable<int> lineIds) {
+    final ids = lineIds.toSet().toList(growable: false);
+    final result = <int, int>{};
+    const chunkSize = 900; // מתחת ל-SQLITE_MAX_VARIABLE_NUMBER.
+    for (var start = 0; start < ids.length; start += chunkSize) {
+      final end = start + chunkSize < ids.length
+          ? start + chunkSize
+          : ids.length;
+      final chunk = ids.sublist(start, end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = db.select(
+        'SELECT id, lineIndex FROM line WHERE id IN ($placeholders)',
+        chunk,
+      );
+      for (final row in rows) {
+        result[row['id'] as int] = row['lineIndex'] as int;
+      }
+    }
+    return result;
+  }
+
+  /// מסדר שורות TOC כפי ש-`ORDER BY lineIndex, level` היה מסדר אותן
+  /// (NULL ראשון, כמנהג SQLite), עם `id` כשובר-שוויון דטרמיניסטי.
+  void _sortByLineIndexThenLevel(List<Map<String, dynamic>> rows) {
+    rows.sort((a, b) {
+      final ai = a['lineIndex'] as int?;
+      final bi = b['lineIndex'] as int?;
+      if (ai != bi) {
+        if (ai == null) return -1;
+        if (bi == null) return 1;
+        return ai.compareTo(bi);
+      }
+      final levelCompare = (a['level'] as int).compareTo(b['level'] as int);
+      if (levelCompare != 0) return levelCompare;
+      return (a['id'] as int).compareTo(b['id'] as int);
+    });
+  }
+
   /// בונה (פעם אחת לכל [bookId]) את רשימת ערכי ה-TOC המעובדים.
   /// כל ערך כולל את ה-reference המלא (כולל נתיב אבות שלם) ואת הטוקנים המנורמלים
   /// שלו מראש. מבנה היררכי (childrenByParentId) מאפשר חיפוש רמה-אחר-רמה.
@@ -3205,22 +3277,36 @@ extension BookAcronymRepository on SeforimRepository {
 
     final db = await _database.database;
 
-    final tocEntries = db
+    final rawEntries = db
         .select(
           '''
-        SELECT t.id, tt.text, t.level, t.textId,
-               COALESCE(l.lineIndex, t.lineId) as lineIndex,
-               COALESCE(t.lineId, 0) as dbLineId,
-               t.parentId
+        SELECT t.id, tt.text, t.level, t.textId, t.lineId, t.parentId
         FROM tocEntry t
         JOIN tocText tt ON t.textId = tt.id
-        LEFT JOIN line l ON t.lineId = l.id
         WHERE t.bookId = ?
-        ORDER BY COALESCE(l.lineIndex, t.lineId), t.level
       ''',
           [bookId],
         )
         .toMapList();
+
+    final lineIndexes = rawEntries.isEmpty
+        ? const <int, int>{}
+        : _lineIndexesForBook(db, bookId, [
+            for (final e in rawEntries)
+              if (e['lineId'] case final int lineId) lineId,
+          ]);
+    final tocEntries = <Map<String, dynamic>>[];
+    for (final e in rawEntries) {
+      final lineId = e['lineId'] as int?;
+      tocEntries.add({
+        ...e,
+        // שורה חסרה (lineId שאינו קיים) נופלת ל-lineId עצמו, כפי שעשה
+        // ה-COALESCE על ה-LEFT JOIN.
+        'lineIndex': lineId == null ? null : (lineIndexes[lineId] ?? lineId),
+        'dbLineId': lineId ?? 0,
+      });
+    }
+    _sortByLineIndexThenLevel(tocEntries);
 
     if (tocEntries.isEmpty) {
       _tocCache[bookId] = _TocBookCache.empty;
@@ -3525,24 +3611,36 @@ extension BookAcronymRepository on SeforimRepository {
 
     final db = await _database.database;
 
-    final entries = db
+    final rawEntries = db
         .select(
           '''
-        SELECT e.id, t.text, e.level,
-               COALESCE(l.lineIndex, 0) as lineIndex,
-               COALESCE(e.lineId, 0) as dbLineId,
-               e.parentId
+        SELECT e.id, t.text, e.level, e.lineId, e.parentId
         FROM alt_toc_entry e
         JOIN tocText t ON e.textId = t.id
-        LEFT JOIN line l ON e.lineId = l.id
         WHERE e.structureId IN (
             SELECT id FROM alt_toc_structure WHERE bookId = ?
         )
-        ORDER BY COALESCE(l.lineIndex, 0), e.level
       ''',
           [bookId],
         )
         .toMapList();
+
+    final lineIndexes = rawEntries.isEmpty
+        ? const <int, int>{}
+        : _lineIndexesForBook(db, bookId, [
+            for (final e in rawEntries)
+              if (e['lineId'] case final int lineId) lineId,
+          ]);
+    final entries = <Map<String, dynamic>>[];
+    for (final e in rawEntries) {
+      final lineId = e['lineId'] as int?;
+      entries.add({
+        ...e,
+        'lineIndex': lineId == null ? 0 : (lineIndexes[lineId] ?? 0),
+        'dbLineId': lineId ?? 0,
+      });
+    }
+    _sortByLineIndexThenLevel(entries);
 
     if (entries.isEmpty) {
       _altTocCache[bookId] = _TocBookCache.empty;
@@ -3665,6 +3763,30 @@ extension BookAcronymRepository on SeforimRepository {
     return [for (final r in rows) r['bookId'] as int];
   }
 
+  /// מיפוי `line.id → line.lineIndex` לכל ה-AltToc בספרייה. `INDEXED BY`
+  /// חובה: בלעדיו SQLite בוחר rowid, ואז 185MB קריאות במקום 15MB.
+  Map<int, int> _allAltTocLineIndexes(
+    sqlite3.Database db,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final needed = [
+      for (final r in rows)
+        if (r['lineId'] case final int lineId) lineId,
+    ];
+    if (needed.isEmpty) return const {};
+    if (!_hasLineBookIndex(db)) return _lineIndexesByIds(db, needed);
+
+    final indexRows = db.select('''
+      SELECT l.id AS id, l.lineIndex AS lineIndex
+      FROM line l INDEXED BY idx_line_book_index
+      WHERE l.bookId IN (SELECT bookId FROM alt_toc_structure)
+        AND l.id IN (SELECT lineId FROM alt_toc_entry WHERE lineId IS NOT NULL)
+    ''');
+    return {
+      for (final row in indexRows) row['id'] as int: row['lineIndex'] as int,
+    };
+  }
+
   Future<List<Map<String, dynamic>>> getAllAltTocFlatEntries() async {
     final db = await _database.database;
     final rows = db.select('''
@@ -3675,16 +3797,16 @@ extension BookAcronymRepository on SeforimRepository {
              t.text AS text,
              e.level AS level,
              e.parentId AS parentId,
-             COALESCE(l.lineIndex, 0) AS lineIndex,
-             COALESCE(e.lineId, 0) AS dbLineId
+             e.lineId AS lineId
       FROM alt_toc_entry e
       JOIN alt_toc_structure s ON e.structureId = s.id
       JOIN book b ON b.id = s.bookId
       JOIN tocText t ON e.textId = t.id
-      LEFT JOIN line l ON e.lineId = l.id
     ''').toMapList();
 
     if (rows.isEmpty) return const [];
+
+    final lineIndexes = _allAltTocLineIndexes(db, rows);
 
     // נבנה memoized buildPath עבור parentId → reference. ה-`entryId` יחיד
     // ברמת ה-DB, ולכן מספיק קאש גלובלי אחד מעבר לכל הספרים.
@@ -3715,14 +3837,15 @@ extension BookAcronymRepository on SeforimRepository {
       final fullRef = text.isEmpty
           ? ancestorPath
           : (ancestorPath.isEmpty ? text : '$ancestorPath $text');
+      final lineId = r['lineId'] as int?;
       result.add({
         'bookId': r['bookId'] as int,
         'bookTitle': r['bookTitle'] as String,
         'bookOrderIndex': (r['bookOrderIndex'] as num).toDouble(),
         'reference': fullRef,
-        'segment': r['lineIndex'] as int,
+        'segment': lineId == null ? 0 : (lineIndexes[lineId] ?? 0),
         'level': r['level'] as int,
-        'dbLineId': r['dbLineId'] as int,
+        'dbLineId': lineId ?? 0,
       });
     }
     return result;
