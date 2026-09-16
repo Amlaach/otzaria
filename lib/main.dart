@@ -1376,7 +1376,10 @@ class _AppBootstrapState extends State<AppBootstrap> {
             create: (_) => IndexingBloc.create(),
           ),
           BlocProvider<HistoryBloc>(
-            create: (_) => HistoryBloc(historyRepository),
+            create: (context) => HistoryBloc(
+              historyRepository,
+              currentTab: () => context.read<TabsBloc>().state.currentTab,
+            ),
           ),
           BlocProvider<TabsBloc>(
             create: (_) {
