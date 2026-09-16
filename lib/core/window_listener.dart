@@ -37,6 +37,16 @@ class AppWindowListener extends WindowListener {
     // הערוץ היה חד-כיווני (Dart → נייטיב) עד כאן. כיבוי מערכת הוא המקרה
     // הראשון שבו הנייטיב צריך לקרוא **לנו**.
     _processControlChannel.setMethodCallHandler(_handleProcessControlCall);
+    if (!kIsWeb && Platform.isMacOS) {
+      _macTerminationChannel.setMethodCallHandler(_handleMacTerminationCall);
+    }
+  }
+
+  Future<Object?> _handleMacTerminationCall(MethodCall call) async {
+    if (call.method == 'quitRequested') {
+      await handleWindowClose(quit: true);
+    }
+    return null;
   }
 
   /// האם שטיפת סיום הסשן כבר רצה. `WM_QUERYENDSESSION` מגיע לא פעם יותר
@@ -121,8 +131,16 @@ class AppWindowListener extends WindowListener {
     }
   }
 
+  /// האם סגירת החלון האחרון משאירה את התהליך חי (macOS: האפליקציה נשארת
+  /// ב-Dock ורק ⌘Q יוצא). דריסה לבדיקות בלבד.
+  @visibleForTesting
+  static bool? debugKeepsProcessAfterLastWindowOverride;
+
+  static bool get _keepsProcessAfterLastWindow =>
+      debugKeepsProcessAfterLastWindowOverride ?? (!kIsWeb && Platform.isMacOS);
+
   /// מתיר ל-AppKit להשלים `NSApplication.terminate` אחרי שכל רצף הסגירה
-  /// של Dart הסתיים. בלי ההיתר, ⌘Q הבא היה חוזר ל-`performClose`.
+  /// של Dart הסתיים. בלי ההיתר, ⌘Q הבא היה חוזר ל-Dart.
   static Future<void> allowMacOSApplicationTermination() async {
     if (kIsWeb || !Platform.isMacOS) return;
     await _macTerminationChannel.invokeMethod<void>('allowTermination');
@@ -248,8 +266,13 @@ class AppWindowListener extends WindowListener {
   /// ⚠️ נפרד מ-[onWindowClose] כי החוזה של `window_manager` הוא `void`,
   /// ורצף הסגירה — ה-flush, מחיקת הסשן והסגירה עצמה — הוא בדיוק מה שצריך
   /// להיות ניתן לבדיקה.
+  ///
+  /// [quit] — יציאה מהאפליקציה (⌘Q) ולא סגירת חלון: מסיים את התהליך תמיד.
   @visibleForTesting
-  Future<void> handleWindowClose({bool Function()? canClose}) async {
+  Future<void> handleWindowClose({
+    bool Function()? canClose,
+    bool quit = false,
+  }) async {
     if (_isClosing) {
       return;
     }
@@ -274,13 +297,14 @@ class AppWindowListener extends WindowListener {
     // ⚠️ נשאל **פעם אחת**, בתחילת הסגירה. שאלה חוזרת אחרי ה-flush עלולה
     // לקבל תשובה אחרת אם חלון אחר נסגר בינתיים, והתוצאה תהיה חצי כיבוי:
     // הצעדים שלפני ה-flush רצו והצעדים שאחריו לא, או להפך.
-    final isLast = await _isLastWindowClosing();
+    final isLast = quit || await _isLastWindowClosing();
+    final endsProcess = isLast && (quit || !_keepsProcessAfterLastWindow);
 
-    if (isLast) {
+    if (endsProcess) {
       await _shutdownProcessUpToFlush();
     }
     final flushFailure = await _closeWindowScoped();
-    if (isLast) {
+    if (endsProcess) {
       await _shutdownProcessAfterFlush(flushFailure);
     } else {
       // חלון אחד מתוך כמה: לסגור רק אותו. `setPreventClose(true)` מנע את
@@ -290,7 +314,11 @@ class AppWindowListener extends WindowListener {
       // ולכן הסשן שלו אינו "פתוח" יותר: השארתו הייתה מחזירה בהפעלה הבאה
       // כרטיסיות שהוא בחר לסגור (`adoptOrphanWindowSessions`).
       // `Ctrl+Shift+T` אינו נשען עליו אלא על המנוע שנשאר חי בזיכרון.
-      await TabsRepository().discardWindowSession();
+      // החלון האחרון במק נשאר ב-Dock, והכרטיסיות שלו הן הסשן הבא.
+      if (!isLast) await TabsRepository().discardWindowSession();
+
+      // מוסתר ולא נהרס: תוספים שממשיכים לרוץ היו צורכים משאבים ברקע.
+      PluginRuntimeDispatcher.instance.setWindowShown(false);
 
       // ⚠️ דרך ה-runner ולא `quitApplication()`: האחרון הוא
       // `PostQuitMessage` — הוא סוגר את התוכנה כולה ולא את החלון הזה.
@@ -560,6 +588,8 @@ class AppWindowListener extends WindowListener {
       );
     }
     LastActiveWindow.markActive(windowId);
+    // חלון שהוחזר מהסתרה מקבל פוקוס — זה האות שהוא מוצג שוב.
+    PluginRuntimeDispatcher.instance.setWindowShown(true);
   }
 
   @override

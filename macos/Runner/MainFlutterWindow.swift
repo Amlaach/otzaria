@@ -73,13 +73,14 @@ class MainFlutterWindow: NSWindow {
   }
 
   /// ⌘Q ו-Quit שולחים `NSApplication.terminate`, שעוקף את ה-delegate של
-  /// החלון. כל עוד Dart לא סיים את ה-flush, מחזירים אותו ל-`performClose`,
-  /// ש-window_manager מתרגם ל-onWindowClose. לאחר ההיתר המפורש מ-Dart
-  /// אפשר להשלים את אותה בקשת terminate בלי להציג שוב את האישור.
+  /// החלון. כל עוד Dart לא סיים את רצף היציאה, מבקשים ממנו לצאת, ולאחר
+  /// ההיתר המפורש משלימים את אותה בקשת terminate.
+  /// ⚠️ לא `performClose`: זו סגירת חלון, שבמק משאירה את האפליקציה ב-Dock,
+  /// וגם אינה מגיעה ל-Dart כשהחלון הראשי מוסתר.
   func applicationShouldTerminate() -> NSApplication.TerminateReply {
     guard isDartCloseHandlingEnabled else { return .terminateNow }
     if isDartTerminationAllowed { return .terminateNow }
-    performClose(nil)
+    terminationChannel?.invokeMethod("quitRequested", arguments: nil)
     return .terminateCancel
   }
 
@@ -462,12 +463,8 @@ final class OtzariaWindowManager {
     entry.isClosedByUser = true
     hiddenSequence += 1
     entry.hiddenAt = hiddenSequence
+    // גם כשזה החלון האחרון: האפליקציה נשארת ב-Dock, ולחיצה עליו משחזרת.
     entry.window.orderOut(nil)
-    guard liveWindowCount == 0 else { return }
-    // ⚠️ נסגר החלון האחרון בלי שעבר את מסלול הסגירה של Dart (שם
-    // `windowCount() <= 1` מוביל לכיבוי מלא). אין מה לשטוף, רק לצאת —
-    // ו-`NSApp.terminate` היה חוזר ל-`performClose` דרך שער ה-⌘Q.
-    exit(0)
   }
 
   private func revive(
@@ -494,7 +491,7 @@ final class OtzariaWindowManager {
     }
   }
 
-  private func restoreLastClosedWindow() -> Bool {
+  func restoreLastClosedWindow() -> Bool {
     guard
       let newest = entries.filter({ $0.isClosedByUser })
         .max(by: { $0.hiddenAt < $1.hiddenAt })

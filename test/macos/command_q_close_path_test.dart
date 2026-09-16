@@ -12,13 +12,15 @@ void main() {
   final listener = File('lib/core/window_listener.dart').readAsStringSync();
   final bootstrap = File('lib/main.dart').readAsStringSync();
 
-  test('⌘Q מנותב ל-onWindowClose עד ש-Dart מתיר סיום', () {
+  test('⌘Q מנותב לרצף היציאה של Dart עד ש-Dart מתיר סיום', () {
     expect(appDelegate, contains('applicationShouldTerminate('));
     expect(appDelegate, contains('window.applicationShouldTerminate()'));
     expect(mainWindow, contains('otzaria/macos_termination'));
     expect(mainWindow, contains('case "enableCloseHandling"'));
     expect(mainWindow, contains('case "allowTermination"'));
-    expect(mainWindow, contains('performClose(nil)'));
+    expect(mainWindow, contains('invokeMethod("quitRequested"'));
+    expect(listener, contains("'quitRequested'"));
+    expect(listener, contains('handleWindowClose(quit: true)'));
     expect(mainWindow, contains('return .terminateCancel'));
     expect(mainWindow, contains('return .terminateNow'));
     expect(bootstrap, contains('AppWindowListener.enableMacOSCloseHandling()'));
@@ -27,5 +29,17 @@ void main() {
     final quit = listener.indexOf('await _window.quitApplication();');
     expect(allow, greaterThanOrEqualTo(0));
     expect(quit, greaterThan(allow));
+  });
+
+  test('סגירת החלון האחרון משאירה את האפליקציה ב-Dock', () {
+    expect(appDelegate, contains('applicationShouldHandleReopen('));
+    expect(appDelegate, contains('restoreLastClosedWindow()'));
+    final hide = mainWindow.indexOf('private func hide(');
+    final hideEnd = mainWindow.indexOf('private func revive(');
+    expect(
+      mainWindow.substring(hide, hideEnd),
+      isNot(contains('exit(')),
+      reason: 'הסתרת החלון האחרון אינה מסיימת את התהליך',
+    );
   });
 }

@@ -110,18 +110,46 @@ void main() {
     expect(runner.closeSelfCalls, 1);
     expect(await sessions.load(slot), isNull);
   });
+
+  test('macOS, החלון האחרון: מוסתר, הסשן נשמר, והתהליך אינו מסתיים', () async {
+    AppWindowListener.debugKeepsProcessAfterLastWindowOverride = true;
+    addTearDown(
+      () => AppWindowListener.debugKeepsProcessAfterLastWindowOverride = null,
+    );
+    runner.windowCount = 1;
+
+    var flushed = false;
+    Future<void> flush() async => flushed = true;
+    PreCloseRegistry.register(flush);
+    addTearDown(() => PreCloseRegistry.unregister(flush));
+
+    WindowBus.instance.register();
+    final slot = WindowBus.instance.slot!;
+    await TabsRepository().saveTabs(const [], 0);
+
+    await AppWindowListener().handleWindowClose();
+
+    expect(flushed, isTrue);
+    expect(runner.closeSelfCalls, 1, reason: 'הוסתר במקום כיבוי');
+    expect(
+      await sessions.load(slot),
+      isNotNull,
+      reason: 'הכרטיסיות של החלון האחרון הן הסשן של הפתיחה הבאה',
+    );
+  });
 }
 
-/// ה-runner המדומה. `windowCount` מחזיר שניים — כלומר "אינך האחרון".
+/// ה-runner המדומה. `windowCount` מחזיר שניים כברירת מחדל — "אינך האחרון".
 class _FakeRunner {
   int closeSelfCalls = 0;
+  int windowCount = 2;
 
   void install() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(MultiWindowService.channel, (call) async {
           switch (call.method) {
             case 'windowCount':
-              return {'count': 2, 'max': 4, 'engines': 2};
+              return {'count': windowCount, 'max': 4, 'engines': 2};
             case 'closeSelf':
               closeSelfCalls++;
               return null;

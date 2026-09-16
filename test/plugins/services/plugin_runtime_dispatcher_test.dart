@@ -820,6 +820,24 @@ void main() {
       expect(a.resumeCalls, 2);
     });
 
+    test('הסתרת החלון משהה, והצגתו מחדשת', () async {
+      final a = _LifecycleFakeController();
+      _d.registerController(pidA, a);
+      addTearDown(() => _d.setWindowShown(true));
+
+      _d.setVisiblePluginInstances({_fg(pidA)});
+      await pumpEventQueue();
+      expect(a.resumeCalls, 1);
+
+      _d.setWindowShown(false);
+      await pumpEventQueue();
+      expect(a.pauseCalls, 1);
+
+      _d.setWindowShown(true);
+      await pumpEventQueue();
+      expect(a.resumeCalls, 2);
+    });
+
     test('instance הרקע אינו מושהה ביציאה', () async {
       final bg = _LifecycleFakeController();
       _d.registerController(pidA, bg, instanceId: 'background');
