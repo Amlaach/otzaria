@@ -724,7 +724,9 @@ Future<void> main() async {
     expect(find.byIcon(FluentIcons.folder_open_24_regular), findsNothing);
   });
 
-  testWidgets('שורת כותרת משתמשת בגליף המותאם-RTL', (tester) async {
+  testWidgets('שורת כותרת היא טקסט בלבד, ללא אייקון (issue #1226)', (
+    tester,
+  ) async {
     final toc = [
       TocEntry(text: 'הקדמה', index: 0, level: 1),
       TocEntry(text: 'שער ראשון', index: 5, level: 1),
@@ -750,7 +752,7 @@ Future<void> main() async {
 
     expect(
       find.byIcon(OtzariaIcons.text_bullet_list_24_regular),
-      findsNWidgets(2),
+      findsNothing,
     );
     expect(
       find.byIcon(FluentIcons.text_bullet_list_24_regular),
