@@ -61,6 +61,10 @@ class SmartTextWidget extends StatelessWidget {
   /// callback ליציאת הסמן מעוגן-מילה.
   final void Function(String url)? onAnchorHoverExit;
 
+  /// הקשת מגע על קישור שהתצוגה המקדימה שלו נפתחת במחשב בריחוף
+  /// ([isTouchPreviewUrl]) — מקבל את ה-URL ואת מיקום ההקשה.
+  final void Function(String url, Offset globalPosition)? onTouchPreview;
+
   /// מפתח ייחודי לווידג'ט (לאופטימיזציה)
   final Key? widgetKey;
 
@@ -88,6 +92,7 @@ class SmartTextWidget extends StatelessWidget {
     this.onAnchorTap,
     this.onAnchorHover,
     this.onAnchorHoverExit,
+    this.onTouchPreview,
     this.widgetKey,
     this.renderMode = RenderMode.column,
     this.highlightBookId,
@@ -400,6 +405,13 @@ class SmartTextWidget extends StatelessWidget {
           onTapUrl:
               (onOpenBook != null || onNoteTap != null || onAnchorTap != null)
               ? (url) async {
+                  final touchPosition = touchLinkTapPosition();
+                  if (touchPosition != null &&
+                      onTouchPreview != null &&
+                      isTouchPreviewUrl(url)) {
+                    onTouchPreview!(url, touchPosition);
+                    return true;
+                  }
                   // עוגן-מילה — תצוגה מקדימה של המפרש, לפני שאר הקישורים.
                   if (url.startsWith('otzaria://anchor') &&
                       onAnchorTap != null) {
@@ -584,6 +596,7 @@ class _SmartTextWidgetFactory extends WidgetFactory {
     final href = tree.element.attributes['href'];
     if (recognizer != null && href != null && isPreviewHoverableUrl(href)) {
       _previewHrefByRecognizer[recognizer] = href;
+      if (recognizer is TapGestureRecognizer) trackLinkTapDown(recognizer);
     }
     if (recognizer is TapGestureRecognizer &&
         href != null &&

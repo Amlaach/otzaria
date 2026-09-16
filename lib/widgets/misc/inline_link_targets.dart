@@ -20,6 +20,21 @@ void registerInlineLinkRecognizer(
   }
 }
 
+TapDownDetails? _lastLinkTapDown;
+
+/// מתעד את מיקום ההקשה ואת סוג ההתקן שלה ב-[recognizer], כי onTapUrl מקבל
+/// רק את ה-url. onTapDown קודם תמיד ל-onTap של אותה מחווה.
+void trackLinkTapDown(TapGestureRecognizer recognizer) {
+  recognizer.onTapDown = (details) => _lastLinkTapDown = details;
+}
+
+/// מיקום ההקשה על הקישור הנוכחי כשהגיעה ממגע — שאין בו ריחוף — אחרת null.
+Offset? touchLinkTapPosition() {
+  final details = _lastLinkTapDown;
+  if (details?.kind != PointerDeviceKind.touch) return null;
+  return details!.globalPosition;
+}
+
 /// ה-url של הקישור שאליו שייך [target] מנתיב הפגיעה, או null כשאינו קישור.
 String? inlineLinkUrlOf(HitTestTarget target) {
   if (target is! TextSpan) return null;

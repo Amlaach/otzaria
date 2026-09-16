@@ -923,6 +923,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | גלילה אוטומטית בלחיצת גלגל העכבר | `test/widgets/middle_click_autoscroll_test.dart` |
 | פתיחה בכרטיסייה חדשה בלחיצת גלגל (`MiddleClickOpen`) | `test/widgets/middle_click_open_test.dart` |
 | זיהוי קישור `<a>` תחת הסמן (תפריט הקשר / לחיצת גלגל) | `test/widgets/inline_link_targets_test.dart` |
+| הקשת מגע על קישור שנפתח בריחוף → תצוגה מקדימה מקובעת (issue #1320) | `test/widgets/smart_text/smart_text_touch_preview_test.dart` |
 | Smart text render settings | `test/widgets/smart_text/render_settings_test.dart` |
 | הדגשת חיפוש כששם הוי"ה מוחלף (הדגשה לפני ההחלפה, issue #1248) | `test/widgets/smart_text/text_renderer_holy_name_highlight_test.dart` |
 | Smart text ↔ plugin section sync gate | `test/widgets/smart_text/smart_text_section_sync_gate_test.dart` |

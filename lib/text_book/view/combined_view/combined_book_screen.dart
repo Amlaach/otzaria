@@ -80,6 +80,7 @@ import 'package:otzaria/text_book/utils/inline_notes_utils.dart'
     as inline_notes;
 import 'package:otzaria/text_book/utils/link_anchor_markers.dart';
 import 'package:otzaria/text_book/utils/link_preview_utils.dart';
+import 'package:otzaria/widgets/misc/inline_link_targets.dart';
 import 'package:otzaria/text_book/utils/numbered_note_markers.dart';
 import 'package:otzaria/widgets/misc/link_preview_overlay.dart';
 import 'package:otzaria/text_book/utils/note_inline_render.dart';
@@ -574,65 +575,88 @@ class _CombinedViewState extends State<CombinedView> {
     final previewLink = anchor?.link ?? inlineLinkFromPreviewUrl(url);
     if (previewLink != null) prefetchLinkPreview(previewLink);
     _anchorHoverTimer = Timer(const Duration(milliseconds: 280), () {
-      if (_disposed || !mounted) return;
-      final state = _textBookBloc.state;
-      if (state is! TextBookLoaded) return;
-
-      if (url.startsWith('otzaria://book-note')) {
-        final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
-        if (note == null) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) => InlineBookNotePreviewContent(
-            content: note,
-            removeNikud: state.removeNikud,
-            removePunctuation: state.removePunctuation,
-          ),
-        );
-        return;
+      if (!_disposed && mounted) {
+        _showUrlPreview(url, globalPosition, hoverMode: true);
       }
-
-      if (url.startsWith('otzaria://note')) {
-        final line = int.tryParse(
-          Uri.tryParse(url)?.queryParameters['line'] ?? '',
-        );
-        if (line == null) return;
-        final notes = context
-            .read<PersonalNotesBloc>()
-            .state
-            .locatedNotes
-            .where((note) => note.lineNumber == line + 1)
-            .toList();
-        if (notes.isEmpty) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) =>
-              PersonalNotesListView(notes: notes, maxHeight: 220),
-        );
-        return;
-      }
-
-      final anchor = _anchorLinkFromUrl(url);
-      final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
-      if (link == null) return;
-      _showLinkPreview(
-        link,
-        globalPosition,
-        hoverMode: true,
-        activeAnchor: anchor == null
-            ? null
-            : (line: anchor.line, index: anchor.index),
-      );
     });
+  }
+
+  /// הקשת מגע על קישור שבמחשב נפתח בריחוף — אותה חלונית, מקובעת מיד.
+  void _handleTouchPreview(String url, Offset globalPosition) {
+    if (url.startsWith('otzaria://note-marker')) {
+      _handleNumberedNoteMarkerHover(url, globalPosition, hoverMode: false);
+      return;
+    }
+    _cancelPendingAnchorHover();
+    _showUrlPreview(url, globalPosition, hoverMode: false);
+  }
+
+  void _showUrlPreview(
+    String url,
+    Offset globalPosition, {
+    required bool hoverMode,
+  }) {
+    final state = _textBookBloc.state;
+    if (state is! TextBookLoaded) return;
+
+    if (url.startsWith('otzaria://book-note')) {
+      final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
+      if (note == null) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) => InlineBookNotePreviewContent(
+          content: note,
+          removeNikud: state.removeNikud,
+          removePunctuation: state.removePunctuation,
+        ),
+      );
+      return;
+    }
+
+    if (url.startsWith('otzaria://note')) {
+      final line = int.tryParse(
+        Uri.tryParse(url)?.queryParameters['line'] ?? '',
+      );
+      if (line == null) return;
+      final notes = context
+          .read<PersonalNotesBloc>()
+          .state
+          .locatedNotes
+          .where((note) => note.lineNumber == line + 1)
+          .toList();
+      if (notes.isEmpty) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) =>
+            PersonalNotesListView(notes: notes, maxHeight: 220),
+      );
+      return;
+    }
+
+    final anchor = _anchorLinkFromUrl(url);
+    final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
+    if (link == null) return;
+    _showLinkPreview(
+      link,
+      globalPosition,
+      hoverMode: hoverMode,
+      activeAnchor: anchor == null
+          ? null
+          : (line: anchor.line, index: anchor.index),
+    );
   }
 
   /// ריחוף על סמן-מספר: ההתאמה בין הסמן להערה נעשית לפי תוכן ההערה, ולכן היא
   /// אסינכרונית. אם אין הערה תואמת — לא נפתחת חלונית.
-  void _handleNumberedNoteMarkerHover(String url, Offset globalPosition) {
+  void _handleNumberedNoteMarkerHover(
+    String url,
+    Offset globalPosition, {
+    bool hoverMode = true,
+  }) {
     LinkPreviewOverlay.cancelScheduledHide();
     _cancelPendingAnchorHover();
     final line = noteMarkerLineFromUrl(url);
@@ -640,11 +664,12 @@ class _CombinedViewState extends State<CombinedView> {
     if (line == null || state is! TextBookLoaded) return;
     final links = state.linksByLine[line + 1] ?? const <Link>[];
     final generation = _anchorHoverGeneration;
-    _anchorHoverTimer = Timer(const Duration(milliseconds: 280), () async {
+    final delay = Duration(milliseconds: hoverMode ? 280 : 0);
+    _anchorHoverTimer = Timer(delay, () async {
       final link = await numberedNoteLinkFromUrl(url, links);
       if (_disposed || !mounted || link == null) return;
       if (generation != _anchorHoverGeneration) return;
-      _showLinkPreview(link, globalPosition, hoverMode: true);
+      _showLinkPreview(link, globalPosition, hoverMode: hoverMode);
     });
   }
 
@@ -2686,6 +2711,7 @@ class _CombinedViewState extends State<CombinedView> {
                             onAnchorTap: _handleAnchorTap,
                             onAnchorHover: _handleAnchorHover,
                             onAnchorHoverExit: _handleAnchorHoverExit,
+                            onTouchPreview: _handleTouchPreview,
                           );
 
                           final constrainedText = textMaxWidth > 0
@@ -2807,6 +2833,11 @@ class _CombinedViewState extends State<CombinedView> {
           onMiddleClickUrl: (url) =>
               HtmlLinkHandler.openLinkInBackground(context, url),
           onTapUrl: (url) async {
+            final touchPosition = touchLinkTapPosition();
+            if (touchPosition != null && isTouchPreviewUrl(url)) {
+              _handleTouchPreview(url, touchPosition);
+              return true;
+            }
             if (url.startsWith('otzaria://anchor')) {
               return _handleAnchorTap(url);
             }
