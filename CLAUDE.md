@@ -963,6 +963,10 @@ dart format lib/file.dart    # Format ONLY files you modified
 | ניתוב החיפוש בתוך PDF (פשוט מול מנוע) | `test/pdf_book/pdf_search_in_book_routing_test.dart` |
 | Printing models | `test/printing/print_content_models_test.dart` |
 | File sync / background sync | `test/migration/sync/file_sync_service_prune_test.dart`, `…background_db_sync_worker_test.dart`, `…background_sync_initializer_test.dart` |
+| כותרות וגרסאות לספרים אישיים — פענוח, בניית העץ ואיתור לפי טקסט | `test/user_content_import/user_headings_import_test.dart` |
+| קליטת `<ספר>.כותרות.csv` / `גרסאות.csv` מתיקיית הספרים והייבוא מההגדרות, ניקוי במחיקת ספר | `test/user_content_import/user_sidecar_sync_test.dart` |
+| קריאת לשונית 'כותרות' של ספר אישי (ניווט, כותרת פעילה, סימני חלוקה) | `test/user_content_import/user_alt_toc_repository_test.dart` |
+| קבוצת הגרסאות של ספר אישי + דיאלוג 'גרסאות' | `test/user_content_import/user_book_versions_test.dart`, `test/library/view/book_versions_dialog_test.dart` |
 | DB migration / generator | `test/migration/generator_create_and_process_book_test.dart`, `test/migration/dao/daos/database_locked_test.dart` |
 | Indexing repository | `test/indexing/repository/indexing_repository_test.dart` |
 | External catalog | `test/external_catalog/external_catalog_repository_test.dart`, `…settings_helper_test.dart` |

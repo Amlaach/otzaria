@@ -5,7 +5,9 @@ import 'package:otzaria/migration/database/daos/database.dart';
 import 'package:otzaria/models/link_types.dart';
 import 'package:otzaria/user_content_import/models/user_import_models.dart';
 import 'package:otzaria/user_content_import/repository/user_content_repository.dart';
+import 'package:otzaria/user_content_import/services/user_headings_builder.dart';
 import 'package:otzaria/user_content_import/services/user_import_parser.dart';
+import 'package:otzaria/user_content_import/services/user_sidecar_sync.dart';
 import 'package:otzaria/user_content_import/services/user_link_ref_resolver.dart';
 import 'package:otzaria/utils/file/text_encoding.dart';
 
@@ -14,17 +16,27 @@ class UserImportResult {
   final int generationsApplied;
   final int linksApplied;
   final int booksWithLinks;
+
+  /// מספר הספרים שקיבלו כותרות.
+  final int headingsApplied;
+  final int versionsApplied;
   final List<String> errors;
 
   const UserImportResult({
     this.generationsApplied = 0,
     this.linksApplied = 0,
     this.booksWithLinks = 0,
+    this.headingsApplied = 0,
+    this.versionsApplied = 0,
     this.errors = const [],
   });
 
   bool get hasAny =>
-      generationsApplied > 0 || linksApplied > 0 || errors.isNotEmpty;
+      generationsApplied > 0 ||
+      linksApplied > 0 ||
+      headingsApplied > 0 ||
+      versionsApplied > 0 ||
+      errors.isNotEmpty;
 }
 
 /// קולט קבצי CSV/JSON שהמשתמש בחר ידנית, וכותב את הדורות והקישורים
@@ -38,11 +50,17 @@ class UserImportResult {
 /// - `<שם הספר>.links.csv` / `<שם הספר>.links.json` — קישורים לספר בודד.
 /// - `<שם הספר>_links.json` — פורמט ה-native של אוצריא (תיקיית links);
 ///   שם הספר בקובץ הוא ספר הבסיס (path_1), והצדדים מאותרים אוטומטית.
+/// - `כותרות.csv` / `headings.csv` — כותרות ללשונית 'כותרות' (עם עמודת ספר);
+///   `<שם הספר>.כותרות.csv` — כותרות לספר בודד.
+/// - `גרסאות.csv` / `versions.csv` — גרסאות (ראשי, גרסה — כותרות ספרים).
 ///
 /// קובץ קישורים ב-JSON הוא מערך אובייקטים באותה סמנטיקה כמו ה-CSV
 /// (ראה [UserImportParser.parseLinksJson]).
 class UserContentImporter {
   static const _generationFileNames = {'דורות.csv', 'generations.csv'};
+  static const _headingFileNames = {'כותרות.csv', 'headings.csv'};
+  static const _perBookHeadingSuffixes = ['.כותרות.csv', '.headings.csv'];
+  static const _versionFileNames = {'גרסאות.csv', 'versions.csv'};
   static const _folderLinkFileNames = {
     'קישורים.csv',
     'links.csv',
@@ -68,6 +86,8 @@ class UserContentImporter {
     final generationByBook = <int, String>{};
     final authorByBook = <int, String>{};
     final links = <UserLinkRecord>[];
+    final headingsByBook = <int, List<UserAltTocStructureData>>{};
+    final versions = <UserBookVersionRecord>[];
 
     for (final filePath in filePaths) {
       final file = File(filePath);
@@ -77,7 +97,22 @@ class UserContentImporter {
       }
       final name = _baseName(filePath);
       final lower = name.toLowerCase();
-      if (_generationFileNames.contains(name)) {
+      final perBookHeadingSuffix = _perBookHeadingSuffixes
+          .where(lower.endsWith)
+          .firstOrNull;
+      if (_headingFileNames.contains(name) || perBookHeadingSuffix != null) {
+        await _ingestHeadings(
+          file,
+          repo,
+          headingsByBook,
+          errors,
+          bookTitleFromFile: perBookHeadingSuffix == null
+              ? null
+              : name.substring(0, name.length - perBookHeadingSuffix.length),
+        );
+      } else if (_versionFileNames.contains(name)) {
+        await _ingestVersions(file, repo, versions, errors);
+      } else if (_generationFileNames.contains(name)) {
         await _ingestGenerations(
           file,
           repo,
@@ -128,7 +163,8 @@ class UserContentImporter {
         );
       } else {
         errors.add(
-          '$name: קובץ לא מזוהה (צפוי "דורות.csv" או "<ספר>.links.csv")',
+          '$name: קובץ לא מזוהה (צפוי "דורות.csv", "כותרות.csv", '
+          '"גרסאות.csv" או "<ספר>.links.csv")',
         );
       }
     }
@@ -142,6 +178,19 @@ class UserContentImporter {
     }
     for (final entry in authorByBook.entries) {
       await repo.setBookAuthor(entry.key, entry.value);
+    }
+    for (final entry in headingsByBook.entries) {
+      await repo.replaceBookHeadings(
+        entry.key,
+        entry.value,
+        source: UserContentRepository.manualImportSource,
+      );
+    }
+    if (versions.isNotEmpty) {
+      await repo.replaceVersions(
+        versions,
+        source: UserContentRepository.manualImportSource,
+      );
     }
     // איחוד רשומות זהות מכל הקבצים (למשל שני צדי צמד דו-כיווני שנורמלו
     // לאותו כיוון) — עדיפות לרשומה עם targetRef להצגה.
@@ -171,6 +220,8 @@ class UserContentImporter {
     return UserImportResult(
       generationsApplied: generationByBook.length,
       linksApplied: unique.length,
+      headingsApplied: headingsByBook.length,
+      versionsApplied: versions.length,
       booksWithLinks: unique.values
           .map(
             (l) =>
@@ -215,6 +266,97 @@ class UserContentImporter {
       if (author != null && author.isNotEmpty) {
         authorsOut[bookId] = author;
       }
+    }
+  }
+
+  static Future<void> _ingestHeadings(
+    File file,
+    UserContentRepository repo,
+    Map<int, List<UserAltTocStructureData>> out,
+    List<String> errors, {
+    required String? bookTitleFromFile,
+  }) async {
+    final fileName = _baseName(file.path);
+    final ParseResult<ParsedHeading> parsed;
+    try {
+      parsed = UserImportParser.parseHeadings(
+        await readTextFileSmart(file),
+        requireBook: bookTitleFromFile == null,
+      );
+    } catch (e) {
+      errors.add('$fileName: קריאת הקובץ נכשלה ($e)');
+      return;
+    }
+    for (final err in parsed.errors) {
+      errors.add('$fileName ${err.message} (שורה ${err.lineNumber})');
+    }
+
+    final rowsByBook = <(String, int?), List<ParsedHeading>>{};
+    for (final row in parsed.rows) {
+      final title = bookTitleFromFile ?? row.bookTitle!;
+      (rowsByBook[(title, row.categoryId)] ??= []).add(row);
+    }
+    for (final MapEntry(key: (title, categoryId), value: rows)
+        in rowsByBook.entries) {
+      final book = await repo.bookFileByTitle(title, categoryId: categoryId);
+      final filePath = book?.filePath;
+      if (book == null || filePath == null) {
+        errors.add('$fileName: הספר "$title" לא נמצא בספרייה האישית');
+        continue;
+      }
+      final lines = await UserSidecarSync.readBookLines(
+        filePath: filePath,
+        fileType: book.fileType,
+        title: title,
+        errors: errors,
+        errorPrefix: fileName,
+      );
+      if (lines == null) continue;
+      final built = UserHeadingsBuilder.build(rows, lines);
+      for (final error in built.errors) {
+        errors.add('$fileName $error');
+      }
+      out[book.id] = built.structures;
+    }
+  }
+
+  static Future<void> _ingestVersions(
+    File file,
+    UserContentRepository repo,
+    List<UserBookVersionRecord> out,
+    List<String> errors,
+  ) async {
+    final fileName = _baseName(file.path);
+    final ParseResult<ParsedBookVersion> parsed;
+    try {
+      parsed = UserImportParser.parseVersions(await readTextFileSmart(file));
+    } catch (e) {
+      errors.add('$fileName: קריאת הקובץ נכשלה ($e)');
+      return;
+    }
+    for (final err in parsed.errors) {
+      errors.add('$fileName ${err.message} (שורה ${err.lineNumber})');
+    }
+    for (final row in parsed.rows) {
+      final primaryId = await repo.bookIdByTitle(row.primary);
+      final versionId = await repo.bookIdByTitle(row.version);
+      if (primaryId == null || versionId == null) {
+        final missing = primaryId == null ? row.primary : row.version;
+        errors.add(
+          '$fileName: הספר "$missing" לא נמצא בספרייה האישית '
+          '(שורה ${row.rowNumber})',
+        );
+        continue;
+      }
+      out.add(
+        UserBookVersionRecord(
+          versionBookId: versionId,
+          primaryBookId: primaryId,
+          versionTitle: row.label ?? row.version,
+          versionNotes: row.notes,
+          priority: row.priority,
+        ),
+      );
     }
   }
 

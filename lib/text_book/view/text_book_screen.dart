@@ -2697,7 +2697,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
                 : OtzariaIcons.book_24_regular,
             tooltip: edition.isCompanion
                 ? '${edition.book.title} — מהדורה מודפסת (אוצריא)'
-                : edition.book.title,
+                : edition.label ?? edition.book.title,
             onPressed: () => _openParallelEdition(context, state, edition),
           ),
       ],
@@ -2761,6 +2761,18 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   /// פותח את רשימת הנוסחאות של הספר; הנוסח שייבחר נפתח בכרטיסייה חדשה סמוכה,
   /// בשורה שמוצגת כרגע.
   void _showBookVersions(BuildContext context, TextBookLoaded state) {
+    // גרסת ספר אישי היא קובץ אחר, שמספור השורות בו אינו תואם.
+    if (state.book.isUserBook) {
+      showBookVersionsDialog(
+        context,
+        state.book,
+        title: 'נוסחאות נוספות — ${state.book.title}',
+        hint: 'הגרסה שתיבחר תיפתח בכרטיסייה חדשה.',
+        onVersionSelected: (target) =>
+            openBook(context, target, 0, '', insertAdjacent: true),
+      );
+      return;
+    }
     final lineIndex = _topmostVisibleSourceLine(state);
     showBookVersionsDialog(
       context,

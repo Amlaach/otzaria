@@ -589,10 +589,10 @@ class _LibrarySettingsTabState extends State<LibrarySettingsTab> {
                       SettingsCard(
                         cardId: 'library.user_content_import',
                         title: context.settingsText(
-                          'דורות וקישורים לספרים אישיים',
+                          'דורות, קישורים, כותרות וגרסאות לספרים אישיים',
                         ),
                         subtitle: context.settingsText(
-                          'ייבוא קובצי CSV/JSON של סדר דורות וקישורים לספרים האישיים.',
+                          'ייבוא קובצי CSV/JSON של סדר דורות, קישורים, כותרות וגרסאות לספרים האישיים.',
                         ),
                         children: [
                           const UserContentImportTile(),

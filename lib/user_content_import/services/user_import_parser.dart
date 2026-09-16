@@ -60,6 +60,156 @@ class UserImportParser {
     return ParseResult(rows, errors);
   }
 
+  /// שם המבנה כשבקובץ אין עמודת "מבנה".
+  static const defaultHeadingStructure = 'כותרות';
+
+  /// מפענח קובץ כותרות (עמודות: [ספר], [קטגוריה], [מבנה], [רמה], כותרת,
+  /// [שורה], [טקסט]). [requireBook] — קובץ רוחבי, שבו עמודת "ספר" חובה.
+  /// כותרת בלי שורה ובלי טקסט היא כותרת-אב, שמקומה נגזר מצאצאיה.
+  static ParseResult<ParsedHeading> parseHeadings(
+    String content, {
+    required bool requireBook,
+  }) {
+    final rows = <ParsedHeading>[];
+    final errors = <ImportRowError>[];
+    final records = _parseCsv(content);
+    if (records.isEmpty) return ParseResult(rows, errors);
+
+    final header = _indexHeader(records.first.cells, const {
+      'book': ['ספר'],
+      'categoryId': ['קטגוריה'],
+      'structure': ['מבנה'],
+      'level': ['רמה'],
+      'title': ['כותרת'],
+      'line': ['שורה'],
+      'anchor': ['טקסט', 'עוגן'],
+    });
+    final titleCol = header['title'];
+    if (titleCol == null ||
+        (requireBook && header['book'] == null) ||
+        (header['line'] == null && header['anchor'] == null)) {
+      errors.add(
+        ImportRowError(
+          1,
+          requireBook
+              ? 'כותרת הקובץ חייבת לכלול את העמודות "ספר", "כותרת" ו-"שורה" או "טקסט"'
+              : 'כותרת הקובץ חייבת לכלול את העמודה "כותרת" ו-"שורה" או "טקסט"',
+        ),
+      );
+      return ParseResult(rows, errors);
+    }
+
+    for (final record in records.skip(1)) {
+      final cells = record.cells;
+      final title = _at(cells, titleCol);
+      final lineRaw = _at(cells, header['line']);
+      final anchor = _at(cells, header['anchor']);
+      final book = _at(cells, header['book']);
+      if (title.isEmpty && lineRaw.isEmpty && anchor.isEmpty && book.isEmpty) {
+        continue;
+      }
+      if (title.isEmpty) {
+        errors.add(ImportRowError(record.lineNumber, 'חסרה כותרת'));
+        continue;
+      }
+      if (requireBook && book.isEmpty) {
+        errors.add(ImportRowError(record.lineNumber, 'חסר שם ספר'));
+        continue;
+      }
+      final levelRaw = _at(cells, header['level']);
+      final level = levelRaw.isEmpty ? 1 : _parseIntOrNull(levelRaw);
+      if (level == null || level < 1) {
+        errors.add(
+          ImportRowError(record.lineNumber, 'רמה לא חוקית: "$levelRaw"'),
+        );
+        continue;
+      }
+      final lineNumber = _parseIntOrNull(lineRaw);
+      if (lineRaw.isNotEmpty && (lineNumber == null || lineNumber < 1)) {
+        errors.add(
+          ImportRowError(record.lineNumber, 'מספר שורה לא חוקי: "$lineRaw"'),
+        );
+        continue;
+      }
+      final structure = _at(cells, header['structure']);
+      rows.add(
+        ParsedHeading(
+          rowNumber: record.lineNumber,
+          bookTitle: _nullable(book),
+          categoryId: _parseIntOrNull(_at(cells, header['categoryId'])),
+          structure: structure.isEmpty ? defaultHeadingStructure : structure,
+          level: level,
+          title: title,
+          lineNumber: lineNumber,
+          anchorText: lineNumber == null ? _nullable(anchor) : null,
+        ),
+      );
+    }
+    return ParseResult(rows, errors);
+  }
+
+  /// מפענח קובץ גרסאות (עמודות: ראשי, גרסה, [שם], [הערות], [עדיפות]).
+  static ParseResult<ParsedBookVersion> parseVersions(String content) {
+    final rows = <ParsedBookVersion>[];
+    final errors = <ImportRowError>[];
+    final records = _parseCsv(content);
+    if (records.isEmpty) return ParseResult(rows, errors);
+
+    final header = _indexHeader(records.first.cells, const {
+      'primary': ['ראשי', 'ספר_ראשי'],
+      'version': ['גרסה', 'ספר_גרסה'],
+      'label': ['שם', 'שם_גרסה'],
+      'notes': ['הערות'],
+      'priority': ['עדיפות'],
+    });
+    final primaryCol = header['primary'];
+    final versionCol = header['version'];
+    if (primaryCol == null || versionCol == null) {
+      errors.add(
+        const ImportRowError(
+          1,
+          'כותרת הקובץ חייבת לכלול את העמודות "ראשי" ו-"גרסה"',
+        ),
+      );
+      return ParseResult(rows, errors);
+    }
+
+    for (final record in records.skip(1)) {
+      final cells = record.cells;
+      final primary = _at(cells, primaryCol);
+      final version = _at(cells, versionCol);
+      if (primary.isEmpty && version.isEmpty) continue;
+      if (primary.isEmpty || version.isEmpty) {
+        errors.add(
+          ImportRowError(
+            record.lineNumber,
+            primary.isEmpty ? 'חסר הספר הראשי' : 'חסר ספר הגרסה',
+          ),
+        );
+        continue;
+      }
+      final priorityRaw = _at(cells, header['priority']);
+      final priority = double.tryParse(priorityRaw);
+      if (priorityRaw.isNotEmpty && priority == null) {
+        errors.add(
+          ImportRowError(record.lineNumber, 'עדיפות לא חוקית: "$priorityRaw"'),
+        );
+        continue;
+      }
+      rows.add(
+        ParsedBookVersion(
+          rowNumber: record.lineNumber,
+          primary: primary,
+          version: version,
+          label: _nullable(_at(cells, header['label'])),
+          notes: _nullable(_at(cells, header['notes'])),
+          priority: priority,
+        ),
+      );
+    }
+    return ParseResult(rows, errors);
+  }
+
   /// מפענח קובץ קישורים (עמודות: מקור, ספר_יעד, [מיקום_יעד], סוג,
   /// [יעד_אישי], [ספר_מקור], [מקור_אישי], [קטגוריית_מקור], [קטגוריית_יעד]).
   static ParseResult<ParsedUserLink> parseLinks(String content) {

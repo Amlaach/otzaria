@@ -16,6 +16,7 @@ import '../models/category.dart';
 import '../../utils/file/file_hidden_utils.dart';
 import '../../utils/file/document_converter.dart';
 import '../../utils/file/document_format.dart';
+import '../../user_content_import/services/user_sidecar_sync.dart';
 
 /// Result of a file sync operation
 class FileSyncResult {
@@ -879,6 +880,14 @@ class FileSyncService {
               // הסרת ספרים מה-DB שקובצם נמחק מהתיקייה. רץ רק אם הסריקה
               // הושלמה (לא בוטלה) — אחרת folderValidKeys חלקי והיינו עלולים
               // למחוק ספרים שקבציהם עדיין קיימים.
+              // קובצי הכותרות והגרסאות של התיקייה — אחרי שספריה כבר ב-DB.
+              errors.addAll(
+                await UserSidecarSync.applyForFolder(
+                  userDb: _customFoldersRepo.database,
+                  folderPath: folder.path,
+                ),
+              );
+
               if (_isSyncing) {
                 final removed = await _pruneDeletedBooksInFolder(
                   folder,

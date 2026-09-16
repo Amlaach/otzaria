@@ -7,12 +7,16 @@ class AltTocStructure extends Equatable {
   final String? title;
   final String? heTitle;
 
+  /// המבנה נקרא מ-user_books.db — מזהיו במרחב אחר מזה של הספרייה הרשמית.
+  final bool isUserBook;
+
   const AltTocStructure({
     required this.id,
     required this.bookId,
     required this.key,
     this.title,
     this.heTitle,
+    this.isUserBook = false,
   });
 
   factory AltTocStructure.fromJson(Map<String, dynamic> json) {
@@ -36,5 +40,5 @@ class AltTocStructure extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, bookId, key, title, heTitle];
+  List<Object?> get props => [id, bookId, key, title, heTitle, isUserBook];
 }

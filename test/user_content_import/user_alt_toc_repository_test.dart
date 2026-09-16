@@ -1,0 +1,145 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/migration/database/daos/database.dart';
+import 'package:otzaria/text_book/utils/inline_section_markers.dart';
+import 'package:otzaria/user_content_import/repository/user_alt_toc_repository.dart';
+import 'package:otzaria/user_content_import/repository/user_content_repository.dart';
+import 'package:otzaria/user_content_import/services/user_headings_builder.dart';
+import 'package:path/path.dart' as p;
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tempDir;
+  late MyDatabase db;
+  late UserAltTocRepository reader;
+  late int bookId;
+
+  UserAltTocEntryData entry(
+    String text, {
+    int level = 1,
+    int? line,
+    int? parent,
+    bool hasChildren = false,
+  }) => UserAltTocEntryData(
+    level: level,
+    text: text,
+    lineIndex: line,
+    parentIndex: parent,
+    hasChildren: hasChildren,
+    isLastChild: false,
+  );
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp('otzaria_user_alt_toc');
+    db = MyDatabase.withPath(p.join(tempDir.path, 'user_books.db'));
+    final raw = await db.database;
+    raw.execute("INSERT INTO source (name) VALUES ('external')");
+    raw.execute(
+      'INSERT INTO book (categoryId, sourceId, title, filePath, fileType) '
+      "VALUES (7, 1, 'ספר', '/books/ספר.txt', 'txt')",
+    );
+    bookId = raw.lastInsertRowId;
+    reader = UserAltTocRepository(db);
+
+    // מקור אחר עם מבנה באותו שם — נדרס כולו בכתיבה שאחריו.
+    await UserContentRepository(db).replaceBookHeadings(bookId, [
+      UserAltTocStructureData(
+        key: 'Simanim',
+        heTitle: 'סימנים',
+        entries: [entry('ישן', line: 0), entry('ישן ב', line: 1)],
+      ),
+    ], source: 'other');
+    await UserContentRepository(db).replaceBookHeadings(
+      bookId,
+      [
+        UserAltTocStructureData(
+          key: 'Simanim',
+          heTitle: 'סימנים',
+          entries: [
+            entry('חלק א', hasChildren: true),
+            entry('סימן א', level: 2, line: 2, parent: 0),
+            entry('סימן ב', level: 2, line: 5, parent: 0),
+          ],
+        ),
+        UserAltTocStructureData(
+          key: 'Topic',
+          heTitle: 'נושאים',
+          entries: [entry('הלכות שבת', line: 5)],
+        ),
+      ],
+      source: 'test',
+    );
+  });
+
+  tearDown(() async {
+    db.close();
+    await tempDir.delete(recursive: true);
+  });
+
+  test('מזהה את הספר לפי נתיב הקובץ, ובלעדיו לפי כותרת וקטגוריה', () async {
+    expect(
+      await reader.bookId(title: 'אחר', filePath: '/books/ספר.txt'),
+      bookId,
+    );
+    expect(await reader.bookId(title: 'ספר', categoryId: 7), bookId);
+    expect(await reader.bookId(title: 'ספר', categoryId: 8), isNull);
+  });
+
+  test('מבני הספר מסומנים כאישיים ובסדר הקובץ', () async {
+    final structures = await reader.structures(bookId);
+
+    expect(structures.map((s) => s.heTitle), ['סימנים', 'נושאים']);
+    expect(structures.every((s) => s.isUserBook), isTrue);
+  });
+
+  test('כתיבה חוזרת של מבנה בשם זהה אינה משאירה ערכים יתומים', () async {
+    final raw = await db.database;
+    final entries = raw.select('SELECT COUNT(*) AS n FROM user_alt_toc_entry');
+
+    expect(entries.single['n'], 4);
+  });
+
+  test('קישור כותרת-אב בלי שורה מוביל לשורת הצאצא הראשון', () async {
+    final structure = (await reader.structures(bookId)).first;
+    final entries = await reader.entries(structure.id);
+
+    final links = await reader.linksForEntry(structure.id, entries.first.id);
+
+    expect(links.single.path2, 'ספר');
+    expect(links.single.index2, 3);
+    expect(links.single.targetIsUserBook, isTrue);
+  });
+
+  test('הכותרת הפעילה היא האחרונה שנפתחת בשורה או לפניה', () async {
+    final structure = (await reader.structures(bookId)).first;
+    final entries = await reader.entries(structure.id);
+
+    expect(await reader.entryForLine(structure.id, 0), isNull);
+    expect(await reader.entryForLine(structure.id, 3), entries[1].id);
+    expect(await reader.entryForLine(structure.id, 9), entries[2].id);
+  });
+
+  test(
+    'סימני חלוקה נלקחים מהעלים, וכותרת נושא גלויה בטקסט אינה מוזרקת',
+    () async {
+      final rows = await reader.inlineSectionRows(bookId);
+
+      expect(rows.markers, {2: 'סימן א', 5: 'סימן ב'});
+      expect(
+        buildSectionHeadings(rows.headings, (i) => i == 5 ? 'טקסט' : null),
+        {
+          5: ['הלכות שבת'],
+        },
+      );
+      expect(
+        buildSectionHeadings(
+          rows.headings,
+          (i) => i == 5 ? 'הלכות שבת ודיניה' : null,
+        ),
+        isEmpty,
+      );
+    },
+  );
+}

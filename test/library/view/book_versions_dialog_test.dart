@@ -97,12 +97,65 @@ void main() {
 
       expect(find.text('לא נמצא מידע על גרסאות לספר זה.'), findsOneWidget);
     });
+
+    testWidgets('בספר אישי הקובץ הפתוח מסונן, ובחירה פותחת את קובץ הגרסה', (
+      tester,
+    ) async {
+      final primary = PdfBook(
+        id: 1,
+        title: 'רשבא',
+        path: '/b/רשבא.pdf',
+        isUserBook: true,
+      );
+      final kook = PdfBook(
+        id: 2,
+        title: 'רשבא קוק',
+        path: '/b/רשבא קוק.pdf',
+        isUserBook: true,
+      );
+      bookVersionsListProbeForTesting = (_) async => [
+        BookVersionInfo(
+          versionTitle: 'דפוס ישן',
+          hasContent: true,
+          userBook: primary,
+        ),
+        BookVersionInfo(
+          versionTitle: 'מוסד הרב קוק',
+          hasContent: true,
+          userBook: kook,
+        ),
+      ];
+      Book? selected;
+
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showBookVersionsDialog(
+                context,
+                primary,
+                onVersionSelected: (target) => selected = target,
+              ),
+              child: const Text('פתח'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('פתח'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('דפוס ישן'), findsNothing);
+      await tester.tap(find.text('מוסד הרב קוק'));
+      await tester.pumpAndSettle();
+
+      expect(selected, same(kook));
+    });
   });
 
   testWidgets('onSelected מקבל את הספר בנוסח שנבחר במקום לפתוח כרטיסייה', (
     tester,
   ) async {
-    TextBook? selected;
+    Book? selected;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -133,7 +186,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selected?.title, 'כתובות');
-    expect(selected?.versionTitle, davidson.versionTitle);
+    expect((selected as TextBook?)?.versionTitle, davidson.versionTitle);
   });
 
   testWidgets('הערות גרסה עם HTML מוצגות כטקסט מרונדר ולא כתגיות גולמיות', (

@@ -2686,6 +2686,19 @@ class SeforimRepository {
       db.execute('DELETE FROM book_pub_place WHERE bookId = ?', [bookId]);
       db.execute('DELETE FROM book_pub_date WHERE bookId = ?', [bookId]);
 
+      // כותרות וגרסאות של ספר אישי (foreign_keys כבויים — אין CASCADE).
+      db.execute(
+        'DELETE FROM user_alt_toc_entry WHERE structureId IN (SELECT id FROM user_alt_toc_structure WHERE bookId = ?)',
+        [bookId],
+      );
+      db.execute('DELETE FROM user_alt_toc_structure WHERE bookId = ?', [
+        bookId,
+      ]);
+      db.execute(
+        'DELETE FROM user_book_version WHERE versionBookId = ? OR primaryBookId = ?',
+        [bookId, bookId],
+      );
+
       // Finally delete the book itself
       db.execute('DELETE FROM book WHERE id = ?', [bookId]);
     });

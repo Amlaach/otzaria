@@ -926,20 +926,36 @@ class _CombinedViewState extends State<CombinedView> {
     }
   }
 
+  String? _loadedLineAt(int lineIndex) {
+    final state = _textBookBloc.state;
+    if (state is! TextBookLoaded) return null;
+    final content = state.content;
+    return lineIndex >= 0 && lineIndex < content.length
+        ? content[lineIndex]
+        : null;
+  }
+
   Future<void> _loadSectionMarkers() async {
     final book = widget.tab.book;
-    // הסימנים ממופים ל-lineIndex של הטקסט הממוזג במסד. ספר אישי בשם זהה,
-    // מהדורה חלופית (version_line) או ספר שתוכנו מוגש מקבצים — ממוספרים
-    // אחרת, ואין להזריק בהם.
-    if (book.isUserBook || book.versionTitle != null) return;
-    final provider = LibraryProviderManager.instance.getProviderForBook(
-      book.title,
-      categoryId: book.categoryId,
-      fileType: book.fileType,
-    );
-    if (provider is! DatabaseLibraryProvider) return;
-    final marks = await DatabaseLibraryProvider.instance
-        .getInlineSectionMarksByLineIndex(book.title);
+    // הסימנים ממופים ל-lineIndex של הטקסט הממוזג במסד — מהדורה חלופית
+    // (version_line) או ספר שתוכנו מוגש מקבצים ממוספרים אחרת.
+    if (book.versionTitle != null) return;
+    final InlineSectionMarks marks;
+    if (book.isUserBook) {
+      marks = await DatabaseLibraryProvider.instance.getUserInlineSectionMarks(
+        book,
+        _loadedLineAt,
+      );
+    } else {
+      final provider = LibraryProviderManager.instance.getProviderForBook(
+        book.title,
+        categoryId: book.categoryId,
+        fileType: book.fileType,
+      );
+      if (provider is! DatabaseLibraryProvider) return;
+      marks = await DatabaseLibraryProvider.instance
+          .getInlineSectionMarksByLineIndex(book.title);
+    }
     // כמו ב-_loadSourceBanner: מעבר מהיר בין ספרים עלול לסיים await זה
     // אחרי החלפת הספר.
     if (!mounted || !sameSourceIdentity(book, widget.tab.book)) return;

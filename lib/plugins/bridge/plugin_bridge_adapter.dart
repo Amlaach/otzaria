@@ -1267,7 +1267,7 @@ class PluginBridgeAdapter {
             }
             selected = match.first;
           }
-          final entries = await _loadAltTocEntries(selected.id);
+          final entries = await _loadAltTocEntries(selected);
           return _flattenAltToc(entries);
         }
       case 'getTree':
@@ -1717,11 +1717,13 @@ class PluginBridgeAdapter {
   }
 
   /// טוען את ערכי מבנה ה-AltToc עם ה-lineIndex (דרך התלות המוזרקת או ה-DB).
-  Future<List<AltTocEntryRow>> _loadAltTocEntries(int structureId) {
-    final provider =
-        _dependencies.altTocEntriesProvider ??
-        DatabaseLibraryProvider.instance.getAltTocEntriesWithLineIndex;
-    return provider(structureId);
+  Future<List<AltTocEntryRow>> _loadAltTocEntries(AltTocStructure structure) {
+    final provider = _dependencies.altTocEntriesProvider;
+    if (provider != null) return provider(structure.id);
+    return DatabaseLibraryProvider.instance.getAltTocEntriesWithLineIndex(
+      structure.id,
+      isUserBook: structure.isUserBook,
+    );
   }
 
   /// מסדר את ערכי ה-AltToc בסדר מסמך (depth-first) למערך שטוח זהה במבנה

@@ -5503,7 +5503,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                 : OtzariaIcons.book_24_regular,
             tooltip: edition.isCompanion
                 ? '${edition.book.title} — מהדורת טקסט (אוצריא)'
-                : edition.book.title,
+                : edition.label ?? edition.book.title,
             onPressed: () => _openParallelEdition(context, edition),
           ),
       ],

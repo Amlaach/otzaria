@@ -5,7 +5,6 @@ import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
-import 'package:otzaria/data/data_providers/database_library_provider.dart';
 import 'package:otzaria/data/data_providers/external_catalog_mapper.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'dart:math';
@@ -14,6 +13,7 @@ import 'package:otzaria/core/messages/library_messages.dart';
 import 'package:otzaria/data/book_locator.dart';
 import 'package:otzaria/library/view/category_details_dialog.dart';
 import 'package:otzaria/library/view/book_versions_dialog.dart';
+import 'package:otzaria/text_book/utils/book_versions_action.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/text_book/view/book_source_dialog.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
@@ -695,19 +695,10 @@ class BookActionsMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // מהדורות (book_version) קיימות רק לספרי הספרייה הרשמית (seforim.db).
-    final versionsEligible =
-        book is TextBook && !book.isUserBook && book.categoryId != null;
-
     return FutureBuilder<List<bool>>(
       future: Future.wait([
         _canDeleteBookFromLibrary(book),
-        versionsEligible
-            ? DatabaseLibraryProvider.instance.hasSelectableBookVersions(
-                book.title,
-                book.categoryId!,
-              )
-            : Future.value(false),
+        hasBookVersionsToOpen(book),
       ]),
       builder: (context, snapshot) {
         final canDelete = snapshot.data?[0] ?? false;
@@ -733,7 +724,7 @@ class BookActionsMenuButton extends StatelessWidget {
               if (value == 'delete') {
                 _showDeleteBookDialog(context, book, onBookDeleted);
               } else if (value == 'versions') {
-                showBookVersionsDialog(context, book as TextBook);
+                showBookVersionsDialog(context, book);
               }
             },
             entries: [

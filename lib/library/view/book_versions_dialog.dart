@@ -10,11 +10,14 @@ import 'package:otzaria/widgets/controls/action_buttons.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// המהדורות של [book] לרשימת הבחירה.
-Future<List<BookVersionInfo>> loadBookVersions(TextBook book) {
+/// המהדורות של [book] לרשימת הבחירה. לספר אישי — קובצי הגרסאות של קבוצתו.
+Future<List<BookVersionInfo>> loadBookVersions(Book book) async {
   final probe = bookVersionsListProbeForTesting;
   if (probe != null) return probe(book);
 
+  if (book.isUserBook) {
+    return DatabaseLibraryProvider.instance.getUserBookVersions(book);
+  }
   return DatabaseLibraryProvider.instance.getBookVersions(
     book.title,
     book.categoryId ?? -1,
@@ -23,7 +26,7 @@ Future<List<BookVersionInfo>> loadBookVersions(TextBook book) {
 
 /// מחליף את שאילתת המהדורות בבדיקות widget שאין להן seforim.db.
 @visibleForTesting
-Future<List<BookVersionInfo>> Function(TextBook book)?
+Future<List<BookVersionInfo>> Function(Book book)?
 bookVersionsListProbeForTesting;
 
 /// המהדורות שניתן להציע לפתיחה עבור ספר שנוסחו הפתוח הוא [currentVersionTitle]:
@@ -38,14 +41,14 @@ List<BookVersionInfo> selectableVersionsFor(
       .toList();
 }
 
-/// דיאלוג "גרסאות": רשימת המהדורות (book_version) של ספר מהספרייה הרשמית.
+/// דיאלוג "גרסאות": מהדורות ספר רשמי (book_version) או קובצי גרסאות של ספר אישי.
 /// בחירת מהדורה עם טקסט שמור פותחת את הספר בנוסח אותה מהדורה.
 Future<void> showBookVersionsDialog(
   BuildContext context,
-  TextBook book, {
+  Book book, {
   String? title,
   String? hint,
-  void Function(TextBook target)? onVersionSelected,
+  void Function(Book target)? onVersionSelected,
 }) {
   return showDialog<void>(
     context: context,
@@ -59,7 +62,7 @@ Future<void> showBookVersionsDialog(
 }
 
 class BookVersionsDialog extends StatefulWidget {
-  final TextBook book;
+  final Book book;
 
   /// כותרת הדיאלוג; ברירת המחדל היא "גרסאות — <שם הספר>".
   final String? title;
@@ -68,7 +71,7 @@ class BookVersionsDialog extends StatefulWidget {
   final String? hint;
 
   /// כשמסופק — מקבל את הספר בנוסח שנבחר במקום פתיחת כרטיסייה חדשה.
-  final void Function(TextBook target)? onVersionSelected;
+  final void Function(Book target)? onVersionSelected;
 
   const BookVersionsDialog({
     super.key,
@@ -126,10 +129,13 @@ class _BookVersionsDialogState extends State<BookVersionsDialog> {
                     child: Text('לא נמצא מידע על גרסאות לספר זה.'),
                   );
                 }
-                final selectable = selectableVersionsFor(
-                  versions,
-                  widget.book.versionTitle,
-                );
+                final book = widget.book;
+                final selectable = book.isUserBook
+                    ? versions.where((v) => v.userBook?.id != book.id).toList()
+                    : selectableVersionsFor(
+                        versions,
+                        book is TextBook ? book.versionTitle : null,
+                      );
                 if (selectable.isEmpty) {
                   return const Center(
                     child: Text('אין נוסחאות נוספות מלבד הנוסח הפתוח.'),
@@ -169,12 +175,12 @@ Future<bool> _openNoteUrl(String url) async {
 
 /// שורת מהדורה בדיאלוג הגרסאות. ציבורי לצורך בדיקות widget.
 class BookVersionTile extends StatelessWidget {
-  final TextBook book;
+  final Book book;
   final BookVersionInfo version;
   final bool isOnlyVersion;
 
   /// כשמסופק — מקבל את הספר בנוסח שנבחר במקום פתיחת כרטיסייה חדשה.
-  final void Function(TextBook target)? onSelected;
+  final void Function(Book target)? onSelected;
 
   const BookVersionTile({
     super.key,
@@ -251,14 +257,18 @@ class BookVersionTile extends StatelessWidget {
               Navigator.of(context).pop();
               // הנוסח המוצג נפתח כספר רגיל; מהדורה עם טקסט שמור נפתחת
               // כ-TextBook עם versionTitle, והתוכן נטען מ-version_line.
-              final target = isDisplayedText
-                  ? book
-                  : book.copyWith(
-                      versionTitle: version.versionTitle,
-                      // displayTitle תמיד מאוכלס, ולכן מהדורה שנבחרת אחרי
-                      // אחרת אינה יורשת את שם התצוגה שלה.
-                      heVersionTitle: version.displayTitle,
-                    );
+              // גרסת ספר אישי היא קובץ-ספר נפרד, ונפתחת כמות שהיא.
+              final book = this.book;
+              final target =
+                  version.userBook ??
+                  (isDisplayedText || book is! TextBook
+                      ? book
+                      : book.copyWith(
+                          versionTitle: version.versionTitle,
+                          // displayTitle תמיד מאוכלס, ולכן מהדורה שנבחרת אחרי
+                          // אחרת אינה יורשת את שם התצוגה שלה.
+                          heVersionTitle: version.displayTitle,
+                        ));
               final handler = onSelected;
               if (handler != null) {
                 handler(target);

@@ -11,7 +11,12 @@ import 'package:otzaria/data/data_providers/book_composite_key.dart';
 import 'package:otzaria/data/data_providers/library_provider.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
+import 'package:otzaria/migration/database/daos/database.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
+import 'package:otzaria/user_content_import/repository/user_alt_toc_repository.dart';
+import 'package:otzaria/user_content_import/models/user_import_models.dart';
+import 'package:otzaria/user_content_import/services/user_book_versions.dart';
+import 'package:otzaria/user_content_import/services/user_sidecar_sync.dart';
 import 'package:otzaria/settings/services/custom_folders/custom_folder.dart';
 import 'package:otzaria/migration/database/sqlite3_utils.dart';
 import 'package:otzaria/data/sqlite/sqlite3_api.dart' as sqlite3;
@@ -1024,23 +1029,19 @@ InlineSectionMarks _loadInlineSectionMarksInIsolate({
         )
         .toMapList();
 
-    final headings = <int, List<String>>{};
+    // השאילתה מביאה לכל כותרת את שורתה ושתיים שלפניה — חלון הבדיקה כולו.
+    final linesByIndex = <int, String?>{};
+    final rows = <({int lineIndex, String label})>[];
     for (final row in headingRows) {
       final lineIndex = row['lineIndex'];
-      final rawLabel = row['label'];
-      if (lineIndex is! int || rawLabel is! String) continue;
-      final label = cleanSectionHeadingLabel(rawLabel);
-      if (label.isEmpty) continue;
-      final linesAbove = [row['line1'] as String?, row['line2'] as String?];
-      if (isSectionHeadingVisible(label, [
-        row['line0'] as String?,
-        ...linesAbove,
-      ])) {
-        continue;
-      }
-      final anchor = lineIndex - sectionHeadingLinesAbove(linesAbove);
-      headings.putIfAbsent(anchor, () => []).add(label);
+      final label = row['label'];
+      if (lineIndex is! int || label is! String) continue;
+      linesByIndex[lineIndex] = row['line0'] as String?;
+      linesByIndex[lineIndex - 1] ??= row['line1'] as String?;
+      linesByIndex[lineIndex - 2] ??= row['line2'] as String?;
+      rows.add((lineIndex: lineIndex, label: label));
     }
+    final headings = buildSectionHeadings(rows, (i) => linesByIndex[i]);
     return (markers: markers, headings: headings);
   } finally {
     db?.close();
@@ -1448,6 +1449,49 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// שמקורם ב-`user_books.db`. נפרד מ-`_cachedKeys` כדי שהמטמון של seforim
   /// לא ייפגע. כל המפתחות כאן עם `isUserBook: true`.
   final Set<BookCompositeKey> _userBooksCachedKeys = {};
+
+  /// ספרים אישיים לפי מזהה ב-user_books.db — כולל גרסאות שאינן בעץ.
+  final Map<int, Book> _userBooksById = {};
+
+  /// גרסאות שאינן ראשיות: נפתחות רק מתפריט 'גרסאות', ולכן אינן בעץ.
+  final Set<int> _hiddenUserVersionBookIds = {};
+
+  List<UserBookVersionRecord> _userBookVersions = const [];
+
+  void _registerUserBook(Book book, Category category) {
+    final id = book.id;
+    if (id != null) _userBooksById[id] = book;
+    if (id == null || !_hiddenUserVersionBookIds.contains(id)) {
+      category.books.add(book);
+    }
+  }
+
+  Book? _userBookInCatalog(Book book) {
+    final id = book.id;
+    final byId = id == null ? null : _userBooksById[id];
+    if (byId != null) return byId;
+    return _userBooksById.values
+        .where(
+          (b) =>
+              b.title == book.title &&
+              b.categoryId == book.categoryId &&
+              (book.fileType == null || b.fileType == book.fileType),
+        )
+        .firstOrNull;
+  }
+
+  /// הגרסאות של ספר אישי — הראשית תחילה, ואחריה לפי עדיפות ושם. ריק כשהספר
+  /// אינו חלק מקבוצת גרסאות.
+  List<BookVersionInfo> getUserBookVersions(Book book) {
+    if (!book.isUserBook) return const [];
+    final id = _userBookInCatalog(book)?.id;
+    if (id == null) return const [];
+    return buildUserBookVersions(
+      bookId: id,
+      records: _userBookVersions,
+      booksById: _userBooksById,
+    );
+  }
 
   bool _isUserBooksCategoryId(int categoryId) =>
       _userBooksCategoryIds.contains(categoryId);
@@ -2832,6 +2876,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       late final List<Map<String, dynamic>> userBooks;
       late final List<Map<String, dynamic>> userCats;
       late final Map<int, String> userAuthors;
+      late final List<UserBookVersionRecord> userVersions;
 
       // קריאת הנתונים מ-user_books.db מתבצעת *לפני* ניקוי הקאשים. אם
       // הקריאה נכשלת (למשל "database is locked" בזמן כתיבה מקבילית),
@@ -2845,6 +2890,19 @@ class DatabaseLibraryProvider implements LibraryProvider {
         );
         userCats = repo.database.categoryDao.getAllCategoryRows(db);
         userAuthors = repo.database.bookDao.getBookAuthorsMap(db);
+        userVersions = [
+          for (final row in db.select(
+            'SELECT versionBookId, primaryBookId, versionTitle, versionNotes, '
+            'priority FROM user_book_version',
+          ))
+            UserBookVersionRecord(
+              versionBookId: row['versionBookId'] as int,
+              primaryBookId: row['primaryBookId'] as int,
+              versionTitle: row['versionTitle'] as String,
+              versionNotes: row['versionNotes'] as String?,
+              priority: (row['priority'] as num?)?.toDouble(),
+            ),
+        ];
       });
 
       // הקריאה הצליחה — עכשיו בטוח לנקות ולבנות מחדש. מכאן והלאה הבנייה
@@ -2852,6 +2910,14 @@ class DatabaseLibraryProvider implements LibraryProvider {
       // זאת, ה-library והקאשים יישארו חלקיים אך מסונכרנים זה עם זה.
       _userBooksCategoryIds.clear();
       _userBooksCachedKeys.clear();
+      _userBooksById.clear();
+      _userBookVersions = userVersions;
+      _hiddenUserVersionBookIds
+        ..clear()
+        ..addAll([
+          for (final v in userVersions)
+            if (v.versionBookId != v.primaryBookId) v.versionBookId,
+        ]);
 
       if (userBooks.isEmpty && userCats.isEmpty) {
         return;
@@ -2961,7 +3027,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
           categoryIdOverride: personalRootId,
         );
         if (book == null) continue;
-        directBooksParent.books.add(book);
+        _registerUserBook(book, directBooksParent);
         _userBooksCachedKeys.add(
           BookCompositeKey.create(
             title: book.title,
@@ -3202,7 +3268,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
         categoryIdOverride: nativeCategoryId,
       );
       if (book == null) continue;
-      category.books.add(book);
+      _registerUserBook(book, category);
       _userBooksCachedKeys.add(
         BookCompositeKey.create(
           title: book.title,
@@ -3691,7 +3757,20 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<List<AltTocStructure>> getAlternativeStructuresForBook(
     TextBook book,
   ) async {
-    if (book.isUserBook) return [];
+    if (book.isUserBook) {
+      return _userAltTocOperation(
+        (repo) async {
+          final bookId = await repo.bookId(
+            title: book.title,
+            categoryId: book.categoryId,
+            filePath: book.filePath,
+          );
+          return bookId == null ? [] : repo.structures(bookId);
+        },
+        const [],
+        'getAlternativeStructuresForBook (user) "${book.title}"',
+      );
+    }
     if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
       return [];
     }
@@ -3717,6 +3796,48 @@ class DatabaseLibraryProvider implements LibraryProvider {
         '⚠️ Error in getAlternativeStructuresForBook "$bookTitle": $e',
       );
       return [];
+    }
+  }
+
+  /// כמו [getInlineSectionMarksByLineIndex], לספר אישי. התוכן אינו במסד,
+  /// ולכן בדיקת הנראוּת של כותרת נושא נעשית מול [lineAt] — שורות הספר הטעון.
+  Future<InlineSectionMarks> getUserInlineSectionMarks(
+    TextBook book,
+    String? Function(int lineIndex) lineAt,
+  ) {
+    return _userAltTocOperation<InlineSectionMarks>(
+      (repo) async {
+        final bookId = await repo.bookId(
+          title: book.title,
+          categoryId: book.categoryId,
+          filePath: book.filePath,
+        );
+        if (bookId == null) {
+          return (markers: <int, String>{}, headings: <int, List<String>>{});
+        }
+        final rows = await repo.inlineSectionRows(bookId);
+        return (
+          markers: rows.markers,
+          headings: buildSectionHeadings(rows.headings, lineAt),
+        );
+      },
+      (markers: <int, String>{}, headings: <int, List<String>>{}),
+      'getUserInlineSectionMarks "${book.title}"',
+    );
+  }
+
+  /// מריץ קריאה על כותרות הספרים האישיים; כשל מחזיר את [fallback].
+  Future<T> _userAltTocOperation<T>(
+    Future<T> Function(UserAltTocRepository repo) operation,
+    T fallback,
+    String errorContext,
+  ) async {
+    try {
+      final userRepo = await UserBooksDatabaseHolder.instance.repository;
+      return await operation(UserAltTocRepository(userRepo.database));
+    } catch (e) {
+      debugPrint('⚠️ Error in $errorContext: $e');
+      return fallback;
     }
   }
 
@@ -3781,7 +3902,17 @@ class DatabaseLibraryProvider implements LibraryProvider {
   }
 
   /// Get all alternative TOC entries for a specific structure
-  Future<List<AltTocEntry>> getAllAlternativeEntries(int structureId) async {
+  Future<List<AltTocEntry>> getAllAlternativeEntries(
+    int structureId, {
+    bool isUserBook = false,
+  }) async {
+    if (isUserBook) {
+      return _userAltTocOperation(
+        (repo) => repo.entries(structureId),
+        const [],
+        'getAllAlternativeEntries (user) $structureId',
+      );
+    }
     return _dbOperation<List<AltTocEntry>>(
       (db) async {
         // We join with tocText to get the actual text
@@ -3808,8 +3939,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
 
   /// מחזיר רשימת (lineIndex, text) לכל ערכי כותרות משנה בעלי שורה מוגדרת
   Future<List<({int lineIndex, String text})>> getAltTocLineIndices(
-    int structureId,
-  ) async {
+    int structureId, {
+    bool isUserBook = false,
+  }) async {
+    if (isUserBook) {
+      return _userAltTocOperation(
+        (repo) => repo.lineIndices(structureId),
+        const [],
+        'getAltTocLineIndices (user) $structureId',
+      );
+    }
     return _dbOperation<List<({int lineIndex, String text})>>(
       (db) async {
         final results = db
@@ -3847,7 +3986,17 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<
     List<({int id, int? parentId, int level, int? lineIndex, String text})>
   >
-  getAltTocEntriesWithLineIndex(int structureId) async {
+  getAltTocEntriesWithLineIndex(
+    int structureId, {
+    bool isUserBook = false,
+  }) async {
+    if (isUserBook) {
+      return _userAltTocOperation(
+        (repo) => repo.entriesWithLineIndex(structureId),
+        const [],
+        'getAltTocEntriesWithLineIndex (user) $structureId',
+      );
+    }
     return _dbOperation<
       List<({int id, int? parentId, int level, int? lineIndex, String text})>
     >(
@@ -3886,8 +4035,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// Get links (books/lines) associated with a specific alternative TOC entry
   Future<List<Link>> getLinksForAltTocEntry(
     int structureId,
-    int altTocEntryId,
-  ) async {
+    int altTocEntryId, {
+    bool isUserBook = false,
+  }) async {
+    if (isUserBook) {
+      return _userAltTocOperation(
+        (repo) => repo.linksForEntry(structureId, altTocEntryId),
+        const [],
+        'getLinksForAltTocEntry (user) $structureId',
+      );
+    }
     return _dbOperation<List<Link>>(
       (db) async {
         // Join line_alt_toc -> line -> book
@@ -3930,8 +4087,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<int?> getAltTocEntryForLine(
     String bookTitle,
     int lineIndex,
-    int structureId,
-  ) async {
+    int structureId, {
+    bool isUserBook = false,
+  }) async {
+    if (isUserBook) {
+      return _userAltTocOperation(
+        (repo) => repo.entryForLine(structureId, lineIndex),
+        null,
+        'getAltTocEntryForLine (user) $structureId',
+      );
+    }
     return _dbOperation<int?>(
       (db) async {
         final results = db
@@ -4112,6 +4277,15 @@ class DatabaseLibraryProvider implements LibraryProvider {
           debugPrint('⚠️ Failed to process book: ${book.path} - $e');
           failed++;
         }
+      }
+
+      // קובצי הכותרות והגרסאות שבתיקייה נקלטים אחרי הספרים — הם מזוהים
+      // לפי נתיב הקובץ, שקיים ב-DB רק מכאן ואילך.
+      for (final error in await UserSidecarSync.applyForFolder(
+        userDb: repository.database as MyDatabase,
+        folderPath: folderPath,
+      )) {
+        failedDetails.add((folderName, error));
       }
 
       debugPrint(

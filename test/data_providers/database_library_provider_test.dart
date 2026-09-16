@@ -1218,18 +1218,6 @@ void main() {
     );
 
     test(
-      'getAlternativeStructuresForBook לא מחזיר לספר אישי את מבני הספר הרשמי בשם זהה',
-      () async {
-        final structures = await DatabaseLibraryProvider.instance
-            .getAlternativeStructuresForBook(
-              TextBook(title: 'בראשית', categoryId: 1, isUserBook: true),
-            );
-
-        expect(structures, isEmpty);
-      },
-    );
-
-    test(
       'buildLibraryCatalog שומר מחבר ותיאורי קטגוריה מה-DB וחיפוש הספריה מוצא לפי מחבר',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(

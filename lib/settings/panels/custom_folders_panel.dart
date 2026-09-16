@@ -621,10 +621,20 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
             ),
             item(
               OtzariaIcons.link_24_regular,
-              context.settingsText('דורות וקישורים'),
+              context.settingsText('דורות, קישורים, כותרות וגרסאות'),
               context.settingsText(
-                'לייבוא סדר דורות וקישורים לספרים האישיים השתמש בכפתור '
-                '"ייבוא דורות וקישורים" שבהמשך.',
+                'לייבוא נתונים לספרים האישיים השתמש בכפתור "ייבוא נתונים" '
+                'שבהמשך.',
+              ),
+            ),
+            item(
+              OtzariaIcons.books_stacked_high_24_regular,
+              context.settingsText('כותרות וגרסאות בתיקייה'),
+              context.settingsText(
+                'קובץ "<שם הקובץ>.כותרות.csv" ליד ספר טקסט מוסיף לו את '
+                'לשונית "כותרות" (עמודות: מבנה, רמה, כותרת, שורה או טקסט). '
+                'קובץ "גרסאות.csv" בתיקייה מאחד כמה קבצים לספר אחד (עמודות: '
+                'ראשי, גרסה, שם). הקבצים נקלטים בסריקת התיקייה.',
               ),
             ),
           ],
@@ -666,12 +676,12 @@ class UserContentImportTile extends StatelessWidget {
     final bloc = context.read<CustomFoldersBloc>();
     final confirmed = await showWarningDialog(
       context: context,
-      title: context.settingsText('מחיקת דורות וקישורים'),
+      title: context.settingsText('מחיקת נתונים מיובאים'),
       content: context.settingsText(
-        'פעולה זו תמחק את כל הדורות והקישורים שיובאו לתוכנה.',
+        'פעולה זו תמחק את כל הדורות, הקישורים, הכותרות והגרסאות שיובאו לתוכנה.',
       ),
       subtitle: context.settingsText(
-        'הספרים עצמם לא יימחקו — רק הדורות והקישורים המיובאים.',
+        'הספרים עצמם לא יימחקו, וגם לא נתונים מקבצים שבתיקיות הספרים.',
       ),
       confirmText: context.settingsText('מחק הכל'),
     );
@@ -687,10 +697,11 @@ class UserContentImportTile extends StatelessWidget {
             state.isSyncing || DatabaseLibraryProvider.operationQueue.isBusy;
         return SettingsActionTile.text(
           icon: FluentIcons.arrow_import_24_regular,
-          title: context.settingsText('ייבוא דורות וקישורים'),
+          title: context.settingsText('ייבוא נתונים'),
           subtitle: context.settingsText(
-            'בחר קובצי "דורות.csv", "<שם הספר>.links.csv" או קובצי קישורים '
-            'של אוצריא ("<שם הספר>_links.json") והם יכנסו לספרייה. '
+            'בחר קובצי "דורות.csv", "כותרות.csv", "גרסאות.csv", '
+            '"<שם הספר>.links.csv" או קובצי קישורים של אוצריא '
+            '("<שם הספר>_links.json") והם יכנסו לספרייה. '
             'ייבוא חוזר מעדכן ערכים קיימים ומוסיף חדשים.',
           ),
           actions: [
@@ -699,7 +710,7 @@ class UserContentImportTile extends StatelessWidget {
               onPressed: isSyncing ? null : () => _clear(context),
             ),
             ActionButton.recommended(
-              text: context.settingsText('ייבוא דורות וקישורים'),
+              text: context.settingsText('ייבוא נתונים'),
               icon: FluentIcons.arrow_import_24_regular,
               onPressed: isSyncing ? null : () => _import(context),
               isLoading: isSyncing,

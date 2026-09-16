@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:otzaria/data/data_providers/database_library_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/external_catalog/repository/external_catalog_repository.dart';
 import 'package:otzaria/models/books.dart';
@@ -16,7 +17,14 @@ class ParallelEdition {
   /// הראשית של הלחצן כל עוד קיימת; מהדורות של ספקים חיצוניים באות אחריה.
   final bool isCompanion;
 
-  const ParallelEdition({required this.book, required this.isCompanion});
+  /// שם לתצוגה במקום כותרת הספר — שם הגרסה של ספר אישי.
+  final String? label;
+
+  const ParallelEdition({
+    required this.book,
+    required this.isCompanion,
+    this.label,
+  });
 }
 
 /// איתור מהדורות מקבילות לספר הפתוח — מובנות ומקומיות בלבד.
@@ -25,6 +33,7 @@ class ParallelEdition {
 /// 1. ספר עמית בספריית אוצריא (טקסט↔PDF של אותו ספר).
 /// 2. מהדורות היברובוקס המקומיות, לפי טבלת המיפוי בקטלוג החיצוני.
 /// 3. מהדורות של ספקים שתוספים הצהירו עליהם (`externalEditions`).
+/// 4. גרסאות של ספר אישי (קובצי `גרסאות.csv`).
 class ParallelEditionsService {
   ParallelEditionsService._();
 
@@ -68,6 +77,21 @@ class ParallelEditionsService {
     final companion = library.getCompanionBook(current, companionType);
     if (companion != null) {
       editions.add(ParallelEdition(book: companion, isCompanion: true));
+    }
+
+    if (current.isUserBook) {
+      for (final version
+          in DatabaseLibraryProvider.instance.getUserBookVersions(current)) {
+        final book = version.userBook;
+        if (book == null || book.id == current.id) continue;
+        editions.add(
+          ParallelEdition(
+            book: book,
+            isCompanion: false,
+            label: version.displayTitle,
+          ),
+        );
+      }
     }
 
     final configs = PluginExternalEditionsRegistry.instance.configs;

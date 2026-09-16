@@ -71,6 +71,29 @@ String _normalizeForMatch(String text) => text
     .replaceAll(_spaces, ' ')
     .trim();
 
+/// כותרות הנושא להזרקה, לפי שורת העוגן שלהן. [rows] ממוינות לפי שורה ורמה;
+/// [lineAt] מחזיר את תוכן השורה, או null מחוץ לספר.
+Map<int, List<String>> buildSectionHeadings(
+  Iterable<({int lineIndex, String label})> rows,
+  String? Function(int lineIndex) lineAt,
+) {
+  final headings = <int, List<String>>{};
+  for (final row in rows) {
+    final label = cleanSectionHeadingLabel(row.label);
+    if (label.isEmpty) continue;
+    final linesAbove = [lineAt(row.lineIndex - 1), lineAt(row.lineIndex - 2)];
+    if (isSectionHeadingVisible(label, [
+      lineAt(row.lineIndex),
+      ...linesAbove,
+    ])) {
+      continue;
+    }
+    final anchor = row.lineIndex - sectionHeadingLinesAbove(linesAbove);
+    headings.putIfAbsent(anchor, () => []).add(label);
+  }
+  return headings;
+}
+
 /// האם הכותרת כבר גלויה בפתיחת שורת היעד או באחת השורות שלפניה
 /// ([windowLines]) — שלוש מילותיה הראשונות בראש אחת מהן.
 bool isSectionHeadingVisible(String label, List<String?> windowLines) {

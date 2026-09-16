@@ -368,7 +368,10 @@ class CustomFoldersBloc extends Bloc<CustomFoldersEvent, CustomFoldersState> {
       final userDb =
           (await UserBooksDatabaseHolder.instance.repository).database;
       final r = await importUserFilesSafe(event.paths, userDb);
-      if (r.generationsApplied > 0 || r.linksApplied > 0) {
+      if (r.generationsApplied > 0 ||
+          r.linksApplied > 0 ||
+          r.headingsApplied > 0 ||
+          r.versionsApplied > 0) {
         GenerationCache.instance.clear();
         CommentaryService.clearEraCache();
         TargetLineLinksService.instance.clearCache();
@@ -377,6 +380,8 @@ class CustomFoldersBloc extends Bloc<CustomFoldersEvent, CustomFoldersState> {
       final imp = (
         generations: r.generationsApplied,
         links: r.linksApplied,
+        headings: r.headingsApplied,
+        versions: r.versionsApplied,
         errors: r.errors,
       );
       emit(
@@ -411,7 +416,7 @@ class CustomFoldersBloc extends Bloc<CustomFoldersEvent, CustomFoldersState> {
       emit(
         state.copyWith(
           isSyncing: false,
-          message: 'הדורות והקישורים המיובאים נמחקו.',
+          message: 'הנתונים המיובאים נמחקו.',
         ),
       );
     } catch (e) {
@@ -421,16 +426,32 @@ class CustomFoldersBloc extends Bloc<CustomFoldersEvent, CustomFoldersState> {
 
   /// תקציר ייבוא להודעה, או null אם לא יובא דבר.
   String? _importSummary(
-    ({int generations, int links, List<String> errors}) imp,
+    ({
+      int generations,
+      int links,
+      int headings,
+      int versions,
+      List<String> errors,
+    })
+    imp,
   ) {
     final parts = <String>[];
     if (imp.generations > 0) parts.add('${imp.generations} דורות');
     if (imp.links > 0) parts.add('${imp.links} קישורים');
+    if (imp.headings > 0) parts.add('כותרות ל-${imp.headings} ספרים');
+    if (imp.versions > 0) parts.add('${imp.versions} גרסאות');
     return parts.isEmpty ? null : 'יובאו ${parts.join(' ו-')}';
   }
 
   String? _importErrorText(
-    ({int generations, int links, List<String> errors}) imp,
+    ({
+      int generations,
+      int links,
+      int headings,
+      int versions,
+      List<String> errors,
+    })
+    imp,
   ) {
     if (imp.errors.isEmpty) return null;
     final shown = imp.errors.take(10).join('\n');

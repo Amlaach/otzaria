@@ -1,6 +1,7 @@
 import 'package:otzaria/migration/database/daos/database.dart';
 import 'package:otzaria/models/link_types.dart';
 import 'package:otzaria/user_content_import/models/user_import_models.dart';
+import 'package:otzaria/user_content_import/services/user_headings_builder.dart';
 
 /// גישת כתיבה/קריאה לנתוני-המשתמש ב-user_books.db: דור הספר (book_generation)
 /// וקישורי-משתמש מיובאים (user_link).
@@ -21,6 +22,8 @@ class UserContentRepository {
     db.execute('DELETE FROM user_link');
     db.execute('DELETE FROM book_author');
     db.execute('DELETE FROM author');
+    // כותרות וגרסאות מקובצי התיקייה אינן "מיובאות" — הן חוזרות בסריקה הבאה.
+    await forgetSidecar(manualImportSource);
   }
 
   // ---- דורות ----
@@ -83,6 +86,177 @@ class UserContentRepository {
       bookId,
       authorId,
     ]);
+  }
+
+  // ---- כותרות וגרסאות ----
+
+  /// המקור של נתונים שיובאו מדיאלוג ההגדרות (ולא מקובץ שבתיקיית הספרים).
+  static const manualImportSource = 'import';
+
+  /// כותב מחדש את כל מבני הכותרות של [bookId] שמקורם ב-[source].
+  Future<void> replaceBookHeadings(
+    int bookId,
+    List<UserAltTocStructureData> structures, {
+    required String source,
+  }) async {
+    final db = await _db.database;
+    db.execute(
+      'DELETE FROM user_alt_toc_entry WHERE structureId IN '
+      '(SELECT id FROM user_alt_toc_structure WHERE bookId = ? AND source = ?)',
+      [bookId, source],
+    );
+    db.execute(
+      'DELETE FROM user_alt_toc_structure WHERE bookId = ? AND source = ?',
+      [bookId, source],
+    );
+
+    for (var position = 0; position < structures.length; position++) {
+      final structure = structures[position];
+      // מבנה באותו שם ממקור אחר נדרס — יחד עם ערכיו, שאחרת היו מתייתמים.
+      db.execute(
+        'DELETE FROM user_alt_toc_entry WHERE structureId IN '
+        '(SELECT id FROM user_alt_toc_structure WHERE bookId = ? AND key = ?)',
+        [bookId, structure.key],
+      );
+      db.execute(
+        'DELETE FROM user_alt_toc_structure WHERE bookId = ? AND key = ?',
+        [bookId, structure.key],
+      );
+      db.execute(
+        'INSERT INTO user_alt_toc_structure '
+        '(bookId, key, heTitle, position, source) VALUES (?, ?, ?, ?, ?)',
+        [bookId, structure.key, structure.heTitle, position, source],
+      );
+      final structureId = db.lastInsertRowId;
+      final ids = <int>[];
+      for (final entry in structure.entries) {
+        db.execute(
+          'INSERT INTO user_alt_toc_entry '
+          '(structureId, parentId, level, text, lineIndex, isLastChild, hasChildren) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [
+            structureId,
+            entry.parentIndex == null ? null : ids[entry.parentIndex!],
+            entry.level,
+            entry.text,
+            entry.lineIndex,
+            entry.isLastChild ? 1 : 0,
+            entry.hasChildren ? 1 : 0,
+          ],
+        );
+        ids.add(db.lastInsertRowId);
+      }
+    }
+  }
+
+  /// כותב מחדש את כל רשומות הגרסאות שמקורן ב-[source].
+  Future<void> replaceVersions(
+    List<UserBookVersionRecord> versions, {
+    required String source,
+  }) async {
+    final db = await _db.database;
+    db.execute('DELETE FROM user_book_version WHERE source = ?', [source]);
+    for (final version in versions) {
+      db.execute(
+        'INSERT OR REPLACE INTO user_book_version '
+        '(versionBookId, primaryBookId, versionTitle, versionNotes, priority, source) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        [
+          version.versionBookId,
+          version.primaryBookId,
+          version.versionTitle,
+          version.versionNotes,
+          version.priority,
+          source,
+        ],
+      );
+    }
+  }
+
+  /// מוחק את כל מה שנקלט מקובץ [source] (כותרות וגרסאות), ואת רישום המעקב שלו.
+  Future<void> forgetSidecar(String source) async {
+    final db = await _db.database;
+    db.execute(
+      'DELETE FROM user_alt_toc_entry WHERE structureId IN '
+      '(SELECT id FROM user_alt_toc_structure WHERE source = ?)',
+      [source],
+    );
+    db.execute('DELETE FROM user_alt_toc_structure WHERE source = ?', [source]);
+    db.execute('DELETE FROM user_book_version WHERE source = ?', [source]);
+    db.execute('DELETE FROM user_sidecar_file WHERE path = ?', [source]);
+  }
+
+  /// חתימת היישום האחרון של קובץ נלווה, או null אם מעולם לא יושם.
+  Future<String?> sidecarSignature(String path) async {
+    final db = await _db.database;
+    final rows = db.select(
+      'SELECT signature FROM user_sidecar_file WHERE path = ? LIMIT 1',
+      [path],
+    );
+    return rows.isEmpty ? null : rows.first['signature'] as String;
+  }
+
+  Future<void> setSidecarSignature(String path, String signature) async {
+    final db = await _db.database;
+    db.execute(
+      'INSERT OR REPLACE INTO user_sidecar_file (path, signature) VALUES (?, ?)',
+      [path, signature],
+    );
+  }
+
+  /// נתיבי הקבצים הנלווים שכבר יושמו ויושבים תחת [folderPath].
+  Future<List<String>> trackedSidecarsUnder(String folderPath) async {
+    final db = await _db.database;
+    final rows = db.select(
+      "SELECT path FROM user_sidecar_file WHERE path LIKE ? ESCAPE '\\'",
+      [
+        '${folderPath.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%',
+      ],
+    );
+    return [for (final row in rows) row['path'] as String];
+  }
+
+  /// ספר אישי לפי כותרת (ואם צוינה — קטגוריה), עם נתיב הקובץ שלו.
+  Future<({int id, String? filePath, String? fileType, int lastModified})?>
+  bookFileByTitle(String title, {int? categoryId}) async {
+    final db = await _db.database;
+    final rows = categoryId != null
+        ? db.select(
+            'SELECT id, filePath, fileType, lastModified FROM book '
+            'WHERE title = ? AND categoryId = ? LIMIT 1',
+            [title, categoryId],
+          )
+        : db.select(
+            'SELECT id, filePath, fileType, lastModified FROM book '
+            'WHERE title = ? LIMIT 1',
+            [title],
+          );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return (
+      id: row['id'] as int,
+      filePath: row['filePath'] as String?,
+      fileType: row['fileType'] as String?,
+      lastModified: row['lastModified'] as int? ?? 0,
+    );
+  }
+
+  /// ספר אישי לפי נתיב הקובץ שלו.
+  Future<({int id, String? fileType, int lastModified})?> bookByFilePath(
+    String filePath,
+  ) async {
+    final db = await _db.database;
+    final rows = db.select(
+      'SELECT id, fileType, lastModified FROM book WHERE filePath = ? LIMIT 1',
+      [filePath],
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return (
+      id: row['id'] as int,
+      fileType: row['fileType'] as String?,
+      lastModified: row['lastModified'] as int? ?? 0,
+    );
   }
 
   // ---- קישורי-משתמש ----
