@@ -31,6 +31,7 @@ import 'package:otzaria/services/commentary_service.dart';
 import 'package:otzaria/services/target_line_links_service.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/widgets/lists/scroll_position_reanchor.dart';
 import 'package:otzaria/widgets/feedback/scrollable_positioned_list_scrollbar.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:otzaria/tabs/models/tab.dart';
@@ -2758,25 +2759,30 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                                     itemCount: itemCount,
                                     labelForIndex: widget.labelForIndex,
                                     child: SmoothWheelScroll(
-                                      child: ScrollablePositionedList.builder(
-                                        itemScrollController: _scrollController,
-                                        itemPositionsListener:
-                                            _positionsListener,
-                                        scrollOffsetController:
-                                            widget.isMainText
-                                            ? state.scrollOffsetController
-                                            : widget.scrollOffsetController,
-                                        itemCount: itemCount,
-                                        padding: const EdgeInsets.all(4),
-                                        itemBuilder: (context, index) =>
-                                            _buildLineItem(
-                                              context,
-                                              index,
-                                              state,
-                                              noteMap,
-                                              segments,
-                                              continuous,
-                                            ),
+                                      child: ScrollPositionReanchor(
+                                        scrollController: _scrollController,
+                                        positionsListener: _positionsListener,
+                                        child: ScrollablePositionedList.builder(
+                                          itemScrollController:
+                                              _scrollController,
+                                          itemPositionsListener:
+                                              _positionsListener,
+                                          scrollOffsetController:
+                                              widget.isMainText
+                                              ? state.scrollOffsetController
+                                              : widget.scrollOffsetController,
+                                          itemCount: itemCount,
+                                          padding: const EdgeInsets.all(4),
+                                          itemBuilder: (context, index) =>
+                                              _buildLineItem(
+                                                context,
+                                                index,
+                                                state,
+                                                noteMap,
+                                                segments,
+                                                continuous,
+                                              ),
+                                        ),
                                       ),
                                     ),
                                   )

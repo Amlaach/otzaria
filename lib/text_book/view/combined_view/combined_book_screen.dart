@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/widgets/lists/scroll_position_reanchor.dart';
 import 'package:otzaria/widgets/text/rtl_selection_shortcuts.dart';
 import 'package:otzaria/widgets/text/selection_copy_shortcuts.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
@@ -2152,9 +2153,16 @@ class _CombinedViewState extends State<CombinedView> {
                                               }
                                             }
                                             return SmoothWheelScroll(
-                                              child: buildOuterList(
-                                                state,
-                                                noteMap,
+                                              child: ScrollPositionReanchor(
+                                                scrollController:
+                                                    widget.tab.scrollController,
+                                                positionsListener: widget
+                                                    .tab
+                                                    .positionsListener,
+                                                child: buildOuterList(
+                                                  state,
+                                                  noteMap,
+                                                ),
                                               ),
                                             );
                                           },
