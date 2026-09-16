@@ -14,6 +14,11 @@ import 'package:otzaria/widgets/misc/middle_click_autoscroll.dart';
 class SmoothWheelScroll extends StatefulWidget {
   const SmoothWheelScroll({super.key, required this.child});
 
+  /// קצב הדעיכה (1/ms): הצעד הגדול ביותר הוא הראשון והתנועה מאטה משם,
+  /// כמו החלקת הגלילה של דפדפן. 0.0225 ≈ 133ms ל-95% מהדרך.
+  /// גלילת ה-PDF נגזרת ממנו, כדי ששני אזורי הקריאה יגללו באותו קצב.
+  static const double decayRatePerMs = 0.0225;
+
   final Widget child;
 
   @override
@@ -22,11 +27,6 @@ class SmoothWheelScroll extends StatefulWidget {
 
 class _SmoothWheelScrollState extends State<SmoothWheelScroll>
     with SingleTickerProviderStateMixin {
-  /// קצב הדעיכה (1/ms): הצעד הגדול ביותר הוא הראשון והתנועה מאטה משם,
-  /// כמו החלקת הגלילה של דפדפן. 0.0225 ≈ 133ms ל-95% מהדרך, ו-31%
-  /// בפריים הראשון — בטווח שדפדפן נותן.
-  static const double _decayRate = 0.0225;
-
   /// מתחת לזה אין מה להחליק — נוחתים על היעד ועוצרים.
   static const double _epsilon = 0.5;
 
@@ -190,7 +190,8 @@ class _SmoothWheelScrollState extends State<SmoothWheelScroll>
 
     // e(t) = e₀·e^(−r·t) — מדויק בכל frameMs, ולכן פריים ארוך אינו מייצר
     // חריגה, ואין צורך לשמר מהירות בין פריימים: היא נגזרת מהמרחק שנותר.
-    final step = remaining * (1 - math.exp(-_decayRate * frameMs));
+    final step =
+        remaining * (1 - math.exp(-SmoothWheelScroll.decayRatePerMs * frameMs));
     // צעד תת-פיקסלי כבר אינו נראה כתנועה אלא כרעד — נוחתים ומסיימים.
     if (step.abs() <= _epsilon) {
       activity.moveTo(_target, velocity: 0.0);
