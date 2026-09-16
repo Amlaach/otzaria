@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/external_catalog/repository/external_catalog_repository.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/plugins/database/plugin_database_service.dart';
 import 'package:otzaria/plugins/models/installed_plugin.dart';
@@ -20,12 +21,10 @@ class ParallelEdition {
 
 /// איתור מהדורות מקבילות לספר הפתוח — מובנות ומקומיות בלבד.
 ///
-/// שני מקורות, ללא שום תקשורת עם שירות חיצוני (קטלוג + דיסק בלבד):
-/// 1. ספר עמית בספריית אוצריא (טקסט↔PDF של אותו ספר, כמו הלחצן הישן).
-/// 2. מהדורות של ספקים חיצוניים שתוספים הצהירו עליהם דרך
-///    `contributes.startup.externalEditions`: טבלת מיפוי במקור נתונים של
-///    התוסף מקשרת מזהה ספק ↔ מזהה ספר אוצריא, והתוצאות מסוננות לספרים
-///    שנפתחים מקומית. לאוצריא עצמה אין ידע על אף ספק ספציפי.
+/// ללא שום תקשורת עם שירות חיצוני (קטלוג + דיסק בלבד):
+/// 1. ספר עמית בספריית אוצריא (טקסט↔PDF של אותו ספר).
+/// 2. מהדורות היברובוקס המקומיות, לפי טבלת המיפוי בקטלוג החיצוני.
+/// 3. מהדורות של ספקים שתוספים הצהירו עליהם (`externalEditions`).
 class ParallelEditionsService {
   ParallelEditionsService._();
 
@@ -44,6 +43,21 @@ class ParallelEditionsService {
   static Future<List<Book>> Function(String provider, Set<Object> externalIds)
   externalBooksLoader = loadExternalBooksByProvider;
 
+  /// המיפוי המובנה של היברובוקס בקטלוג החיצוני, בשני הכיוונים.
+  @visibleForTesting
+  static Future<List<int>> Function(int otzariaId) builtInExternalIdsFor =
+      (id) => ExternalCatalogRepository.instance.getHebrewBookIdsForOtzariaId(
+        id,
+      );
+
+  @visibleForTesting
+  static Future<List<int>> Function(int externalId) builtInOtzariaIdsFor =
+      (id) => ExternalCatalogRepository.instance.getOtzariaIdsForHebrewBookId(
+        id,
+      );
+
+  static const String _builtInProvider = 'hebrewbooks';
+
   /// מחזיר את המהדורות בסדר תצוגה: המובנית ראשונה (כשקיימת), ואז מהדורות
   /// הספקים החיצוניים לפי איכות ההתאמה. רשימה ריקה = אין לחצן.
   static Future<List<ParallelEdition>> find(Book current) async {
@@ -56,7 +70,20 @@ class ParallelEditionsService {
       editions.add(ParallelEdition(book: companion, isCompanion: true));
     }
 
-    for (final config in PluginExternalEditionsRegistry.instance.configs) {
+    final configs = PluginExternalEditionsRegistry.instance.configs;
+    // המיפוי שייך לקטלוג שהאפליקציה מורידה, ולכן לא תלוי בתוסף; תוסף שמצהיר
+    // על אותו ספק מחליף אותו כדי שלא יופיעו כפילויות.
+    if (!configs.any((config) => config.provider == _builtInProvider)) {
+      try {
+        for (final book in await builtInEditionsFor(current)) {
+          editions.add(ParallelEdition(book: book, isCompanion: false));
+        }
+      } catch (e) {
+        debugPrint('ParallelEditionsService: built-in editions failed: $e');
+      }
+    }
+
+    for (final config in configs) {
       try {
         for (final book in await _externalEditions(current, config)) {
           editions.add(ParallelEdition(book: book, isCompanion: false));
@@ -78,12 +105,45 @@ class ParallelEditionsService {
     PluginExternalEditionsConfig config,
   ) => _externalEditions(current, config);
 
+  /// מהדורות היברובוקס מהמיפוי המובנה — חשוף לבדיקות דרך נקודות ההזרקה.
+  @visibleForTesting
+  static Future<List<Book>> builtInEditionsFor(Book current) => _resolve(
+    current,
+    provider: _builtInProvider,
+    externalIdsFor: (otzariaIds) async => [
+      for (final id in otzariaIds) ...await builtInExternalIdsFor(id),
+    ],
+    otzariaIdsFor: builtInOtzariaIdsFor,
+  );
+
   static Future<List<Book>> _externalEditions(
     Book current,
     PluginExternalEditionsConfig config,
-  ) async {
+  ) => _resolve(
+    current,
+    provider: config.provider,
+    externalIdsFor: (otzariaIds) => _selectIds(
+      config,
+      select: config.externalIdColumn,
+      whereColumn: config.otzariaIdColumn,
+      values: otzariaIds,
+    ),
+    otzariaIdsFor: (externalId) => _selectIds(
+      config,
+      select: config.otzariaIdColumn,
+      whereColumn: config.externalIdColumn,
+      values: [externalId],
+    ),
+  );
+
+  static Future<List<Book>> _resolve(
+    Book current, {
+    required String provider,
+    required Future<List<int>> Function(List<int> otzariaIds) externalIdsFor,
+    required Future<List<int>> Function(int externalId) otzariaIdsFor,
+  }) async {
     final external = PluginBookIdentity.externalOf(current);
-    final currentExternalId = external?.provider == config.provider
+    final currentExternalId = external?.provider == provider
         ? PluginBookIdentity.parseId(external?.id)
         : null;
 
@@ -91,29 +151,14 @@ class ParallelEditionsService {
     if (currentExternalId != null) {
       // ספר של הספק פתוח: מהדורות מקבילות הן ספרי הספק האחרים הממופים
       // לאותם ספרי אוצריא (שני צעדים בטבלת המיפוי).
-      final otzariaIds = await _selectIds(
-        config,
-        select: config.otzariaIdColumn,
-        whereColumn: config.externalIdColumn,
-        values: [currentExternalId],
-      );
+      final otzariaIds = await otzariaIdsFor(currentExternalId);
       if (otzariaIds.isEmpty) return const [];
-      externalIds = await _selectIds(
-        config,
-        select: config.externalIdColumn,
-        whereColumn: config.otzariaIdColumn,
-        values: otzariaIds.toSet().toList(),
-      );
+      externalIds = [...await externalIdsFor(otzariaIds.toSet().toList())];
       externalIds.removeWhere((id) => id == currentExternalId);
     } else {
       final otzariaId = current.id;
       if (otzariaId == null) return const [];
-      externalIds = await _selectIds(
-        config,
-        select: config.externalIdColumn,
-        whereColumn: config.otzariaIdColumn,
-        values: [otzariaId],
-      );
+      externalIds = await externalIdsFor([otzariaId]);
     }
     // הסרת כפילויות תוך שימור סדר איכות ההתאמה של המיפוי.
     final orderedIds = <int>[];
@@ -126,14 +171,14 @@ class ParallelEditionsService {
     // רק מהדורות שנפתחות מקומית — ספר שקיים בקטלוג החיצוני בלבד (נפתח
     // באתר הספק) אינו "מהדורה מקבילה" בקורא.
     final books = await externalBooksLoader(
-      config.provider,
+      provider,
       orderedIds.toSet(),
     );
     final byId = <int, Book>{};
     for (final book in books) {
       if (book is ExternalLibraryBook) continue;
       final bookExternal = PluginBookIdentity.externalOf(book);
-      final id = bookExternal?.provider == config.provider
+      final id = bookExternal?.provider == provider
           ? PluginBookIdentity.parseId(bookExternal?.id)
           : null;
       if (id != null) byId.putIfAbsent(id, () => book);
