@@ -82,6 +82,25 @@ void main() {
       expect(failure.isRetryable, isTrue);
     });
 
+    test('חריגת זמן בפתיחת PDF אינה חוזרת בכל עלייה', () {
+      final failure = IndexingRepository.classifyPdfExtractionFailureForTesting(
+        pdf,
+        TimeoutException('open timed out'),
+      );
+
+      expect(failure.kind, IndexingFailureKind.unreadableDocument);
+      expect(failure.isRetryable, isFalse);
+    });
+
+    test('גם הודעת timeout עטופה מפתיחת PDF אינה חוזרת', () {
+      final failure = IndexingRepository.classifyPdfExtractionFailureForTesting(
+        pdf,
+        Exception('Future timed out after 0:01:00'),
+      );
+
+      expect(failure.isRetryable, isFalse);
+    });
+
     test('מסווג הודעת timeout גם כשהחריגה עטופה', () {
       final failure = IndexingRepository.classifyFailureForTesting(
         pdf,

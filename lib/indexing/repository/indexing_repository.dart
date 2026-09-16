@@ -114,6 +114,10 @@ class IndexingRepository {
       final RangeError rangeError
           when rangeError.invalidValue == -1 && rangeError.end == 3 =>
         IndexingFailureKind.pdfUnsupported,
+      // מ-PDF חורגת רק פתיחת המסמך (timeout של עמוד בודד מחזיר null), וקובץ
+      // ש-pdfium לא פותח תוך דקה לא ייפתח גם בניסיון הבא.
+      final TimeoutException _ when error is _PdfExtractionFailure =>
+        IndexingFailureKind.unreadableDocument,
       final TimeoutException _ => IndexingFailureKind.timeout,
       EncryptedDocumentException _ => IndexingFailureKind.passwordProtected,
       CorruptedDocumentException _ || UnsupportedDocumentFormatException _ =>
@@ -131,8 +135,9 @@ class IndexingRepository {
               normalized.contains('os error 5') =>
         IndexingFailureKind.permissionDenied,
       _
-          when normalized.contains('timeout') ||
-              normalized.contains('timed out') =>
+          when error is! _PdfExtractionFailure &&
+              (normalized.contains('timeout') ||
+                  normalized.contains('timed out')) =>
         IndexingFailureKind.timeout,
       _ when error is _PdfExtractionFailure =>
         IndexingFailureKind.pdfUnsupported,

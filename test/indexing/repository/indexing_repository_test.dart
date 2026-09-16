@@ -1733,8 +1733,11 @@ void main() {
         onProgress: (_, _) {},
       );
 
-      expect(result.failures.single.kind, IndexingFailureKind.timeout);
-      expect(provider.indexedFilePaths, isNot(contains(pdf.path)));
+      expect(
+        result.failures.single.kind,
+        IndexingFailureKind.unreadableDocument,
+      );
+      expect(result.failures.single.isRetryable, isFalse);
       expect(engine.addedPdfTitles, [pdf.title]);
     });
 
