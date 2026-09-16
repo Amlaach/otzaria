@@ -167,6 +167,7 @@ class _VerticalReadingTabStripState extends State<VerticalReadingTabStrip> {
           state,
           onCloseTab: _closeTab,
           onCloseSelectedTabs: () => closeSelectedTabsWithHistory(context),
+          isVertical: true,
         ),
         child: StatefulBuilder(
           builder: (context, setLocalState) {

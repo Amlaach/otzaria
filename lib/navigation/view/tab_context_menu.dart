@@ -86,6 +86,23 @@ Future<void> closeOtherTabsConfirmed(
   tabsBloc.add(CloseOtherTabs(keepTab));
 }
 
+/// סוגר את הכרטיסיות שאחרי [tab] ברצועה, מלבד המוצמדות.
+Future<void> closeTabsAfterWithHistory(
+  BuildContext context,
+  OpenedTab tab,
+) async {
+  final tabsBloc = context.read<TabsBloc>();
+  final historyBloc = context.read<HistoryBloc>();
+  final tabs = tabsBloc.state.tabs;
+  final index = tabs.indexOf(tab);
+  if (index == -1) return;
+  final closing = tabs.skip(index + 1).where((t) => !t.isPinned).toList();
+  if (closing.isEmpty) return;
+  if (!await confirmCloseTabs(context, closing)) return;
+  historyBloc.add(AddHistoryForTabs(closing));
+  tabsBloc.add(RemoveTabs(closing));
+}
+
 /// תפריט ההקשר של כרטיסיה, משותף לרצועה העליונה ולעמודה האנכית.
 ///
 /// [onCloseTab] / [onCloseSelectedTabs] מוזרקים כי הרצועה העליונה מקפיאה
@@ -96,7 +113,11 @@ List<AppContextMenuEntry> buildTabContextMenuEntries(
   TabsState state, {
   required void Function(OpenedTab tab) onCloseTab,
   required VoidCallback onCloseSelectedTabs,
+  bool isVertical = false,
 }) {
+  final tabIndex = state.tabs.indexOf(tab);
+  final hasClosableAfter =
+      tabIndex != -1 && state.tabs.skip(tabIndex + 1).any((t) => !t.isPinned);
   final entries = <AppContextMenuEntry>[
     AppContextMenuEntry(
       label: tab.isPinned
@@ -126,6 +147,15 @@ List<AppContextMenuEntry> buildTabContextMenuEntries(
       label: context.settingsText('סגור את האחרים'),
       onTap: () => closeOtherTabsConfirmed(context, tab),
     ),
+    if (hasClosableAfter)
+      AppContextMenuEntry(
+        label: isVertical
+            ? context.settingsText('סגור את הכרטיסיות שמתחת')
+            : Directionality.of(context) == TextDirection.rtl
+            ? context.settingsText('סגור כרטיסיות משמאל')
+            : context.settingsText('סגור כרטיסיות מימין'),
+        onTap: () => closeTabsAfterWithHistory(context, tab),
+      ),
     if (tab is! ToolTab || tab.isBuiltIn)
       AppContextMenuEntry(
         label: context.settingsText('שיכפול'),

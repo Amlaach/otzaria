@@ -66,17 +66,20 @@ void main() {
           BlocProvider<WorkspaceBloc>.value(value: workspaceBloc),
         ],
         child: MaterialApp(
-          home: Builder(
-            builder: (context) {
-              entries = buildTabContextMenuEntries(
-                context,
-                tab,
-                state,
-                onCloseTab: (_) {},
-                onCloseSelectedTabs: () {},
-              );
-              return const SizedBox.shrink();
-            },
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Builder(
+              builder: (context) {
+                entries = buildTabContextMenuEntries(
+                  context,
+                  tab,
+                  state,
+                  onCloseTab: (_) {},
+                  onCloseSelectedTabs: () {},
+                );
+                return const SizedBox.shrink();
+              },
+            ),
           ),
         ),
       ),
@@ -127,6 +130,41 @@ void main() {
       tabsBloc.addedEvents.whereType<CloseOtherTabs>().single.keepTab,
       same(tabs[1]),
     );
+  });
+
+  testWidgets('"סגור כרטיסיות משמאל" סוגר רק את שאחריה, ולא מוצמדות', (
+    tester,
+  ) async {
+    final tabs = [
+      _StubTab('ספר א'),
+      _StubTab('ספר ב'),
+      _StubTab('ספר ג')..isPinned = true,
+      _StubTab('ספר ד'),
+    ];
+    final entries = await buildEntries(
+      tester,
+      tab: tabs[1],
+      state: TabsState(tabs: tabs, currentTabIndex: 0),
+    );
+
+    entryOf(entries, 'סגור כרטיסיות משמאל').onTap!();
+    await tester.pump();
+
+    expect(
+      tabsBloc.addedEvents.whereType<RemoveTabs>().single.tabs,
+      [same(tabs[3])],
+    );
+  });
+
+  testWidgets('"סגור כרטיסיות משמאל" לא מוצג כשאין מה לסגור', (tester) async {
+    final tabs = [_StubTab('ספר א'), _StubTab('ספר ב')..isPinned = true];
+    final entries = await buildEntries(
+      tester,
+      tab: tabs[0],
+      state: TabsState(tabs: tabs, currentTabIndex: 0),
+    );
+
+    expect(entries.any((e) => e.label == 'סגור כרטיסיות משמאל'), isFalse);
   });
 
   /// מיזוג חלון של כרטיסיה אחת חזרה לחלון המקור — המחווה הטבעית של

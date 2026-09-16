@@ -801,11 +801,19 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
       closeSelectedTabs(context);
       return;
     }
-    // קופאים את רוחב הטאבים כל עוד העכבר מעל השורה, כדי שכפתור ה-X של הטאב הבא
-    // יישאר בדיוק תחת הסמן וסגירות רצופות יפעלו (כמו כרום). נועלים רק בסגירה
-    // הראשונה (??=) — אחרת כל סגירה הייתה דורסת בערך הרחב יותר. השחרור ביציאת העכבר.
+    // קופאים את רוחב הטאבים כל עוד העכבר מעל השורה, כדי שה-X של הטאב הבא יישאר
+    // תחת הסמן; ממשיכים מהקפוא ולא מהמחושב, שכבר רחב יותר. השחרור ביציאת העכבר.
     if (_pointerInsideTabStrip && _lastComputedTabWidths != null) {
-      _pinnedTabWidths ??= _lastComputedTabWidths;
+      final widths = _pinnedTabWidths ?? _lastComputedTabWidths!;
+      final tabs = context.read<TabsBloc>().state.tabs;
+      // בסגירת האחרונה אין טאב שיזוז למקומה: מרחיבים את הנותרים לאותו רוחב
+      // כולל, כדי שה-X של החדשה-אחרונה יגיע תחת הסמן (כמו כרום).
+      _pinnedTabWidths = tabs.length > 1 && identical(tabs.last, tab)
+          ? _computeTabWidths(
+              widths.selected + widths.unselected * (tabs.length - 1),
+              tabs.length - 1,
+            )
+          : widths;
     }
     closeTabWithHistory(context, tab);
   }
