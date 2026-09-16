@@ -500,7 +500,7 @@ class TextSettingsTab extends StatelessWidget {
           title: context.settingsText('שמירת התאמות לכל ספר בנפרד'),
           subtitle: context.settingsText(
             state.enablePerBookSettings
-                ? 'שינויים בסרגל הלחצנים יישמרו לכל ספר בנפרד'
+                ? 'גודל הגופן, הניקוד והמפרשים שנקבעו בספר יישמרו לו בנפרד. סוג הגופן נשאר כללי'
                 : 'כל הספרים ישתמשו בהגדרות הכלליות',
           ),
           value: state.enablePerBookSettings,
