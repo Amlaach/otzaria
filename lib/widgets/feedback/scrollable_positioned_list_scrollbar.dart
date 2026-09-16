@@ -169,16 +169,14 @@ class _ScrollablePositionedListScrollbarState
     _labelController.hide();
   }
 
-  /// עוקב אחרי מידות התוכן של הרשימה כדי לדעת אם יש בכלל מה לגלול.
-  /// depth אחר מאפס הוא גלילה מקוננת בתוך פריט ואינו רלוונטי למסילה.
+  /// מציג את המסילה כשמידות הרשימה מראות שיש מה לגלול. רק מציג: בקצה הרשימה
+  /// maxScrollExtent מתאפס אף שיש עוד פריטים, וההסתרה נקבעת לפי המיקומים.
   bool _onScrollMetrics(ScrollMetricsNotification notification) {
     if (notification.depth != 0) return false;
-    final canScroll =
-        notification.metrics.maxScrollExtent > precisionErrorTolerance;
-    if (canScroll != _canScroll && mounted) {
-      // המסילה יוצאת מהעץ, ו-MouseRegion שהוסר אינו מקבל onExit שיסתיר את התווית.
-      if (!canScroll) _hideLabel();
-      setState(() => _canScroll = canScroll);
+    if (!_canScroll &&
+        mounted &&
+        notification.metrics.maxScrollExtent > precisionErrorTolerance) {
+      setState(() => _canScroll = true);
     }
     return false;
   }
@@ -293,13 +291,14 @@ class _ScrollablePositionedListScrollbarState
           )
         : 0.0;
 
+    final hasOffscreenItem = minIndex > 0 || maxIndex < widget.itemCount - 1;
+    final canScroll =
+        hasOffscreenItem || totalContent > 1.0 + precisionErrorTolerance;
+    // המסילה יוצאת מהעץ, ו-MouseRegion שהוסר אינו מקבל onExit שיסתיר את התווית.
+    if (!canScroll && _canScroll) _hideLabel();
+
     setState(() {
-      // maxScrollExtent משקף רק את החלון שמרונדר סביב העוגן, ולכן הוא מתאפס
-      // בקצה הרשימה והמסילה הייתה נעלמת. מדידת התוכן עצמה יציבה (issue #1169).
-      final hasOffscreenItem = minIndex > 0 || maxIndex < widget.itemCount - 1;
-      if (hasOffscreenItem || totalContent > 1.0 + precisionErrorTolerance) {
-        _canScroll = true;
-      }
+      _canScroll = canScroll;
       // _maxScrollableIndex חייב להתעדכן גם תוך כדי גרירה: כשהמשתמש גורר
       // לתוך אזור עם פריטים גדולים יותר (לדוגמה — אזור שבו מפרש פתוח, או
       // כותרות עם הרבה תוכן) מספר הפריטים הגלויים יורד והאינדקס המקסימלי
