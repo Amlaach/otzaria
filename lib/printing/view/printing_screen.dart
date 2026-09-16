@@ -25,6 +25,7 @@ import 'package:otzaria/printing/shaped_text/shaped_text_layout.dart';
 import 'package:otzaria/printing/shaped_text/shaped_text_widget.dart';
 import 'package:otzaria/printing/export_restriction_service.dart';
 import 'package:otzaria/printing/safer_print_service.dart';
+import 'package:otzaria/printing/view/slow_preview_hint.dart';
 import 'package:otzaria/printing/word_export_service.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart';
@@ -2353,6 +2354,7 @@ class _PrintingScreenState extends State<PrintingScreen> {
                           'מכין תצוגה מקדימה...',
                           style: TextStyle(color: colorScheme.onSurfaceVariant),
                         ),
+                        const SlowPreviewHint(),
                       ],
                     ),
                   );
