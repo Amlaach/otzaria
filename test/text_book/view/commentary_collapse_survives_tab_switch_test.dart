@@ -151,42 +151,6 @@ TextBookLoaded _loadedStateA() {
 
 // אותו תוכן ("ספר בדיקה"), אבל מפרש חדש בשורה השנייה - כותרת ספר שונה, כך
 // שנוצר מפתח-קבוצה (groupKey) חדש שלא היה קודם ב-_expansionStates.
-TextBookLoaded _loadedStateB() {
-  final link = Link(
-    heRef: 'בראשית ב',
-    index1: 2,
-    path2: 'מפרש בדיקה ב.txt',
-    index2: 1,
-    connectionType: 'COMMENTARY',
-    targetCategoryId: 1,
-    targetFileType: 'txt',
-  );
-
-  return TextBookLoaded(
-    book: TextBook(title: 'ספר בדיקה'),
-    showLeftPane: false,
-    content: const ['שורה א', 'שורה ב'],
-    fontSize: 18,
-    showSplitView: false,
-    activeCommentators: const ['מפרש בדיקה ב'],
-    commentatorGroups: const [],
-    availableCommentators: const ['מפרש בדיקה', 'מפרש בדיקה ב'],
-    links: [link],
-    visibleLinks: const [],
-    linksByLine: {
-      2: [link],
-    },
-    tableOfContents: const [],
-    removeNikud: false,
-    visibleIndices: const [1],
-    selectedIndex: 1,
-    pinLeftPane: false,
-    searchText: '',
-    scrollController: ItemScrollController(),
-    positionsListener: ItemPositionsListener.create(),
-  );
-}
-
 class _TestTextBookBloc extends Bloc<TextBookEvent, TextBookState>
     implements TextBookBloc {
   _TestTextBookBloc(super.initialState) {
