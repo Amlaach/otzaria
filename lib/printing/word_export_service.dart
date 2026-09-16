@@ -442,7 +442,7 @@ const String _numberingXml =
       <w:numFmt w:val="decimal"/>
       <w:lvlText w:val="%1."/>
       <w:lvlJc w:val="right"/>
-      <w:pPr><w:ind w:left="360" w:hanging="360"/><w:bidi/></w:pPr>
+      <w:pPr><w:bidi/><w:ind w:left="360" w:hanging="360"/></w:pPr>
     </w:lvl>
   </w:abstractNum>
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
@@ -464,6 +464,8 @@ const Map<String, String> _wordFontNames = {
 
 int _halfPoints(double pt) => (pt.clamp(6.0, 200.0) * 2).round();
 
+/// הרצות הייצוא מסומנות `w:rtl`, ולכן וורד קורא להן את מאפייני ה-complex
+/// script: הדגשה/נטייה בסגנון חייבות `w:bCs`/`w:iCs` או שלא יחולו על עברית.
 String _buildStylesXml({
   required String fontName,
   required double basePt,
@@ -508,11 +510,11 @@ String _buildStylesXml({
     <w:qFormat/>
     <w:pPr>
       <w:bidi/>
-      <w:jc w:val="center"/>
       <w:spacing w:before="120" w:after="240"/>
+      <w:jc w:val="center"/>
     </w:pPr>
     <w:rPr>
-      <w:b/>
+      <w:b/><w:bCs/>
       <w:sz w:val="${sz(basePt + 4)}"/>
       <w:szCs w:val="${sz(basePt + 4)}"/>
     </w:rPr>
@@ -522,28 +524,28 @@ String _buildStylesXml({
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:bidi/><w:spacing w:before="220" w:after="120"/></w:pPr>
-    <w:rPr><w:b/><w:color w:val="1F3B6D"/><w:sz w:val="${sz(basePt + 2)}"/><w:szCs w:val="${sz(basePt + 2)}"/></w:rPr>
+    <w:rPr><w:b/><w:bCs/><w:color w:val="1F3B6D"/><w:sz w:val="${sz(basePt + 2)}"/><w:szCs w:val="${sz(basePt + 2)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading2">
     <w:name w:val="Heading 2"/>
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:bidi/><w:spacing w:before="180" w:after="100"/></w:pPr>
-    <w:rPr><w:b/><w:color w:val="365F91"/><w:sz w:val="${sz(basePt + 1)}"/><w:szCs w:val="${sz(basePt + 1)}"/></w:rPr>
+    <w:rPr><w:b/><w:bCs/><w:color w:val="365F91"/><w:sz w:val="${sz(basePt + 1)}"/><w:szCs w:val="${sz(basePt + 1)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading3">
     <w:name w:val="Heading 3"/>
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:bidi/><w:spacing w:before="160" w:after="80"/></w:pPr>
-    <w:rPr><w:b/><w:color w:val="5A5A5A"/><w:sz w:val="${sz(basePt)}"/><w:szCs w:val="${sz(basePt)}"/></w:rPr>
+    <w:rPr><w:b/><w:bCs/><w:color w:val="5A5A5A"/><w:sz w:val="${sz(basePt)}"/><w:szCs w:val="${sz(basePt)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading4">
     <w:name w:val="Heading 4"/>
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:bidi/><w:spacing w:before="140" w:after="70"/></w:pPr>
-    <w:rPr><w:b/><w:i/><w:sz w:val="${sz(basePt - 1)}"/><w:szCs w:val="${sz(basePt - 1)}"/></w:rPr>
+    <w:rPr><w:b/><w:bCs/><w:i/><w:iCs/><w:sz w:val="${sz(basePt - 1)}"/><w:szCs w:val="${sz(basePt - 1)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="BodyRtl">
     <w:name w:val="Body RTL"/>
@@ -551,8 +553,8 @@ String _buildStylesXml({
     <w:qFormat/>
     <w:pPr>
       <w:bidi/>
-      <w:jc w:val="both"/>
       <w:spacing w:after="140" w:line="320" w:lineRule="auto"/>
+      <w:jc w:val="both"/>
     </w:pPr>
     <w:rPr>
       <w:sz w:val="${sz(basePt)}"/>
@@ -563,18 +565,18 @@ String _buildStylesXml({
     <w:name w:val="Commentary Heading"/>
     <w:basedOn w:val="Normal"/>
     <w:pPr><w:bidi/><w:spacing w:before="180" w:after="80"/></w:pPr>
-    <w:rPr><w:b/><w:color w:val="6A4C1F"/><w:sz w:val="${sz(basePt - 1)}"/><w:szCs w:val="${sz(basePt - 1)}"/></w:rPr>
+    <w:rPr><w:b/><w:bCs/><w:color w:val="6A4C1F"/><w:sz w:val="${sz(basePt - 1)}"/><w:szCs w:val="${sz(basePt - 1)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="CommentarySubheading">
     <w:name w:val="Commentary Subheading"/>
     <w:basedOn w:val="Normal"/>
-    <w:pPr><w:bidi/><w:ind w:left="240"/><w:spacing w:before="80" w:after="60"/></w:pPr>
-    <w:rPr><w:b/><w:sz w:val="${sz(basePt - 2)}"/><w:szCs w:val="${sz(basePt - 2)}"/></w:rPr>
+    <w:pPr><w:bidi/><w:spacing w:before="80" w:after="60"/><w:ind w:left="240"/></w:pPr>
+    <w:rPr><w:b/><w:bCs/><w:sz w:val="${sz(basePt - 2)}"/><w:szCs w:val="${sz(basePt - 2)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="CommentaryBody">
     <w:name w:val="Commentary Body"/>
     <w:basedOn w:val="BodyRtl"/>
-    <w:pPr><w:bidi/><w:jc w:val="both"/><w:ind w:left="360"/><w:spacing w:after="100" w:line="300" w:lineRule="auto"/></w:pPr>
+    <w:pPr><w:bidi/><w:spacing w:after="100" w:line="300" w:lineRule="auto"/><w:ind w:left="360"/><w:jc w:val="both"/></w:pPr>
     <w:rPr><w:color w:val="444444"/><w:sz w:val="${sz(basePt - 1)}"/><w:szCs w:val="${sz(basePt - 1)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="FootnoteText">
@@ -586,13 +588,13 @@ String _buildStylesXml({
   <w:style w:type="paragraph" w:styleId="Header">
     <w:name w:val="Header"/>
     <w:basedOn w:val="Normal"/>
-    <w:pPr><w:bidi/><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+    <w:pPr><w:bidi/><w:spacing w:after="0"/><w:jc w:val="center"/></w:pPr>
     <w:rPr><w:color w:val="6E6E6E"/><w:sz w:val="${sz(basePt - 3)}"/><w:szCs w:val="${sz(basePt - 3)}"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Footer">
     <w:name w:val="Footer"/>
     <w:basedOn w:val="Normal"/>
-    <w:pPr><w:bidi/><w:jc w:val="center"/><w:spacing w:after="0"/></w:pPr>
+    <w:pPr><w:bidi/><w:spacing w:after="0"/><w:jc w:val="center"/></w:pPr>
     <w:rPr><w:color w:val="6E6E6E"/><w:sz w:val="${sz(basePt - 4)}"/><w:szCs w:val="${sz(basePt - 4)}"/></w:rPr>
   </w:style>
 </w:styles>''';
