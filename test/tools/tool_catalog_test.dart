@@ -296,7 +296,7 @@ void main() {
       );
     });
 
-    test('תוסף מושבת / מוסתר / דורש אינטרנט', () {
+    test('תוסף מושבת / דורש אינטרנט', () {
       final state = PluginSystemLoaded([
         _plugin('p.off', title: 'כבוי', enabled: false),
         _plugin('p.hidden', title: 'מוסתר', showInTools: false),
@@ -312,10 +312,6 @@ void main() {
         ToolUnavailableReason.pluginDisabled,
       );
       expect(
-        (lookup('p.hidden', state: state) as ToolUnavailable).reason,
-        ToolUnavailableReason.pluginHiddenFromTools,
-      );
-      expect(
         (lookup('p.net', state: state, offline: true) as ToolUnavailable)
             .reason,
         ToolUnavailableReason.pluginRequiresInternet,
@@ -323,11 +319,13 @@ void main() {
       expect(lookup('p.net', state: state), isA<ToolAvailable>());
     });
 
-    // הלחיצה על פריט מוצמד בסרגל עוברת דרך lookupTool — חייבת להישאר זמינה
-    test('תוסף מוסתר אך מוצמד-לסרגל נפתח דרך lookupTool', () {
+    // הסתרה משפיעה רק על משגר הכלים: פקדי הסרגל, קיצורים וקישורים פותחים דרך כאן
+    test('תוסף מוסתר מהממשק עדיין נפתח דרך lookupTool', () {
       final state = PluginSystemLoaded([
+        _plugin('p.hidden', showInTools: false),
         _plugin('p.pinned', showInTools: false, pinnedToNavRail: true),
       ]);
+      expect(lookup('p.hidden', state: state), isA<ToolAvailable>());
       expect(lookup('p.pinned', state: state), isA<ToolAvailable>());
     });
   });

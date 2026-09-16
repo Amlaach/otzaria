@@ -123,7 +123,6 @@ enum ToolUnavailableReason {
   notFound,
   builtInHidden,
   pluginDisabled,
-  pluginHiddenFromTools,
   pluginRequiresInternet,
 }
 
@@ -207,13 +206,6 @@ ToolLookupResult lookupTool(
   if (!plugin.enabled) {
     return ToolUnavailable(
       ToolUnavailableReason.pluginDisabled,
-      name: plugin.name,
-    );
-  }
-  // מוצמד-לסרגל נפתח גם כשהוא מוסתר מהכלים — הלחיצה בסרגל עוברת כאן
-  if (!plugin.showInTools && !plugin.pinnedToNavRail) {
-    return ToolUnavailable(
-      ToolUnavailableReason.pluginHiddenFromTools,
       name: plugin.name,
     );
   }

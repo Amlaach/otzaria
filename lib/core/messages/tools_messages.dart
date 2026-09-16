@@ -5,8 +5,6 @@ abstract class ToolsMessages {
       'התוסף "$pluginName" דורש חיבור אינטרנט ולא ניתן לפתוח אותו במצב מנותק';
   static String builtInToolHidden(String toolLabel) =>
       'הכלי "$toolLabel" מוסתר. ניתן להציג אותו דרך הגדרות → ניהול כלים';
-  static String pluginNotShownInTools(String pluginName) =>
-      'התוסף "$pluginName" אינו מוצג בכלים. ניתן להציג אותו דרך הגדרות → ניהול כלים';
   static String toolNotFound(String toolId) => 'הכלי "$toolId" לא נמצא';
 
   // ── מילונים (ארמית וראשי תיבות) ──

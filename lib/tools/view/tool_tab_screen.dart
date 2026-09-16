@@ -285,10 +285,6 @@ class ToolTabScreenState extends State<ToolTabScreen>
         'התוסף "$name" מושבת',
         'ניתן להפעיל אותו דרך הגדרות ← ניהול כלים',
       ),
-      ToolUnavailableReason.pluginHiddenFromTools => (
-        'התוסף "$name" אינו מוצג בכלים',
-        'ניתן להציג אותו דרך הגדרות ← ניהול כלים',
-      ),
       ToolUnavailableReason.pluginRequiresInternet => (
         'התוסף "$name" דורש חיבור אינטרנט',
         'התוסף חסום כל עוד אוצריא במצב מנותק',

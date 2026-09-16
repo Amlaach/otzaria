@@ -139,8 +139,6 @@ String toolUnavailableMessage(
     ToolUnavailableReason.pluginDisabled => LibraryMessages.pluginDisabled(
       name ?? toolId,
     ),
-    ToolUnavailableReason.pluginHiddenFromTools =>
-      ToolsMessages.pluginNotShownInTools(name ?? toolId),
     ToolUnavailableReason.pluginRequiresInternet =>
       ToolsMessages.pluginRequiresInternet(name ?? toolId),
     _ => ToolsMessages.toolNotFound(toolId),
