@@ -1424,6 +1424,109 @@ void main() {
     menuItemFocusNode.dispose();
   });
 
+  group('חיצי המקלדת בחלונית מפרש (issue #1373)', () {
+    test('מקשי גלילה ממופים להיסט, שאר המקשים לא', () {
+      expect(commentaryKeyScrollOffset(LogicalKeyboardKey.arrowDown, 500), 50);
+      expect(commentaryKeyScrollOffset(LogicalKeyboardKey.arrowUp, 500), -50);
+      expect(commentaryKeyScrollOffset(LogicalKeyboardKey.pageDown, 500), 400);
+      expect(commentaryKeyScrollOffset(LogicalKeyboardKey.pageUp, 500), -400);
+      expect(commentaryKeyScrollOffset(LogicalKeyboardKey.keyA, 500), isNull);
+    });
+
+    testWidgets('לחיצה במפרש מפנה אליו את החיצים, ולחיצה בטקסט הראשי מחזירה', (
+      tester,
+    ) async {
+      final textBookBloc = _TestTextBookBloc(_loadedState());
+      final personalNotesBloc = _TestPersonalNotesBloc(
+        PersonalNotesState(
+          isLoading: false,
+          bookId: 'ספר בדיקה',
+          locatedNotes: const [],
+          missingNotes: const [],
+          errorMessage: null,
+          filteredLocatedNotes: const [],
+          filteredMissingNotes: const [],
+        ),
+      );
+      final settingsBloc = _TestSettingsBloc(SettingsState.initial());
+      final commentaryPositions = ItemPositionsListener.create();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiBlocProvider(
+            providers: [
+              BlocProvider<TextBookBloc>.value(value: textBookBloc),
+              BlocProvider<PersonalNotesBloc>.value(value: personalNotesBloc),
+              BlocProvider<SettingsBloc>.value(value: settingsBloc),
+            ],
+            child: Scaffold(
+              body: Row(
+                children: [
+                  Expanded(
+                    child: SimpleTextViewer(
+                      content: const ['שורה א'],
+                      fontSize: 18,
+                      openBookCallback: (_) {},
+                      isMainText: true,
+                    ),
+                  ),
+                  Expanded(
+                    child: SimpleTextViewer(
+                      content: List.generate(60, (i) => 'פירוש $i'),
+                      fontSize: 18,
+                      openBookCallback: (_) {},
+                      isMainText: false,
+                      bookTitle: 'רש"י',
+                      positionsListener: commentaryPositions,
+                      scrollOffsetController: ScrollOffsetController(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        isCommentaryFocusNode(FocusManager.instance.primaryFocus),
+        isFalse,
+      );
+
+      double firstLeadingEdge() => commentaryPositions.itemPositions.value
+          .reduce((a, b) => a.index < b.index ? a : b)
+          .itemLeadingEdge;
+      final edgeBefore = firstLeadingEdge();
+
+      await tester.tap(
+        find.textContaining('פירוש 1', findRichText: true).first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        isCommentaryFocusNode(FocusManager.instance.primaryFocus),
+        isTrue,
+        reason: 'הטקסט הראשי אסור לו לחטוף בחזרה את הפוקוס מהמפרש שנלחץ',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(firstLeadingEdge(), lessThan(edgeBefore));
+
+      await tester.tap(find.textContaining('שורה א', findRichText: true).first);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'PageShapeContentFocus',
+      );
+      expect(
+        isCommentaryFocusNode(FocusManager.instance.primaryFocus),
+        isFalse,
+      );
+      // ממתינים לטיימר זיהוי הלחיצה הכפולה.
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+  });
+
   testWidgets('"העתק" בתפריט ההקשר מנוטרל כשאין טקסט נבחר בעת פתיחת התפריט', (
     tester,
   ) async {

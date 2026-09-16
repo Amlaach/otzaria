@@ -242,6 +242,27 @@ bool isMenuFocusNode(FocusNode? focusNode) {
   return hasMenuAncestor;
 }
 
+/// האם הפוקוס נמצא בתוך חלונית מפרש של צורת הדף.
+bool isCommentaryFocusNode(FocusNode? focusNode) {
+  final viewer = focusNode?.context
+      ?.findAncestorStateOfType<_SimpleTextViewerState>();
+  return viewer != null && !viewer.widget.isMainText;
+}
+
+/// היסט הגלילה של מקש בחלונית מפרש: שורה = 50px, עמוד = 80% מהחלונית
+/// (כמו `ScrollAction` של Flutter). null — המקש אינו מקש גלילה.
+@visibleForTesting
+double? commentaryKeyScrollOffset(
+  LogicalKeyboardKey key,
+  double viewportHeight,
+) {
+  if (key == LogicalKeyboardKey.arrowDown) return 50;
+  if (key == LogicalKeyboardKey.arrowUp) return -50;
+  if (key == LogicalKeyboardKey.pageDown) return viewportHeight * 0.8;
+  if (key == LogicalKeyboardKey.pageUp) return -viewportHeight * 0.8;
+  return null;
+}
+
 bool _hasQuillEditorAncestor(BuildContext context) {
   var hasQuillAncestor = false;
   context.visitAncestorElements((element) {
@@ -870,8 +891,39 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       return;
     }
 
+    // המשתמש לחץ בחלונית מפרש — החיצים שייכים לה עד שילחץ שוב בטקסט הראשי.
+    if (isCommentaryFocusNode(FocusManager.instance.primaryFocus)) {
+      return;
+    }
+
     _shouldPreserveKeyboardFocus = true;
     focusNode.requestFocus();
+  }
+
+  /// גלילת חלונית מפרש במקלדת, בצעדי ברירת המחדל של `ScrollAction` ב-Flutter.
+  bool _scrollCommentaryByKey(LogicalKeyboardKey key) {
+    final controller = widget.scrollOffsetController;
+    final viewportHeight = context.size?.height;
+    if (controller == null || viewportHeight == null) return false;
+    final offset = commentaryKeyScrollOffset(key, viewportHeight);
+    if (offset == null) return false;
+    controller.animateScroll(
+      offset: offset,
+      duration: const Duration(milliseconds: 100),
+    );
+    return true;
+  }
+
+  /// לחיצה מעבירה את מקשי הגלילה לחלונית שנלחצה. אחרי הפריים — כי
+  /// ה-SelectableRegion לוקח את הפוקוס לעצמו באותה לחיצה.
+  void _focusKeyboardAfterPointerDown() {
+    if (widget.isMainText) {
+      _requestKeyboardFocusAfterFrame('pointer-down');
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolvedKeyboardFocusNode.requestFocus();
+    });
   }
 
   void _requestKeyboardFocusAfterFrame(String reason) {
@@ -2720,7 +2772,6 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                             focusNode: _resolvedKeyboardFocusNode,
                             autofocus:
                                 widget.isMainText && _isTabInForeground(),
-                            canRequestFocus: widget.isMainText,
                             onFocusChange: (hasFocus) {
                               if (!hasFocus) {
                                 _ensureKeyboardFocusAfterLoss(
@@ -2737,14 +2788,18 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                                 return KeyEventResult.ignored;
                               }
 
-                              final handled = _handleNavigationLogicalKey(
-                                event.logicalKey,
-                                isControlPressed:
-                                    HardwareKeyboard.instance.isControlPressed,
-                                isShiftPressed:
-                                    HardwareKeyboard.instance.isShiftPressed,
-                                source: 'content-focus',
-                              );
+                              final handled = widget.isMainText
+                                  ? _handleNavigationLogicalKey(
+                                      event.logicalKey,
+                                      isControlPressed: HardwareKeyboard
+                                          .instance
+                                          .isControlPressed,
+                                      isShiftPressed: HardwareKeyboard
+                                          .instance
+                                          .isShiftPressed,
+                                      source: 'content-focus',
+                                    )
+                                  : _scrollCommentaryByKey(event.logicalKey);
                               return handled
                                   ? KeyEventResult.handled
                                   : KeyEventResult.ignored;
@@ -2968,6 +3023,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       child: Listener(
         onPointerDown: (event) {
           if (event.buttons != kPrimaryMouseButton) return;
+          _focusKeyboardAfterPointerDown();
           final root = context.findRenderObject();
           if (root != null) {
             _selectionPointerLineIndex = primaryLineIndex;
