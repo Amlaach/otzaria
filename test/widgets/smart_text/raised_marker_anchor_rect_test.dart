@@ -133,4 +133,52 @@ void main() {
       );
     });
   });
+
+  // issue #1402: בטקסט בר-בחירה getBoxesForSelection מחזיר תיבה בגובה השורה,
+  // והסימון הורם מראש השורה אל השורה שמעליה.
+  testWidgets('בתוך SelectionArea הסימון מורם מהאותיות ולא מראש השורה', (
+    tester,
+  ) async {
+    await _loadReadingFont();
+
+    Future<RaisedMarkerPlacement> placementOf({
+      required bool selectable,
+    }) async {
+      RaisedMarkers.clearCacheForTesting();
+      Widget text = SmartTextWidget(
+        text:
+            'צפהו זהב במקום הנחת פה '
+            '<a class="link-anchor link-anchor-0" '
+            'href="otzaria://anchor?ref=3_0">(ע)</a> היינו עובי השופר',
+        settings: const RenderSettings(
+          fontSize: 26,
+          fontFamily: 'FrankRuhlCLM',
+          lineHeight: 2.2,
+        ),
+        onAnchorTap: (_) {},
+      );
+      if (selectable) text = SelectionArea(child: text);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(body: text),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester
+          .renderObject<RenderRaisedMarkerOverlay>(
+            find.byWidgetPredicate((w) => w is RaisedMarkerOverlay),
+          )
+          .debugPlacements()
+          .single;
+    }
+
+    final plain = await placementOf(selectable: false);
+    final selectable = await placementOf(selectable: true);
+
+    expect(selectable.anchorRect, plain.anchorRect);
+    expect(selectable.paintRect, plain.paintRect);
+  });
 }
