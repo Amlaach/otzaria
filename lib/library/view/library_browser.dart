@@ -293,6 +293,21 @@ LibraryBackspaceAction resolveLibraryBackspaceAction({
       : LibraryBackspaceAction.clearSearch;
 }
 
+/// נתיב האב של קטגוריה לתצוגה בתוצאות ('תנך, ראשונים'); ריק לקטגוריית שורש.
+/// [Library] היא ההורה של עצמה — בלי בדיקת הזהות הטיפוס למעלה לא מסתיים.
+@visibleForTesting
+String categoryParentPath(Category category) {
+  final parts = <String>[];
+  for (
+    var c = category.parent;
+    c != null && c.parent != null && !identical(c, c.parent);
+    c = c.parent
+  ) {
+    parts.insert(0, c.title);
+  }
+  return parts.join(', ');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LibraryBrowser extends StatefulWidget {
@@ -1684,22 +1699,13 @@ class _LibraryBrowserState extends State<LibraryBrowser>
       ),
       title: category.title,
       subtitle: null,
-      pathLine: _categoryParentPath(category),
+      pathLine: categoryParentPath(category),
       level: 0,
       itemStyle: _LibraryListItemStyle.search,
       isSelected: false,
       onTap: () => _openCategory(category),
       focusNode: focusNode,
     );
-  }
-
-  /// נתיב האב של קטגוריה לתצוגה בתוצאות ('תנך, ראשונים'); ריק לקטגוריית שורש.
-  String _categoryParentPath(Category category) {
-    final parts = <String>[];
-    for (var c = category.parent; c != null && c.parent != null; c = c.parent) {
-      parts.insert(0, c.title);
-    }
-    return parts.join(', ');
   }
 
   Widget _buildSearchCategoriesGrid(
