@@ -519,7 +519,54 @@ void main() {
       await tester.tap(chevron);
       await tester.pump();
 
-      expect(toggles, [('/תנ"ך', false)]);
+      // לתנ"ך ילד גלוי יחיד (כתובים) — הפתיחה ממשיכה אליו.
+      expect(toggles, [('/תנ"ך', false), ('/תנ"ך/כתובים', false)]);
+    });
+
+    testWidgets('פתיחה בשרשרת נעצרת ברמה שבה התוצאות מתפצלות', (tester) async {
+      final toggles = <(String, bool)>[];
+      await pumpTree(
+        tester,
+        library: makeLibraryFrom([
+          makeCategory(
+            'תנ"ך',
+            subCategories: [
+              makeCategory(
+                'כתובים',
+                subCategories: [
+                  makeCategory(
+                    'חמש מגילות',
+                    books: [makeBook(8, 'רות', '/תנ"ך/כתובים/חמש מגילות')],
+                  ),
+                ],
+                books: [makeBook(7, 'תהילים', '/תנ"ך/כתובים')],
+              ),
+            ],
+          ),
+        ]),
+        facetCounts: const {
+          '/': 5,
+          '/תנ"ך': 5,
+          '/תנ"ך/כתובים': 5,
+          '/תנ"ך/כתובים/id:7': 3,
+          '/תנ"ך/כתובים/חמש מגילות': 2,
+          '/תנ"ך/כתובים/חמש מגילות/id:8': 2,
+        },
+        onToggleExpand: (path, isExpanded) => toggles.add((path, isExpanded)),
+      );
+
+      final chevron = find.descendant(
+        of: find.ancestor(
+          of: find.text('תנ"ך'),
+          matching: find.byType(NavTreeTile),
+        ),
+        matching: find.byType(IconButton),
+      );
+      await tester.tap(chevron);
+      await tester.pump();
+
+      // בכתובים יש גם ספר וגם תת-קטגוריה — לא ממשיכים ל"חמש מגילות".
+      expect(toggles, [('/תנ"ך', false), ('/תנ"ך/כתובים', false)]);
     });
 
     testWidgets('ספר נבחר שספירתו 0 עדיין מוצג יחד עם ענף האבות שלו', (
