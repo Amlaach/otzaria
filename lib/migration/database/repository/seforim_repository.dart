@@ -1269,6 +1269,19 @@ class SeforimRepository {
   ///
   /// נשען על `line_toc` (שורה → הכותרת שמכילה אותה) ומטפס ב-`parentId`; רמה 0
   /// אינה חלק מהכתובת, כמו במסלול העץ. `null` כשאין מיפוי לשורה.
+  /// הכתובת המלאה של השורה (`heRef`, למשל "בראשית א, ב"), או `null` לשורה בלי.
+  Future<String?> getLineHeRef(int bookId, int lineIndex) async {
+    final db = await _database.database;
+    final rows = db.select(
+      'SELECT heRef FROM line WHERE bookId = ? AND lineIndex = ?',
+      [bookId, lineIndex],
+    );
+    final heRef = rows.isEmpty
+        ? null
+        : (rows.first['heRef'] as String?)?.trim();
+    return heRef == null || heRef.isEmpty ? null : heRef;
+  }
+
   Future<String?> getLineBreadcrumb(int bookId, int lineIndex) async {
     final db = await _database.database;
     final rows = db.select(

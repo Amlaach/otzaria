@@ -73,5 +73,15 @@ void main() {
 
   test('ספר שאינו ב-DB מחזיר null בלי שאילתה', () async {
     expect(await refFromDbLine(TextBook(title: 'ספר קבצים'), 3), isNull);
+    expect(await heRefFromDbLine(TextBook(title: 'ספר קבצים'), 3), isNull);
+  });
+
+  test('heRef של השורה כולל את רמת הפסוק, ו-null לשורה בלי', () async {
+    final raw = await db.database;
+    raw.execute("UPDATE line SET heRef = 'ישעיהו לב, יא' WHERE id = 111");
+    raw.execute("UPDATE line SET heRef = '  ' WHERE id = 112");
+    expect(await repo.getLineHeRef(1, 11), 'ישעיהו לב, יא');
+    expect(await repo.getLineHeRef(1, 12), isNull);
+    expect(await repo.getLineHeRef(1, 0), isNull);
   });
 }

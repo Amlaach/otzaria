@@ -28,6 +28,21 @@ Future<String?> refFromDbLine(TextBook book, int index) async {
   }
 }
 
+/// כתובת השורה המלאה מה-DB, עד רמת הפסוק/ההלכה; `null` לספר
+/// שאינו ב-DB או לשורה בלי `heRef` (כותרות, ספרי קבצים).
+Future<String?> heRefFromDbLine(TextBook book, int index) async {
+  final bookId = book.id;
+  if (bookId == null) return null;
+  try {
+    final repository = book.isUserBook
+        ? await UserBooksDatabaseHolder.instance.repository
+        : SqliteDataProvider.instance.repository;
+    return await repository?.getLineHeRef(bookId, index);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// הגרסה הסינכרונית של [refFromIndex]: מחשבת את הכתובת ההיררכית עבור שורה
 /// [index] מתוך רשימת תוכן עניינים שכבר נטענה לזיכרון. נחוצה למקומות שצריכים
 /// חישוב מיידי בלי `await` (למשל תווית יעד ברחיפה מעל פס הגלילה), והחישוב
