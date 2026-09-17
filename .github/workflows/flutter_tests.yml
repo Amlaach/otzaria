@@ -312,7 +312,12 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        shell: pwsh
+        run: |
+          # תלות git על מונורפו נכשלת ב-checkout ("Filename too long") ומשאירה
+          # עץ חלקי, ואז הבנייה נופלת על קובץ חסר במקום על ה-clone.
+          git config --global core.longpaths true
+          flutter pub get
 
       # זה הצעד שבגללו ה-job קיים: MSBuild, רישום התוספים הנייטיביים
       # ו-cargokit. debug ולא release — הוא מפעיל את אותה שרשרת נייטיבית

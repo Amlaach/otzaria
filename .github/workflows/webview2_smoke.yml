@@ -49,7 +49,12 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        shell: pwsh
+        run: |
+          # תלות git על מונורפו נכשלת ב-checkout ("Filename too long") ומשאירה
+          # עץ חלקי, ואז הבנייה נופלת על קובץ חסר במקום על ה-clone.
+          git config --global core.longpaths true
+          flutter pub get
 
       - name: Run live WebView2 smoke test
         run: >-

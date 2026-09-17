@@ -126,6 +126,8 @@ dependency_overrides:
       path: printing
   # TODO: להחזיר ל-pub.dev כשיתמזג וישוחרר MaikuB/flutter_local_notifications#2826
   # (קריאות WinRT ב-thread ייעודי). עד אז הפורק Otzaria, מוצמד לקומיט.
+  # בהסרה: למחוק גם את core.longpaths מ-workflows של Windows - הוא נדרש
+  # רק בגלל הנתיב העמוק במונורפו הזה.
   flutter_local_notifications_windows:
     git:
       url: https://github.com/Otzaria/flutter_local_notifications
