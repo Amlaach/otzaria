@@ -22,6 +22,7 @@ import 'package:otzaria/navigation/view/custom_title_bar.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
+import 'package:otzaria/shortcuts/shortcut_helper.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
 import 'package:otzaria/tabs/bloc/tabs_event.dart';
 import 'package:otzaria/tabs/bloc/tabs_state.dart';
@@ -61,6 +62,7 @@ void main() {
     'ריחוף על ה-X של כרטיסיה בעלת tooltip כותרת אינו שולח צומת נגישות יתום '
     '(issue #1399)',
     (tester) async {
+      final closeTooltip = ShortcutHelper.formatShortcutForDisplay('ctrl+w');
       final tab = _makeTextTab('ספר א', currentTitle: 'פרק א');
       final tabsBloc = _TestTabsBloc(
         TabsState(tabs: [tab], currentTabIndex: 0),
@@ -91,7 +93,7 @@ void main() {
         reason: 'לכרטיסיה יש tooltip כותרת — התרחיש של הבאג',
       );
 
-      final mouse = await hoverTooltip(tester, 'CTRL + W');
+      final mouse = await hoverTooltip(tester, closeTooltip);
       expect(
         recorder.violations,
         isEmpty,
@@ -99,10 +101,10 @@ void main() {
       );
 
       // ה-tooltip שייך לצומת של כפתור ה-X, לא לצומת הכרטיסיה.
-      final closeNode = tester.getSemantics(find.byTooltip('CTRL + W'));
+      final closeNode = tester.getSemantics(find.byTooltip(closeTooltip));
       expect(
         closeNode,
-        isSemantics(isButton: true, tooltip: 'CTRL + W'),
+        isSemantics(isButton: true, tooltip: closeTooltip),
       );
       expect(
         closeNode.traversalParentIdentifier,
