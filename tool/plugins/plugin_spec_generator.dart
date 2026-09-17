@@ -263,6 +263,7 @@ Map<String, Object?> buildPluginSpec(Directory root) {
     },
     'versions': {
       'whenCondition': env.stringConst('_whenConditionMinVersion'),
+      'headless': env.stringConst('_headlessMinVersion'),
     },
   };
 }
