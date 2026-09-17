@@ -64,6 +64,7 @@ import 'package:otzaria/text_book/view/error_report_dialog.dart';
 import 'package:otzaria/text_book/view/widgets/book_source_banner.dart';
 import 'package:otzaria/tools/dictionary/dictionary_context_menu_entries.dart';
 import 'package:otzaria/tools/dictionary/repository/dictionary_lookup_repository.dart';
+import 'package:otzaria/tools/dictionary/widgets/laaz_commentary_subblock.dart';
 import 'package:otzaria/utils/text/word_at_position.dart';
 import 'package:otzaria/plugins/services/context_menu_registry.dart';
 import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
@@ -2784,6 +2785,17 @@ class _CombinedViewState extends State<CombinedView> {
             ),
           ),
         ),
+        // ספר רש"י כספר ראשי: לעזי השורות מתחתיהן, כמו בחלונית המפרשים.
+        if (isRashiTitle(state.book.title))
+          for (final lineIndex
+              in segment?.sourceLineIndices ?? [primaryLineIndex])
+            SelectionContainer.disabled(
+              child: LaazCommentarySubBlock.forLine(
+                rashiBookTitle: state.book.title,
+                rashiLineIndex: lineIndex + 1,
+                baseFontSize: widget.textSize,
+              ),
+            ),
         // במצב רציף הכרטיס מוצג בתוך הפסקה, מתחת לשורה שנלחצה (issue #875).
         if (!isContinuousParagraph &&
             widget.showCommentaryAsExpansionTiles &&
