@@ -1625,6 +1625,8 @@ const { data } = await Otzaria.call('reader.getCurrentState');
 //   openTabs: [
 //     {
 //       id: 183,          // מזהה מספרי
+//       toolId: null,     // מזהה כלי/תוסף, לכרטיסייה שאינה ספר
+//       isSelf: false,    // true לכרטיסייה של התוסף הקורא
 //       type: "text",     // סוג הספר
 //       source: "library", // מקור הספר
 //       bookId: "בראשית",
@@ -1649,9 +1651,8 @@ const { data } = await Otzaria.call('reader.getCurrentState');
 **הרשאה:** `reader.open` · **מגרסה:** 0.9.97
 
 סוגר את הכרטיסייה שבמקום `index` **ברשימה ש-`reader.getCurrentState`
-מחזיר** (`openTabs`). זו אינה בהכרח מקומה של הכרטיסייה בשורת הכרטיסיות:
-כרטיסיות של כלים ותוספים אינן נכללות ב-`openTabs`, ולכן יש לקחת את האינדקס
-מאותה קריאה ולא ממקום אחר.
+מחזיר** (`openTabs`), הכוללת גם כרטיסיות של כלים ותוספים. תוסף יכול לסגור
+את עצמו דרך הכרטיסייה המסומנת `isSelf`.
 
 אינדקס חסר או מחוץ לתחום מוחזר כ-`error.invalid_params`. הכרטיסייה נכנסת
 לרשימת "נסגרו לאחרונה" ולכן המשתמש יכול לשחזר אותה, בדיוק כמו סגירה ידנית.
@@ -1661,6 +1662,10 @@ const { data: state } = await Otzaria.call('reader.getCurrentState');
 const i = state.openTabs.findIndex((tab) => tab.bookUid === bookUid);
 if (i !== -1) await Otzaria.call('reader.closeTab', { index: i });
 // true
+
+// התוסף סוגר את עצמו
+const self = state.openTabs.findIndex((tab) => tab.isSelf);
+await Otzaria.call('reader.closeTab', { index: self });
 ```
 
 ### `reader.activateTab`
@@ -1928,8 +1933,8 @@ const { data } = await Otzaria.call('workspace.list');
 //    isActive: true, tabCount: 3 }]
 ```
 
-`tabCount` מונה את הכרטיסיות שה-API חושף — אותן כרטיסיות שמופיעות ב-
-`reader.getCurrentState().openTabs`. כרטיסיות של כלים ותוספים אינן נמנות.
+`tabCount` מונה את כל הכרטיסיות בשולחן, כולל כלים ותוספים — כמו
+`reader.getCurrentState().openTabs`.
 בשולחן הפעיל הספירה היא של המצב החי, ולא של העותק השמור בדיסק.
 
 ### `workspace.getActive`

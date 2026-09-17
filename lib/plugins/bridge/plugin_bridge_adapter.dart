@@ -2337,17 +2337,22 @@ class PluginBridgeAdapter {
         }
       case 'getCurrentState':
         final tabsState = _dependencies.tabsBloc.state;
-        final tabs = _pluginVisibleTabs();
+        final tabs = tabsState.tabs;
         final panes = tabs.map(_paneForPlugins).toList();
         // Use the same resolver as getCurrentRef for consistent currentRef values
         final snapshots = await Future.wait(panes.map(resolveReaderLocation));
         final openTabs = List.generate(tabs.length, (i) {
           final t = panes[i];
-          // טאב שאינו ספר (חיפוש) — id/type = null
+          // טאב שאינו ספר (חיפוש, כלי, תוסף) — id/type = null
           final tabBook = t is TextBookTab
               ? t.book
               : (t is PdfBookTab ? t.book : null);
           return {
+            'toolId': t is ToolTab ? t.toolId : null,
+            'isSelf':
+                t is ToolTab &&
+                t.toolId == plugin.pluginId &&
+                t.instanceId == instanceId,
             'id': tabBook?.id,
             'type': tabBook != null ? PluginBookIdentity.typeOf(tabBook) : null,
             'source': tabBook != null
@@ -2402,10 +2407,9 @@ class PluginBridgeAdapter {
           'openTabs': openTabs,
         };
       case 'closeTab':
-        // spec: closeTab({ index }) — האינדקס הוא ברשימה ש-getCurrentState
-        // מחזיר, לא ב-TabsBloc. הטאב עצמו נמסר לאירוע, ולכן אין המרת אינדקס.
+        // spec: closeTab({ index }) — האינדקס ברשימת openTabs של getCurrentState.
         {
-          final target = _pluginVisibleTabAt(args);
+          final target = _tabAt(args);
           final unsaved = unsavedPluginTabs([target]);
           if (unsaved.isNotEmpty) {
             final confirmed = await _dependencies.showWarningDialog(
@@ -2419,14 +2423,12 @@ class PluginBridgeAdapter {
           return true;
         }
       case 'activateTab':
-        // spec: activateTab({ index }) — כאן דרוש דווקא האינדקס הגולמי, ולכן
-        // הוא נגזר מזהות הטאב ולא מהאינדקס שהתוסף מסר.
+        // spec: activateTab({ index })
         {
           final tabsBloc = _dependencies.tabsBloc;
-          final rawIndex = tabsBloc.state.tabs.indexOf(
-            _pluginVisibleTabAt(args),
+          tabsBloc.add(
+            SetCurrentTab(tabsBloc.state.tabs.indexOf(_tabAt(args))),
           );
-          tabsBloc.add(SetCurrentTab(rawIndex));
           return true;
         }
       case 'getCurrentRef':
@@ -3019,8 +3021,8 @@ class PluginBridgeAdapter {
                 // בשולחן הפעיל הטאבים חיים ב-TabsBloc ונשמרים אליו רק במעבר,
                 // ולכן הספירה שלו חייבת לבוא משם ולא מהעותק השמור.
                 'tabCount': workspace.id == activeId
-                    ? _pluginVisibleTabs().length
-                    : workspace.tabs.where(_isPluginVisibleTab).length,
+                    ? _dependencies.tabsBloc.state.tabs.length
+                    : workspace.tabs.length,
               },
             )
             .toList();
@@ -5608,18 +5610,9 @@ class PluginBridgeAdapter {
     };
   }
 
-  /// טאב שה-API חושף לתוסף. טאבי הכלים (ToolTab) מסוננים, ולכן אינדקס
-  /// ברשימה שהתוסף רואה **אינו** האינדקס ב-tabsBloc.state.tabs.
-  static bool _isPluginVisibleTab(OpenedTab tab) => tab is! ToolTab;
-
-  /// הטאבים שה-API חושף, בסדר שבו התוסף מקבל אותם. כל פעולה לפי אינדקס
-  /// שהתוסף מסר חייבת לעבור דרך כאן — אינדקס גולמי יפגע בטאב הלא נכון.
-  List<OpenedTab> _pluginVisibleTabs() =>
-      _dependencies.tabsBloc.state.tabs.where(_isPluginVisibleTab).toList();
-
-  /// הטאב שבאינדקס `index` **ברשימה שהתוסף רואה** ([_pluginVisibleTabs]).
+  /// הטאב שבאינדקס `index` שהתוסף מסר (כמו ב-`openTabs`).
   /// אינדקס חסר או מחוץ לתחום נדחה כשגיאת ארגומנטים ולא כחריגה.
-  OpenedTab _pluginVisibleTabAt(Map<String, dynamic> args) {
+  OpenedTab _tabAt(Map<String, dynamic> args) {
     final rawIndex = args['index'];
     if (rawIndex is! num ||
         !rawIndex.isFinite ||
@@ -5627,7 +5620,7 @@ class PluginBridgeAdapter {
       throw Exception('error.invalid_params: index must be an integer');
     }
     final index = rawIndex.toInt();
-    final tabs = _pluginVisibleTabs();
+    final tabs = _dependencies.tabsBloc.state.tabs;
     if (index < 0 || index >= tabs.length) {
       throw Exception(
         'error.invalid_params: index $index out of range '

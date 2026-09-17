@@ -604,8 +604,8 @@ export interface WorkspaceListEntry {
   name: string;
   isActive: boolean;
   /**
-   * מספר הכרטיסיות שה-API חושף — אותן כרטיסיות שב-`ReaderState.openTabs`.
-   * כרטיסיות של כלים ותוספים אינן נמנות. בשולחן הפעיל זו הספירה החיה.
+   * מספר הכרטיסיות בשולחן, כולל כלים ותוספים — כמו `ReaderState.openTabs`.
+   * בשולחן הפעיל זו הספירה החיה.
    */
   tabCount: number;
 }
@@ -647,8 +647,8 @@ export interface BookmarkEntry extends BookIdentity {
 /**
  * ארגומנטים ל-`reader.closeTab` ול-`reader.activateTab`.
  *
- * ה-index הוא המקום ב-`ReaderState.openTabs` — לא מקומה של הכרטיסייה בשורת
- * הכרטיסיות. אינדקס מחוץ לתחום מוחזר כ-`error.invalid_params`.
+ * ה-index הוא המקום ב-`ReaderState.openTabs`, כולל כרטיסיות כלים ותוספים.
+ * אינדקס מחוץ לתחום מוחזר כ-`error.invalid_params`.
  */
 export interface ReaderTabIndexArgs {
   index: number;
@@ -778,8 +778,12 @@ export interface ReaderState {
   currentIndex: number;
   currentRef: string | null;
   openTabs: Array<{
-    /** Canonical book id (`null` for a non-book tab such as search). */
+    /** Canonical book id (`null` for a non-book tab such as search or a tool). */
     id: number | null;
+    /** מזהה הכלי או התוסף (`builtin.*` / `pluginId`); `null` לכרטיסייה שאינה כלי. */
+    toolId: string | null;
+    /** `true` לכרטיסייה של התוסף הקורא עצמו. */
+    isSelf: boolean;
     type: BookType | null;
     source: 'library' | 'user' | 'external' | null;
     bookId: string;
