@@ -289,6 +289,10 @@ class ToolTabScreenState extends State<ToolTabScreen>
         'התוסף "$name" דורש חיבור אינטרנט',
         'התוסף חסום כל עוד אוצריא במצב מנותק',
       ),
+      ToolUnavailableReason.pluginHeadless => (
+        'התוסף "$name" פועל ברקע בלבד',
+        'אין לו כרטיסייה לפתוח',
+      ),
       _ => ('הכלי "$name" אינו זמין', 'ייתכן שהוסר מהתוכנה'),
     };
 

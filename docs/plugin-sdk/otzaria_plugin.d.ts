@@ -37,6 +37,12 @@
  *   If `defaultPinned: false`, the user must manually pin the plugin from the
  *   plugin side panel (🧩 button) before it appears as a tab.
  *
+ * HEADLESS PLUGINS (manifest: headless, since 0.9.98)
+ *   `"headless": true` + `"entrypoint": "main.js"` runs the script in the
+ *   background engine only — no tab, no tools-panel entry, no nav-rail pin.
+ *   The script loads as a classic script (no ES modules). Requires
+ *   `app.run_on_startup` and a `contributes.startup` activation trigger.
+ *
  * RTL SUPPORT
  *   Add `dir="rtl"` to the <html> element for Hebrew / Arabic content:
  *     <html dir="rtl" lang="he">

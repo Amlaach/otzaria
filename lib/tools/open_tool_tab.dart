@@ -141,6 +141,9 @@ String toolUnavailableMessage(
     ),
     ToolUnavailableReason.pluginRequiresInternet =>
       ToolsMessages.pluginRequiresInternet(name ?? toolId),
+    ToolUnavailableReason.pluginHeadless => ToolsMessages.pluginIsHeadless(
+      name ?? toolId,
+    ),
     _ => ToolsMessages.toolNotFound(toolId),
   };
 }

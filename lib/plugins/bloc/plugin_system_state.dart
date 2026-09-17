@@ -30,11 +30,17 @@ class PluginSystemLoaded extends PluginSystemState {
   /// יתפוס גם לשונית בכלים — הצגה כפולה מיותרת.
   List<InstalledPlugin> get pinnedPlugins => plugins
       .where(
-        (p) => p.pinned && p.enabled && p.showInTools && !p.pinnedToNavRail,
+        (p) =>
+            p.pinned &&
+            p.enabled &&
+            p.showInTools &&
+            p.hasToolPage &&
+            !p.pinnedToNavRail,
       )
       .toList();
-  List<InstalledPlugin> get pluginsPinnedToNavRail =>
-      plugins.where((p) => p.pinnedToNavRail && p.enabled).toList();
+  List<InstalledPlugin> get pluginsPinnedToNavRail => plugins
+      .where((p) => p.pinnedToNavRail && p.enabled && p.hasToolPage)
+      .toList();
 }
 
 class PluginSystemError extends PluginSystemState {

@@ -124,6 +124,9 @@ enum ToolUnavailableReason {
   builtInHidden,
   pluginDisabled,
   pluginRequiresInternet,
+
+  /// תוסף ללא ממשק — פועל ברקע בלבד ואין לו כרטיסייה.
+  pluginHeadless,
 }
 
 /// תוצאת חיפוש כלי לפי מזהה: הרשומה עצמה, או הסיבה שאינה זמינה.
@@ -163,7 +166,7 @@ List<ToolCatalogEntry> buildToolCatalog({
   if (pluginState is PluginSystemLoaded) {
     for (final plugin in pluginState.plugins) {
       if (!plugin.enabled) continue;
-      if (!plugin.showInTools) continue;
+      if (!plugin.showInTools || !plugin.hasToolPage) continue;
       if (isOfflineMode && plugin.blockedInOfflineMode) continue;
       entries.add(ToolCatalogEntry.fromPlugin(plugin));
     }
@@ -212,6 +215,12 @@ ToolLookupResult lookupTool(
   if (isOfflineMode && plugin.blockedInOfflineMode) {
     return ToolUnavailable(
       ToolUnavailableReason.pluginRequiresInternet,
+      name: plugin.name,
+    );
+  }
+  if (!plugin.hasToolPage) {
+    return ToolUnavailable(
+      ToolUnavailableReason.pluginHeadless,
       name: plugin.name,
     );
   }

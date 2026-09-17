@@ -22,6 +22,10 @@ class PluginManifest {
   /// תוסף הרקע נופל ל-[entrypoint] הרגיל.
   final String? backgroundEntrypoint;
   final String? icon;
+
+  /// תוסף ללא ממשק: [entrypoint] הוא קובץ JS שרץ רק במנוע הרקע, ואין לו
+  /// כרטיסייה, כניסה בפאנל הכלים או הצמדה לסרגל הניווט.
+  final bool headless;
   final String minAppVersion;
   final String? maxAppVersion;
   final String sdkVersion;
@@ -73,6 +77,7 @@ class PluginManifest {
     required this.entrypoint,
     this.backgroundEntrypoint,
     this.icon,
+    this.headless = false,
     required this.minAppVersion,
     this.maxAppVersion,
     required this.sdkVersion,
@@ -113,6 +118,7 @@ class PluginManifest {
       entrypoint: json['entrypoint'] as String,
       backgroundEntrypoint: background['entrypoint'] as String?,
       icon: json['icon'] as String?,
+      headless: json['headless'] == true,
       minAppVersion: json['minAppVersion'] as String? ?? '0.0.0',
       maxAppVersion: json['maxAppVersion'] as String?,
       sdkVersion: json['sdkVersion'] as String? ?? '1.x',
@@ -162,6 +168,7 @@ class PluginManifest {
       'homepage': homepage,
       'entrypoint': entrypoint,
       'icon': icon,
+      if (headless) 'headless': true,
       'minAppVersion': minAppVersion,
       'maxAppVersion': maxAppVersion,
       'sdkVersion': sdkVersion,

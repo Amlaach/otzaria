@@ -9,11 +9,13 @@ import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
+import 'package:otzaria/plugins/bloc/plugin_updates_cubit.dart';
 import 'package:otzaria/plugins/models/installed_plugin.dart';
 import 'package:otzaria/plugins/models/plugin_valid_permissions.dart';
 import 'package:otzaria/plugins/utils/plugin_icon_resolver.dart';
 import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
+import 'package:otzaria/plugins/view/widgets/plugin_update_chip.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
@@ -107,6 +109,8 @@ class _ToolsManagementPanelState extends State<ToolsManagementPanel> {
   final Map<String, GlobalKey<_AnimatedPluginMoveWrapperState>>
   _moveWrapperKeys = {};
 
+  bool _updateCheckRequested = false;
+
   /// מצב פתיחה/סגירה של אזור הכלים המובנים — סגור כברירת מחדל.
   bool _builtInExpanded = false;
 
@@ -119,6 +123,16 @@ class _ToolsManagementPanelState extends State<ToolsManagementPanel> {
     final registry = SettingsSearchRegistry.instance;
     _builtInFlash = registry.flashNotifierFor(_builtInCardId);
     _builtInFlash.addListener(_onBuiltInFlash);
+  }
+
+  /// לתוסף ללא ממשק אין כרטיסייה שבה בודקים עדכונים, ולכן בודקים כאן.
+  void _requestHeadlessUpdateCheck(List<InstalledPlugin> plugins) {
+    if (_updateCheckRequested || plugins.every((p) => p.hasToolPage)) return;
+    _updateCheckRequested = true;
+    final cubit = context.read<PluginUpdatesCubit>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) cubit.ensureChecked(plugins);
+    });
   }
 
   @override
@@ -182,6 +196,7 @@ class _ToolsManagementPanelState extends State<ToolsManagementPanel> {
                 ? pluginState.plugins
                 : const <InstalledPlugin>[];
             _pruneStaleSelection(plugins);
+            _requestHeadlessUpdateCheck(plugins);
             return LayoutBuilder(
               builder: (context, constraints) {
                 final rowMaxWidth = constraints.maxWidth;
@@ -424,15 +439,19 @@ class _ActionBar extends StatelessWidget {
   Iterable<InstalledPlugin> get _selectedPlugins =>
       plugins.where((p) => selectedIds.contains(p.pluginId));
 
+  /// הנבחרים שיש להם דף — רק עליהם חלות הסתרה והצמדה לניווט.
+  Iterable<InstalledPlugin> get _selectedPagePlugins =>
+      _selectedPlugins.where((p) => p.hasToolPage);
+
   /// האם כל התוספים שנבחרו כבר מוסתרים ממסך הכלים?
   bool get _allSelectedHiddenFromTools {
-    final selected = _selectedPlugins;
+    final selected = _selectedPagePlugins;
     return selected.isNotEmpty && selected.every((p) => !p.showInTools);
   }
 
   /// האם כל התוספים שנבחרו כבר מוצמדים ל-nav rail?
   bool get _allSelectedArePinnedToNav {
-    final selected = _selectedPlugins;
+    final selected = _selectedPagePlugins;
     return selected.isNotEmpty && selected.every((p) => p.pinnedToNavRail);
   }
 
@@ -482,7 +501,7 @@ class _ActionBar extends StatelessWidget {
               text: context.settingsText(
                 _allSelectedHiddenFromTools ? 'הצג' : 'הסתר',
               ),
-              onPressed: hasSelection
+              onPressed: _selectedPagePlugins.isNotEmpty
                   ? () => _onToggleShowInTools(context)
                   : null,
             ),
@@ -493,7 +512,7 @@ class _ActionBar extends StatelessWidget {
               text: context.settingsText(
                 _allSelectedArePinnedToNav ? 'הסר מניווט' : 'הצמד לניווט',
               ),
-              onPressed: hasSelection
+              onPressed: _selectedPagePlugins.isNotEmpty
                   ? () => _onTogglePinNavRail(context)
                   : null,
             ),
@@ -552,7 +571,7 @@ class _ActionBar extends StatelessWidget {
   void _onToggleShowInTools(BuildContext context) {
     final shouldShow = _allSelectedHiddenFromTools;
     final bloc = context.read<PluginSystemBloc>();
-    for (final p in _selectedPlugins) {
+    for (final p in _selectedPagePlugins) {
       bloc.add(
         SetPluginShowInToolsRequested(
           pluginId: p.pluginId,
@@ -570,7 +589,7 @@ class _ActionBar extends StatelessWidget {
   void _onTogglePinNavRail(BuildContext context) {
     final shouldPin = !_allSelectedArePinnedToNav;
     final bloc = context.read<PluginSystemBloc>();
-    for (final p in _selectedPlugins) {
+    for (final p in _selectedPagePlugins) {
       if (shouldPin) {
         bloc.add(PinPluginToNavRailRequested(p.pluginId));
       } else {
@@ -920,8 +939,9 @@ class _PluginRowState extends State<_PluginRow> {
     return _StatusBadges(
       version: plugin.version,
       disabled: disabled,
-      hidden: !plugin.showInTools,
-      pinnedToNavRail: plugin.pinnedToNavRail,
+      hidden: plugin.hasToolPage && !plugin.showInTools,
+      pinnedToNavRail: plugin.hasToolPage && plugin.pinnedToNavRail,
+      backgroundOnly: !plugin.hasToolPage,
       networkDeclared: plugin.networkAccessGranted,
       networkRevoked:
           plugin.manifest.networkEnabled && !plugin.networkAccessGranted,
@@ -956,7 +976,18 @@ class _PluginRowState extends State<_PluginRow> {
         ),
       ];
     }
+    final update = plugin.hasToolPage
+        ? null
+        : context.read<PluginUpdatesCubit>().state.updateFor(plugin.pluginId);
     return [
+      if (shouldShowUpdateChip(update, plugin.version))
+        _RowAction(
+          icon: FluentIcons.arrow_sync_24_regular,
+          label: context.settingsText('עדכון זמין'),
+          onTap: () => context.read<PluginSystemBloc>().add(
+            InstallRemotePluginRequested(update!.downloadUrl),
+          ),
+        ),
       if (plugin.manifest.permissions.contains(pluginNetworkAccessPermission))
         _RowAction(
           icon: FluentIcons.globe_prohibited_24_regular,
@@ -984,26 +1015,28 @@ class _PluginRowState extends State<_PluginRow> {
         label: context.settingsText('ניהול הרשאות'),
         onTap: () => showPluginSettingsDialog(context, plugin),
       ),
-      _RowAction(
-        icon: plugin.pinnedToNavRail
-            ? FluentIcons.pin_24_filled
-            : FluentIcons.pin_24_regular,
-        isPin: true,
-        selected: plugin.pinnedToNavRail,
-        label: plugin.pinnedToNavRail
-            ? context.settingsText('הסר מסרגל הניווט')
-            : context.settingsText('הצמד לסרגל הניווט'),
-        onTap: widget.onTogglePinNavRail,
-      ),
-      _RowAction(
-        icon: FluentIcons.eye_off_24_regular,
-        selectedIcon: FluentIcons.eye_24_regular,
-        selected: plugin.showInTools,
-        label: context.settingsText(
-          plugin.showInTools ? 'הסתר מהממשק' : 'הצג בממשק',
+      if (plugin.hasToolPage) ...[
+        _RowAction(
+          icon: plugin.pinnedToNavRail
+              ? FluentIcons.pin_24_filled
+              : FluentIcons.pin_24_regular,
+          isPin: true,
+          selected: plugin.pinnedToNavRail,
+          label: plugin.pinnedToNavRail
+              ? context.settingsText('הסר מסרגל הניווט')
+              : context.settingsText('הצמד לסרגל הניווט'),
+          onTap: widget.onTogglePinNavRail,
         ),
-        onTap: widget.onToggleHide,
-      ),
+        _RowAction(
+          icon: FluentIcons.eye_off_24_regular,
+          selectedIcon: FluentIcons.eye_24_regular,
+          selected: plugin.showInTools,
+          label: context.settingsText(
+            plugin.showInTools ? 'הסתר מהממשק' : 'הצג בממשק',
+          ),
+          onTap: widget.onToggleHide,
+        ),
+      ],
       _RowAction(
         icon: FluentIcons.pause_circle_24_regular,
         label: context.settingsText('השבת'),
@@ -1115,6 +1148,8 @@ class _PluginRowState extends State<_PluginRow> {
   @override
   Widget build(BuildContext context) {
     final plugin = widget.plugin;
+    // פעולת "עדכון זמין" נגזרת מהקוביט — צריך להיבנות מחדש כשהבדיקה מסתיימת.
+    if (!plugin.hasToolPage) context.watch<PluginUpdatesCubit>();
     final icon =
         pluginIconFromName(plugin.manifest.toolTabIconName) ??
         FluentIcons.puzzle_piece_24_regular;
@@ -1246,6 +1281,7 @@ class _StatusBadges extends StatelessWidget {
   final bool disabled;
   final bool hidden;
   final bool pinnedToNavRail;
+  final bool backgroundOnly;
   final bool networkDeclared;
   final bool networkRevoked;
 
@@ -1254,6 +1290,7 @@ class _StatusBadges extends StatelessWidget {
     this.disabled = false,
     this.hidden = false,
     this.pinnedToNavRail = false,
+    this.backgroundOnly = false,
     this.networkDeclared = false,
     this.networkRevoked = false,
   });
@@ -1284,6 +1321,17 @@ class _StatusBadges extends StatelessWidget {
           cs.surfaceContainerHighest,
           cs.onSurfaceVariant,
           FluentIcons.eye_off_24_regular,
+        ),
+      );
+    }
+    if (backgroundOnly) {
+      chips.add(
+        _badge(
+          context,
+          context.settingsText('ללא ממשק'),
+          cs.surfaceContainerHighest,
+          cs.onSurfaceVariant,
+          FluentIcons.code_24_regular,
         ),
       );
     }

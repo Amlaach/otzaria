@@ -33,6 +33,7 @@ import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/services/plugin_download_handler.dart';
 import 'package:otzaria/plugins/services/plugin_webview_permission_gate.dart';
 import 'package:otzaria/plugins/services/plugin_file_server.dart';
+import 'package:otzaria/plugins/services/plugin_headless_shell.dart';
 import 'package:otzaria/plugins/services/plugin_ref_line_resolver.dart';
 import 'package:otzaria/plugins/services/plugin_lazy_activation_service.dart';
 import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
@@ -467,6 +468,8 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
     // את האפליקציה כולה, ולכן נשארים עם ה-root.
     _localHtmlPath = widget.plugin.isLocalhostDev
         ? widget.plugin.devRootPath!
+        : _isHeadless
+        ? pluginHeadlessShellPath(widget.plugin.resolvedRootPath)
         : '${widget.plugin.resolvedRootPath}/${widget.plugin.backgroundEntrypointPath}';
 
     final historyBloc = context.read<HistoryBloc>();
@@ -733,9 +736,15 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
     super.dispose();
   }
 
+  bool get _isHeadless =>
+      widget.plugin.manifest.headless && !widget.plugin.isLocalhostDev;
+
   @override
   Widget build(BuildContext context) {
-    if (!widget.plugin.isLocalhostDev && !File(_localHtmlPath).existsSync()) {
+    final entryFile = _isHeadless
+        ? p.join(widget.plugin.resolvedRootPath, widget.plugin.entrypointPath)
+        : _localHtmlPath;
+    if (!widget.plugin.isLocalhostDev && !File(entryFile).existsSync()) {
       return const SizedBox.shrink();
     }
 
@@ -750,6 +759,7 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         url: request.url,
         pluginId: widget.plugin.pluginId,
         rootPath: widget.plugin.resolvedRootPath,
+        headlessEntrypoint: _isHeadless ? widget.plugin.entrypointPath : null,
       ),
       initialSettings: InAppWebViewSettings(
         allowFileAccessFromFileURLs: false,
@@ -901,6 +911,22 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         );
         try {
           final uri = request.url;
+          if (_isHeadless &&
+              uri.scheme == 'file' &&
+              isPluginHeadlessShellPath(
+                uri.toFilePath(),
+                widget.plugin.resolvedRootPath,
+              )) {
+            return WebResourceResponse(
+              contentType: 'text/html',
+              contentEncoding: 'utf-8',
+              statusCode: 200,
+              reasonPhrase: 'OK',
+              data: utf8.encode(
+                pluginHeadlessShellHtml(widget.plugin.entrypointPath),
+              ),
+            );
+          }
           if (uri.scheme == 'file') {
             final normalizedUri = p.normalize(uri.toFilePath());
             final normalizedInstall = p.normalize(

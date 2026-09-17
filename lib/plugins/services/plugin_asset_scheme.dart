@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:otzaria/plugins/services/plugin_headless_shell.dart';
 import 'package:path/path.dart' as p;
 
 /// הסכימה שדרכה מוגשים קובצי התוסף במקום `file://`.
@@ -35,13 +37,22 @@ WebUri pluginAssetUri({
 ///
 /// מחזירה `null` כשהנתיב חורג מתיקיית התוסף או שהקובץ אינו קיים — ואז
 /// ה-WebView מקבל כשל טעינה, בדיוק כמו בקובץ חסר תחת `file://`.
+/// [headlessEntrypoint] מגיש גם את המעטפת הווירטואלית של תוסף ללא ממשק.
 Future<CustomSchemeResponse?> servePluginAsset({
   required WebUri url,
   required String pluginId,
   required String rootPath,
+  String? headlessEntrypoint,
 }) async {
   // host אחר הוא origin אחר — התוסף אינו רשאי לייצר לעצמו כאלה.
   if (url.host != pluginAssetHost(pluginId)) return null;
+  if (headlessEntrypoint != null &&
+      url.path == '/$pluginHeadlessShellFileName') {
+    return CustomSchemeResponse(
+      data: utf8.encode(pluginHeadlessShellHtml(headlessEntrypoint)),
+      contentType: 'text/html',
+    );
+  }
   final file = resolvePluginAssetFile(urlPath: url.path, rootPath: rootPath);
   if (file == null) return null;
   try {

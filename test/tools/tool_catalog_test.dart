@@ -17,6 +17,7 @@ InstalledPlugin _plugin(
   bool allowOrderGranted = true,
   bool networkEnabled = false,
   bool networkAccessGranted = false,
+  bool headless = false,
 }) {
   return InstalledPlugin(
     pluginId: id,
@@ -39,6 +40,7 @@ InstalledPlugin _plugin(
       author: 'tester',
       homepage: '',
       entrypoint: 'index.html',
+      headless: headless,
       minAppVersion: '1.0.0',
       sdkVersion: '1.x',
       permissions: const [],
@@ -95,6 +97,19 @@ void main() {
       expect(ids, contains('p.on'));
       expect(ids, isNot(contains('p.disabled')));
       expect(ids, isNot(contains('p.hidden')));
+    });
+
+    test('תוסף ללא ממשק אינו מופיע בכלים ואינו מוצמד לסרגל', () {
+      final state = PluginSystemLoaded([
+        _plugin('p.headless', headless: true, pinnedToNavRail: true),
+      ]);
+      final entries = buildToolCatalog(
+        hiddenBuiltInToolIds: const {},
+        isOfflineMode: false,
+        pluginState: state,
+      );
+      expect(entries.map((e) => e.toolId), isNot(contains('p.headless')));
+      expect(state.pluginsPinnedToNavRail, isEmpty);
     });
 
     test('תוסף מוסתר לא מופיע בכלים גם כשהוא מוצמד לסרגל (issue #966)', () {
@@ -327,6 +342,23 @@ void main() {
       ]);
       expect(lookup('p.hidden', state: state), isA<ToolAvailable>());
       expect(lookup('p.pinned', state: state), isA<ToolAvailable>());
+    });
+
+    test('תוסף ללא ממשק אינו נפתח ככרטיסייה ומדווח סיבה ושם', () {
+      final state = PluginSystemLoaded([
+        _plugin('p.headless', title: 'רקע', headless: true),
+      ]);
+      final result = lookup('p.headless', state: state);
+      expect(
+        result,
+        isA<ToolUnavailable>()
+            .having(
+              (r) => r.reason,
+              'reason',
+              ToolUnavailableReason.pluginHeadless,
+            )
+            .having((r) => r.name, 'name', 'רקע'),
+      );
     });
   });
 }

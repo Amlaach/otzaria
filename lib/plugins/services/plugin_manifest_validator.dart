@@ -183,6 +183,21 @@ class PluginManifestValidator {
       );
     }
 
+    if (manifest.headless) {
+      if (p.extension(manifest.entrypoint).toLowerCase() != '.js') {
+        errors.add(
+          'בתוסף ללא ממשק (headless) קובץ הכניסה חייב להיות קובץ JS, '
+          'ולא "${manifest.entrypoint}"',
+        );
+      }
+      if (manifest.backgroundEntrypoint != null) {
+        errors.add(
+          'תוסף ללא ממשק (headless) אינו יכול להצהיר על '
+          'contributes.background.entrypoint — קובץ הכניסה עצמו רץ ברקע',
+        );
+      }
+    }
+
     if (!skipFileValidation) {
       final entrypointPath = p.normalize(
         p.join(directoryPath, manifest.entrypoint),
