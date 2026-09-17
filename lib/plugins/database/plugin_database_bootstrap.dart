@@ -31,7 +31,7 @@ PluginDatabaseSource buildExternalCatalogPluginSource(String databasePath) {
     databasePath: databasePath,
     readOnly: true,
     policy: PluginDatabasePolicy(
-      tables: const {'otzaria_hebrew_books', 'hebrew_books'},
+      tables: const {'otzaria_hebrew_books', 'hebrew_books', 'otzar_hahochma'},
       columnsByTable: const {
         'otzaria_hebrew_books': {
           'hb_id',
@@ -40,7 +40,26 @@ PluginDatabaseSource buildExternalCatalogPluginSource(String databasePath) {
           'is_best',
           'confidence',
         },
-        'hebrew_books': {'id_book', 'title', 'author'},
+        'hebrew_books': {
+          'id_book',
+          'title',
+          'author',
+          'printing_place',
+          'printing_year',
+          'pub_date',
+          'pages',
+          'tags',
+        },
+        'otzar_hahochma': {
+          'book_id',
+          'title',
+          'authors',
+          'places',
+          'from_year',
+          'to_year',
+          'subjects',
+          'pages',
+        },
       },
       allowedJoins: const [
         PluginJoinRule(

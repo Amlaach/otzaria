@@ -3582,9 +3582,41 @@ API זה מאפשר לתוסף לקרוא נתונים ממסדי נתונים S
 | טבלה | עמודות |
 |------|--------|
 | `otzaria_hebrew_books` | `hb_id`,‏ `otzaria_id`,‏ `otzaria_title`,‏ `is_best`,‏ `confidence` |
-| `hebrew_books` | `id_book`,‏ `title`,‏ `author` |
+| `hebrew_books` | `id_book`,‏ `title`,‏ `author`,‏ `printing_place`,‏ `printing_year`,‏ `pub_date`,‏ `pages`,‏ `tags` |
+| `otzar_hahochma` | `book_id`,‏ `title`,‏ `authors`,‏ `places`,‏ `from_year`,‏ `to_year`,‏ `subjects`,‏ `pages` |
 
 join יחיד מותר: `otzaria_hebrew_books.hb_id = hebrew_books.id_book`.
+
+מגרסה 0.9.98 נחשפות גם טבלת אוצר החכמה והעמודות הביבליוגרפיות של היברובוקס.
+`authors`,‏ `subjects` ו-`tags` הם מערכי JSON שמורים כטקסט. `pub_date` הוא
+שנה לועזית, ו-`printing_year` שנה עברית כטקסט.
+
+```javascript
+const { data } = await Otzaria.call('database.query', {
+  sourceId: 'external_catalog',
+  from: { table: 'otzar_hahochma' },
+  select: ['book_id', 'title', 'authors', 'places', 'from_year', 'to_year', 'subjects', 'pages']
+    .map((column) => ({ expr: column })),
+  where: { op: 'in', left: 'book_id', value: [1234, 5678] },
+  limit: 100,
+  rowFormat: 'object'
+});
+```
+
+פתיחת ספר של אוצר החכמה לפי `book_id` (נפתח בדפדפן, כמו מהספרייה):
+
+```javascript
+await Otzaria.call('reader.openBook', { external: { provider: 'otzar', id: 1234 } });
+```
+
+האם המשתמש מציג תוצאות אוצר החכמה — שתי הגדרות, שתיהן חייבות להיות דלוקות:
+
+```javascript
+const { data } = await Otzaria.call('settings.getMany', {
+  keys: ['key-show-external-books', 'key-show-otzar-hachochma']
+});
+const showsOtzar = data['key-show-external-books'] && data['key-show-otzar-hachochma'];
+```
 
 ### מגבלות ה-policy
 

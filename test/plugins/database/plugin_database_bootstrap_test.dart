@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/plugins/database/plugin_database_bootstrap.dart';
 
 void main() {
-  test('מקור הקטלוג החיצוני חושף רק את טבלאות ההשוואה הנחוצות', () {
+  test('מקור הקטלוג החיצוני חושף את טבלאות הקטלוג ואת טבלת המיפוי', () {
     final source = buildExternalCatalogPluginSource('/catalog.db');
 
     expect(source.sourceId, pluginExternalCatalogSourceId);
@@ -10,12 +10,32 @@ void main() {
     expect(source.policy.tables, {
       'otzaria_hebrew_books',
       'hebrew_books',
+      'otzar_hahochma',
     });
-    expect(source.policy.isTableAllowed('otzar_hahochma'), isFalse);
-    expect(
-      source.policy.isColumnAllowed('hebrew_books', 'printing_place'),
-      isFalse,
-    );
+    expect(source.policy.isTableAllowed('db_meta'), isFalse);
+    for (final column in const [
+      'printing_place',
+      'printing_year',
+      'pub_date',
+      'pages',
+      'tags',
+    ]) {
+      expect(source.policy.isColumnAllowed('hebrew_books', column), isTrue);
+    }
+    for (final column in const [
+      'book_id',
+      'title',
+      'authors',
+      'places',
+      'from_year',
+      'to_year',
+      'subjects',
+      'pages',
+    ]) {
+      expect(source.policy.isColumnAllowed('otzar_hahochma', column), isTrue);
+    }
+    // המקור מוגבל ל-8 עמודות בשאילתה — כל הטבלה נקראת בשאילתה אחת.
+    expect(source.policy.maxColumns, 8);
     expect(source.policy.maxJoins, 1);
     expect(source.policy.maxOffset, 0);
   });
