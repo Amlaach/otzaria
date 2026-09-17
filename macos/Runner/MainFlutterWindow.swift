@@ -1,23 +1,33 @@
 import Cocoa
 import FlutterMacOS
 
-/// רק Flutter מחליט אם גרירה מזיזה את החלון: AppKit גורר משורת הכותרת השקופה
-/// גם מעל כרטיסיה, ולכן בזמן לחיצה החלון נעול עד `startDragging` → `performDrag`.
+/// רק Flutter מחליט אם גרירה מזיזה את החלון: התוכן מצויר מתחת לשורת הכותרת
+/// השקופה, ולכן החלון נעול קבוע ורק `startDragging` → `performDrag` משחרר.
+///
+/// ⚠️ הנעילה חייבת להיות מראש: AppKit מוסר ל-WindowServer את אזורי הגרירה
+/// של החלון, והשרת גורר בעצמו בלי לשאול את האפליקציה. נעילה ב-mouseDown
+/// מגיעה אחרי שהאזורים כבר נמסרו, וגרירת כרטיסיה עדיין מזיזה את החלון.
 class OtzariaWindow: NSWindow {
-  override func sendEvent(_ event: NSEvent) {
-    if event.type == .leftMouseDown {
-      isMovable = false
-    } else if !isMovable && NSEvent.pressedMouseButtons & 1 == 0 {
-      // ⚠️ לא רק ב-mouseUp: אחרי performDrag הוא עלול לא להגיע, וחלון
-      // שנשאר לא-ניתן-להזזה גם לא יוזז בחיבור או ניתוק מסך.
-      isMovable = true
-    }
-    super.sendEvent(event)
+  override init(
+    contentRect: NSRect, styleMask style: NSWindow.StyleMask,
+    backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool
+  ) {
+    super.init(
+      contentRect: contentRect, styleMask: style,
+      backing: backingStoreType, defer: flag)
+    isMovable = false
+  }
+
+  // החלון הראשי נטען מ-xib ולא דרך ה-init שלמעלה.
+  override func awakeFromNib() {
+    super.awakeFromNib()
+    isMovable = false
   }
 
   override func performDrag(with event: NSEvent) {
     isMovable = true
     super.performDrag(with: event)
+    isMovable = false
   }
 }
 
@@ -425,6 +435,9 @@ final class OtzariaWindowManager {
     window.title = "אוצריא"
     window.isReleasedWhenClosed = false
     window.contentViewController = controller
+    // ⚠️ הצמדת ה-controller מכווצת את החלון לגודל ה-view שטרם נטען (1x1),
+    // ו-placeCascading משנה רק את המיקום. בלי זה נפתח חלון בגודל פיקסל.
+    window.setContentSize(size)
     placeCascading(window)
 
     // ⚠️ שקוף-לגמרי ולא מוסתר, בדיוק כמו החלון הראשי: חלון שאינו על המסך
