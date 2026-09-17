@@ -242,4 +242,10 @@ const aboutAdditionalSources = <Map<String, String>>[
     'name': 'פרויקט בן י.',
     'url': 'https://github.com/projectbenyehuda/public_domain_dump',
   },
+  {
+    'name': 'ים החכמה',
+    'url': 'https://github.com/torahtyh/yam-HaHachma',
+    'logo': 'assets/logo_books/yam_hahachma_logo.png',
+    'logoOriginalColor': 'true',
+  },
 ];

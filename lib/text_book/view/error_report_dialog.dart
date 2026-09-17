@@ -324,16 +324,22 @@ class ErrorReportHelper {
 
   /// נמעני המייל לפי מקור הספר, מופרדים בפסיק. סדר המפתחות חשוב, והמיפוי
   /// חייב להישאר תואם ל-getEmailRecipients בשרת (Otzaria_Website).
+  ///
+  /// ההתאמה היא `contains` על המחרוזת המנורמלת לאותיות קטנות בלבד — בלי הסרת
+  /// מפרידים. לכן מפתח חייב להיות תת-מחרוזת של שם המקור ב-`seforim.db` כפי
+  /// שהוא (למשל `wikiJewishBooksToOtzaria`); מפתח עם קו תחתון לעולם לא יתאים.
   static String emailRecipientsFor(String? sourceFolder) {
     if (sourceFolder == null) return _fallbackMail;
     const sourceToEmailMap = {
       'sefariaToOtzaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
       'sefaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
-      'wiki_jewish_books': '$_fallbackMail,WikiJewishBooks@gmail.com',
+      'wikiJewishBooks': '$_fallbackMail,WikiJewishBooks@gmail.com',
       'wikiSource': '$_fallbackMail,novartza@gmail.com',
       'Pninim': '$_fallbackMail,contact@pninim.org',
       'Tashma': '$_fallbackMail,jewishoffice@gmail.com',
       'Ben-Yehuda': '$_fallbackMail,editor@benyehuda.org',
+      // רישיון "ים החכמה" מחייב שדיווח על ספר משלהם יגיע גם אליהם.
+      'yam-HaHachma': '$_fallbackMail,y025837086@gmail.com',
     };
     final normalizedSource = sourceFolder.toLowerCase();
     return sourceToEmailMap.entries

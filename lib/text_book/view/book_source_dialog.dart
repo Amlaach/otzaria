@@ -12,35 +12,65 @@ import 'package:url_launcher/url_launcher.dart';
 // ביטוי רגולרי להסרת תווים מפרידים (מקפים, קווים תחתונים, רווחים)
 final _sourceNormalizationRegex = RegExp(r'[-_\s]');
 
-// מיפוי שמות המקורות לטקסט בעברית וקישורים (ללא כפילויות)
+/// נכס הלוגו של "ים החכמה" — לוגו צבעוני, מוצג בצבעיו המקוריים.
+const String kYamHaHachmaLogoAsset = 'assets/logo_books/yam_hahachma_logo.png';
+
+// מיפוי שמות המקורות לטקסט בעברית, קישור ולוגו (ללא כפילויות).
+// logo ריק = אין לוגו להצגה; לוגו מוצג רק כשהמקור מחייב קרדיט חזותי.
 const _sourceMappings = {
-  'sefaria': (text: 'ספריא', url: 'https://www.sefaria.org/texts'),
-  'benyehuda': (text: 'פרוייקט בן י.', url: 'https://benyehuda.org/'),
-  'dicta': (text: 'ספריית דיקטה', url: 'https://library.dicta.org.il/'),
-  'onyourway': (text: 'ובלכתך בדרך', url: 'https://mobile.tora.ws/'),
+  'sefaria': (text: 'ספריא', url: 'https://www.sefaria.org/texts', logo: ''),
+  'benyehuda': (text: 'פרוייקט בן י.', url: 'https://benyehuda.org/', logo: ''),
+  'dicta': (
+    text: 'ספריית דיקטה',
+    url: 'https://library.dicta.org.il/',
+    logo: '',
+  ),
+  'onyourway': (text: 'ובלכתך בדרך', url: 'https://mobile.tora.ws/', logo: ''),
   'orayta': (
     text: 'אורייתא',
     url: 'https://github.com/MosheWagner/Orayta-Books',
+    logo: '',
   ),
-  'tashma': (text: 'תא שמע', url: 'https://tashma.co.il/'),
-  'pninim': (text: 'פנינים', url: 'https://pninim.org/'),
-  'wikisource': (text: 'ויקיטקסט', url: 'https://he.wikisource.org/wiki'),
+  'tashma': (text: 'תא שמע', url: 'https://tashma.co.il/', logo: ''),
+  'pninim': (text: 'פנינים', url: 'https://pninim.org/', logo: ''),
+  'wikisource': (
+    text: 'ויקיטקסט',
+    url: 'https://he.wikisource.org/wiki',
+    logo: '',
+  ),
   'wikijewishbooks': (
     text: 'אוצר הספרים היהודי השיתופי',
     url: 'https://wiki.jewishbooks.org.il/',
+    logo: '',
   ),
-  'nationallibrary': (text: 'יד הרמב"ם', url: 'https://fjms.genizah.org/'),
+  'nationallibrary': (
+    text: 'יד הרמב"ם',
+    url: 'https://fjms.genizah.org/',
+    logo: '',
+  ),
   'toratemet': (
     text: 'תורת אמת',
     url: 'https://www.toratemetfreeware.com/index.html',
+    logo: '',
   ),
-  'morebooks': (text: 'ספרים פרטיים או מקורות נוספים', url: ''),
-  'unknown': (text: 'מקור לא ידוע', url: ''),
+  // רישיון "ים החכמה" מחייב להציג את שם המאגר, הלוגו וקישור אליו
+  // בכל מקום שבו מוצג מקור הספר.
+  'yamhahachma': (
+    text: 'ים החכמה',
+    url: 'https://github.com/torahtyh/yam-HaHachma',
+    logo: kYamHaHachmaLogoAsset,
+  ),
+  'morebooks': (
+    text: 'ספרים פרטיים או מקורות נוספים',
+    url: '',
+    logo: '',
+  ),
+  'unknown': (text: 'מקור לא ידוע', url: '', logo: ''),
 };
 
 /// המרת שם המקור לטקסט מתאים עם קישור
 /// תומך בשמות המקורות כפי שהם מאוחסנים ב-DB (case-insensitive)
-({String text, String url}) getSourceDisplayInfo(String source) {
+({String text, String url, String logo}) getSourceDisplayInfo(String source) {
   // נרמול המחרוזת: הסרת רווחים, המרה לאותיות קטנות והסרת תווים מפרידים
   final normalized = source.toLowerCase().replaceAll(
     _sourceNormalizationRegex,
@@ -59,7 +89,7 @@ const _sourceMappings = {
   }
 
   // חיפוש במיפוי, אם לא נמצא - מחזירים את המקור המקורי
-  return _sourceMappings[key] ?? (text: source, url: '');
+  return _sourceMappings[key] ?? (text: source, url: '', logo: '');
 }
 
 /// קישור הבית של "תא שמע"
@@ -265,31 +295,64 @@ Widget _buildBookDetailsContent(
           const SizedBox(height: 8),
           if (isTashma)
             const _TashmaCopyrightNotice()
-          else if (sourceInfo.url.isNotEmpty)
-            InkWell(
-              onTap: () async {
-                final uri = Uri.parse(sourceInfo.url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri);
-                }
-              },
-              child: Text(
-                sourceInfo.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Theme.of(context).colorScheme.primary,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            )
           else
-            Text(sourceInfo.text, style: const TextStyle(fontSize: 14)),
+            _SourceCredit(info: sourceInfo),
           if (bookDetails['נתיב הקובץ'] != BookDetailsService.bookNotFoundText)
             _buildFilePathSection(bookDetails['נתיב הקובץ']!),
         ],
       ),
     ),
   );
+}
+
+/// שם המקור כפי שמוצג למשתמש: לוגו (למקורות שהרישיון שלהם מחייב קרדיט חזותי),
+/// שם המאגר, והכל לחיץ כקישור לאתר המקור כשקיים.
+class _SourceCredit extends StatelessWidget {
+  const _SourceCredit({required this.info});
+
+  final ({String text, String url, String logo}) info;
+
+  Future<void> _openSource() async {
+    final uri = Uri.parse(info.url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = info.url.isNotEmpty;
+    final label = Text(
+      info.text,
+      style: TextStyle(
+        fontSize: 14,
+        color: hasUrl ? Theme.of(context).colorScheme.primary : null,
+        decoration: hasUrl ? TextDecoration.underline : null,
+      ),
+    );
+
+    // הלוגו מוצג בצבעיו המקוריים (ללא colorFilter), ולכן נראה זהה
+    // במצב בהיר ובמצב כהה ובכל הפלטפורמות.
+    final content = info.logo.isEmpty
+        ? label
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                info.logo,
+                height: 36,
+                filterQuality: FilterQuality.medium,
+                semanticLabel: info.text,
+              ),
+              const SizedBox(width: 8),
+              Flexible(child: label),
+            ],
+          );
+
+    if (!hasUrl) return content;
+    return InkWell(onTap: _openSource, child: content);
+  }
 }
 
 /// נתיב קובץ בספריית אוצריא כפי שמוצג למשתמש: בלי הקידומת `אוצריא/` ובלי

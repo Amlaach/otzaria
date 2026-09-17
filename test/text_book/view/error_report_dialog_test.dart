@@ -179,6 +179,17 @@ void main() {
         ErrorReportHelper.emailRecipientsFor('wikiSource'),
         'otzaria.200@gmail.com,novartza@gmail.com',
       );
+      // שם המקור ב-seforim.db הוא wikiJewishBooksToOtzaria. ההתאמה היא
+      // contains בלי הסרת מפרידים, ולכן מפתח עם קווים תחתונים לא היה מתאים
+      // אף פעם — והדיווח לא היה מגיע לבעלי הטקסטים.
+      expect(
+        ErrorReportHelper.emailRecipientsFor('wikiJewishBooksToOtzaria'),
+        'otzaria.200@gmail.com,WikiJewishBooks@gmail.com',
+      );
+      expect(
+        ErrorReportHelper.emailRecipientsFor('yam-HaHachmaToOtzaria'),
+        'otzaria.200@gmail.com,y025837086@gmail.com',
+      );
       expect(
         ErrorReportHelper.emailRecipientsFor('local'),
         'otzaria.200@gmail.com',
@@ -194,11 +205,12 @@ void main() {
         expect(ErrorReportHelper.reportReachesOtzaria(folder), isFalse);
       }
       for (final folder in [
-        'wiki_jewish_books',
+        'wikiJewishBooksToOtzaria',
         'wikiSource',
         'Pninim',
         'Tashma',
         'Ben-Yehuda',
+        'yam-HaHachmaToOtzaria',
         'local',
         '',
         null,

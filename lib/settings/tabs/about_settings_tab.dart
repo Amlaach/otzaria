@@ -505,13 +505,21 @@ class _InfoChip extends StatelessWidget {
             // לוגו צבעוני מעומעם כדי שלא יבלוט מול שאר הפריטים החד-צבעוניים.
             Opacity(
               opacity: logoOriginalColor ? 0.6 : 1,
-              child: SvgPicture.asset(
-                logo!,
-                height: 16,
-                colorFilter: logoOriginalColor
-                    ? null
-                    : ColorFilter.mode(contentColor, BlendMode.srcIn),
-              ),
+              // רוב הלוגואים הם SVG; מקור שסיפק PNG בלבד נטען כתמונה רגילה
+              // (ואז תמיד בצבעיו המקוריים — אין לו צביעה מונוכרומטית).
+              child: logo!.toLowerCase().endsWith('.svg')
+                  ? SvgPicture.asset(
+                      logo!,
+                      height: 16,
+                      colorFilter: logoOriginalColor
+                          ? null
+                          : ColorFilter.mode(contentColor, BlendMode.srcIn),
+                    )
+                  : Image.asset(
+                      logo!,
+                      height: 16,
+                      filterQuality: FilterQuality.medium,
+                    ),
             )
           else
             Icon(icon, size: 15, color: contentColor),

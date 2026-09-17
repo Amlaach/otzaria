@@ -46,8 +46,28 @@ void main() {
 
         expect(info.text, equals('אוצר הספרים היהודי השיתופי'));
         expect(info.url, equals('https://wiki.jewishbooks.org.il/'));
+        expect(info.logo, isEmpty);
       },
     );
+
+    test(
+      'should resolve yam-HaHachma with its name, link and required logo',
+      () {
+        final info = getSourceDisplayInfo('yam-HaHachmaToOtzaria');
+
+        expect(info.text, equals('ים החכמה'));
+        expect(info.url, equals('https://github.com/torahtyh/yam-HaHachma'));
+        expect(info.logo, equals(kYamHaHachmaLogoAsset));
+      },
+    );
+
+    test('unknown sources fall back to the raw name without a logo', () {
+      final info = getSourceDisplayInfo('SomeNewSourceToOtzaria');
+
+      expect(info.text, equals('SomeNewSourceToOtzaria'));
+      expect(info.url, isEmpty);
+      expect(info.logo, isEmpty);
+    });
   });
 
   group('isTashmaSource', () {
