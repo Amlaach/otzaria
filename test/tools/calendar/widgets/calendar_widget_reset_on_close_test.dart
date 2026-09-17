@@ -77,6 +77,49 @@ void main() {
         DateUtils.dateOnly(today),
       );
     });
+
+    testWidgets('סגירת מופע אחד לא מאפסת מופע נוסף שעדיין פתוח', (
+      tester,
+    ) async {
+      Widget host(Widget child) => MaterialApp(
+        home: Scaffold(
+          body: MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: settingsBloc),
+              BlocProvider.value(value: calendarCubit),
+            ],
+            child: child,
+          ),
+        ),
+      );
+
+      var isFirstCalendarOpen = true;
+      late StateSetter setHostState;
+      const first = CalendarWidget(key: ValueKey('first-calendar'));
+      const second = CalendarWidget(key: ValueKey('second-calendar'));
+      await tester.pumpWidget(
+        host(
+          StatefulBuilder(
+            builder: (context, setState) {
+              setHostState = setState;
+              return Stack(children: [if (isFirstCalendarOpen) first, second]);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final shifted = calendarCubit.state.selectedGregorianDate.add(
+        const Duration(days: 40),
+      );
+      calendarCubit.jumpToDate(shifted);
+      await tester.pumpAndSettle();
+
+      setHostState(() => isFirstCalendarOpen = false);
+      await tester.pumpAndSettle();
+
+      expect(calendarCubit.state.selectedGregorianDate, shifted);
+    });
   });
 }
 

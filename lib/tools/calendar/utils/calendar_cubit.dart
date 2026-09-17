@@ -353,12 +353,26 @@ class CalendarCubit extends Cubit<CalendarState> {
   final Completer<void> _initializationCompleter = Completer<void>();
   Timer? _todayRefreshTimer;
   int _pluginRefreshGeneration = 0;
+  int _calendarWidgetCount = 0;
 
   // Getter for accessing notification service from outside
   NotificationService get notificationService => _notificationService;
 
   /// מסתיים לאחר שטעינת ההגדרות קבעה את היום הלוחי.
   Future<void> get initialized => _initializationCompleter.future;
+
+  /// רישום מופע לוח פתוח; התאריך נשאר נבחר כל עוד יש מופע כזה.
+  void registerCalendarWidget() {
+    if (isClosed) return;
+    _calendarWidgetCount++;
+  }
+
+  /// הסרת מופע לוח. רק סגירת המופע האחרון מחזירה את התאריך להיום.
+  void unregisterCalendarWidget() {
+    if (_calendarWidgetCount == 0) return;
+    _calendarWidgetCount--;
+    if (_calendarWidgetCount == 0) resetSelectionToTodayIfNeeded();
+  }
 
   CalendarCubit({
     SettingsRepository? settingsRepository,
