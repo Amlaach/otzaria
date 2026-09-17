@@ -24,7 +24,7 @@ void main() {
       // לכן בודקים לפי מאפיין ה-text של הכפתור ולא לפי טקסט מדויק ב-Text.
       expect(
         find.byWidgetPredicate(
-          (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספריה',
+          (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספרייה',
         ),
         findsOneWidget,
       );
@@ -54,7 +54,7 @@ void main() {
       await tester.pump();
 
       final button = find.byWidgetPredicate(
-        (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספריה',
+        (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספרייה',
       );
       expect(tester.takeException(), isNull);
       await tester.ensureVisible(button);

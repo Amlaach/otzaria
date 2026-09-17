@@ -286,7 +286,7 @@ class _MySettingsScreenState extends State<MySettingsScreen> {
       desktopOnly: false,
     ),
     (
-      label: 'ספריה',
+      label: 'ספרייה',
       icon: FluentIcons.library_24_regular,
       iconFilled: FluentIcons.library_24_filled,
       pageBuilder: () => const LibrarySettingsTab(),

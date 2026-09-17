@@ -11,8 +11,7 @@
 
   "מראה": "Appearance",
   "כתב": "Text",
-  "ספריה": "Seforim Library",
-  "ספריה|titleBar": "Library",
+  "ספרייה|titleBar": "Library",
   "כלים": "Tools",
   "קיצורי מקשים": "Keyboard Shortcuts",
   "מערכת": "System",
@@ -127,7 +126,7 @@
   "תצוגה מקדימה מוצגת": "The preview is showing",
   "תצוגה מקדימה מוסתרת": "The preview is hidden",
   "ספריות חיצוניות": "External Libraries",
-  "ניתן לחפש ספר במסך ספריה או להציג ספרים מתיקיית ספרים של אוצר החכמה והיברובוקס": "You can search for a sefer in the library screen, or show seforim from an Otzar HaChochma or HebrewBooks folder.",
+  "ניתן לחפש ספר במסך ספרייה או להציג ספרים מתיקיית ספרים של אוצר החכמה והיברובוקס": "You can search for a sefer in the library screen, or show seforim from an Otzar HaChochma or HebrewBooks folder.",
   "מקורות אחרים לספרים": "Select Libraries",
   "הקטלוג של אוצר החכמה והיברובוקס חסר במערכת. יש להוריד אותו כדי להציג ולחפש ספרים ממקורות אלו.": "The Otzar HaChochma and HebrewBooks catalog is not included. Download it to display and search these collections.",
   "הורד קטלוג": "Download Catalog",
@@ -749,7 +748,7 @@
 
   "מיקום הספרייה": "Library Folder",
   "לא זוהתה ספרייה — הגדר מיקום, הורד או ייבא ספרייה": "No library found — set a location, download one, or import one",
-  "הגדרת ספריה": "Set Up Library",
+  "הגדרת ספרייה": "Set Up Library",
   "מיקום הספרייה והאינדקס": "Library and Index Folder",
   "בחר מיקום עבור מאגר הספרים": "Select where the seforim are kept",
   "מתקדם": "Advanced",

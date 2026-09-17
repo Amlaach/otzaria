@@ -89,7 +89,7 @@ void main() {
       sizes,
       () => LibrarySetupView(onLibraryLoaded: () async {}),
       () => find.byWidgetPredicate(
-        (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספריה',
+        (w) => w is ActionButton && w.text == 'בחר מיקום או הורד ספרייה',
       ),
     );
     _notScrollableWhenRoomy(

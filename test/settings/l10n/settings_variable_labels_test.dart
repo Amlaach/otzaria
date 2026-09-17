@@ -133,13 +133,12 @@ void main() {
       }
     });
 
-    // שמות המסכים בפס הכותרת. 'ספריה' שם הוא שם המסך, ולכן הקשר נפרד
-    // מלשונית ההגדרות שנושאת את אותה מילה.
+
     test('שמות המסכים בפס הכותרת מתורגמים', () {
-      for (final key in ['אוצריא', 'ספריה|titleBar']) {
+      for (final key in ['אוצריא', 'ספרייה|titleBar']) {
         expect(catalog, contains(key), reason: key);
       }
-      expect(catalog['ספריה|titleBar'], catalog['ספרייה']);
+      expect(catalog['ספרייה|titleBar'], catalog['ספרייה']);
     });
 
     test('הרשימה כאן מכסה את _navData', () {
