@@ -980,27 +980,11 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
     Widget fadedTitle(String title) => buildFadedTabTitle(context, title);
 
     // X של חצי לשונית — סוגר רק את החלונית שלו, בסגנון ה-X של לשונית רגילה.
-    Widget paneCloseButton(OpenedTab pane, double extent) {
-      return Tooltip(
-        preferBelow: false,
-        message: 'סגור חלונית',
-        child: MetaData(
-          metaData: _kTabCloseButtonHitMarker,
-          child: IconButton(
-            style: IconButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: EdgeInsets.zero,
-            ),
-            constraints: BoxConstraints.tightFor(
-              width: extent,
-              height: _kTabCloseExtent,
-            ),
-            onPressed: () => closePane(pane, context),
-            icon: const Icon(FluentIcons.dismiss_24_regular, size: 10),
-          ),
-        ),
-      );
-    }
+    Widget paneCloseButton(OpenedTab pane, double extent) => _tabCloseButton(
+      tooltip: 'סגור חלונית',
+      width: extent,
+      onPressed: () => closePane(pane, context),
+    );
 
     Widget buildTabContent(
       String displayTitle, {
@@ -1174,33 +1158,13 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                   ),
                                 ),
                                 if (showClose)
-                                  Tooltip(
-                                    preferBelow: false,
-                                    message:
+                                  _tabCloseButton(
+                                    tooltip:
                                         ShortcutHelper.formatShortcutForDisplay(
                                           closeTabShortcut,
                                         ),
-                                    child: MetaData(
-                                      metaData: _kTabCloseButtonHitMarker,
-                                      child: IconButton(
-                                        // shrinkWrap + padding אפס: בלעדיהם שטח-המגע
-                                        // ברירת-המחדל (48px) גולש בטאב צר.
-                                        style: IconButton.styleFrom(
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                        constraints: BoxConstraints.tightFor(
-                                          width: closeExtent,
-                                          height: _kTabCloseExtent,
-                                        ),
-                                        onPressed: () => closeTab(tab, context),
-                                        icon: const Icon(
-                                          FluentIcons.dismiss_24_regular,
-                                          size: 10,
-                                        ),
-                                      ),
-                                    ),
+                                    width: closeExtent,
+                                    onPressed: () => closeTab(tab, context),
                                   ),
                               ],
                             ),
@@ -1262,6 +1226,44 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
   void _clearHoveredTab(OpenedTab tab) {
     if (!identical(_hoveredTab, tab)) return;
     setState(() => _hoveredTab = null);
+  }
+
+  /// כפתור ה-X של כרטיסיה, או של חלונית בתוך כרטיסיה מפוצלת.
+  ///
+  /// ה-tooltip ניתן לכפתור עצמו (`IconButton.tooltip`) ולא עוטף אותו מבחוץ:
+  /// IconButton בונה את ה-Tooltip *בתוך* מכולת הסמנטיקה שלו, ולכן ההודעה
+  /// ועוגן ה-OverlayPortal של הבלון שייכים לצומת הסמנטיקה של הכפתור. Tooltip
+  /// חיצוני אינו יוצר צומת משלו — הוא מתמזג לצומת הסמנטיקה הקרוב, כאן צומת
+  /// הכרטיסיה, שכבר נושא את ה-tooltip של הכותרת. לצומת יש מקום לעוגן אחד
+  /// בלבד (`traversalParentIdentifier`), ולכן עוגן ה-X נשמט; כשהבלון שלו נפתח
+  /// הוא נשלח למערכת ההפעלה בלי אב, Windows דוחה את עדכון עץ הנגישות והעץ
+  /// קופא — עד קריסה של התוכנה במעבר הפוקוס הבא (issue #1399).
+  Widget _tabCloseButton({
+    required String tooltip,
+    required double width,
+    required VoidCallback onPressed,
+  }) {
+    return MetaData(
+      metaData: _kTabCloseButtonHitMarker,
+      child: TooltipTheme(
+        data: TooltipTheme.of(context).copyWith(preferBelow: false),
+        child: IconButton(
+          tooltip: tooltip,
+          // shrinkWrap + padding אפס: בלעדיהם שטח-המגע ברירת-המחדל (48px)
+          // גולש בטאב צר.
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: EdgeInsets.zero,
+          ),
+          constraints: BoxConstraints.tightFor(
+            width: width,
+            height: _kTabCloseExtent,
+          ),
+          onPressed: onPressed,
+          icon: const Icon(FluentIcons.dismiss_24_regular, size: 10),
+        ),
+      ),
+    );
   }
 
   /// עוטף כרטיסיה בטיפול הלחיצות שלה.

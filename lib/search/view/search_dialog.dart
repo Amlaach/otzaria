@@ -450,16 +450,16 @@ class _SearchDialogState extends State<SearchDialog> {
                 ),
               ),
             ],
-            builder: (context, controller, _) => Tooltip(
-              message: context.settingsText(
+            // ה-tooltip דרך הכפתור ולא כעטיפה: בתוך MenuAnchor.builder עטיפה
+            // חיצונית מתמזגת לצומת הסמנטיקה של עוגן התפריט (issue #1399).
+            builder: (context, controller, _) => ActionButton.ghost(
+              text: context.settingsText('קביעת ברירת מחדל לחיפוש רגיל'),
+              icon: FluentIcons.options_24_regular,
+              tooltip: context.settingsText(
                 'סמן אילו אפשרויות ואיזה מרווח יופעלו אוטומטית בכל חיפוש רגיל חדש',
               ),
-              child: ActionButton.ghost(
-                text: context.settingsText('קביעת ברירת מחדל לחיפוש רגיל'),
-                icon: FluentIcons.options_24_regular,
-                onPressed: () =>
-                    controller.isOpen ? controller.close() : controller.open(),
-              ),
+              onPressed: () =>
+                  controller.isOpen ? controller.close() : controller.open(),
             ),
           ),
           Tooltip(

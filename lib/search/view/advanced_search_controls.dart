@@ -438,14 +438,14 @@ class _AdvancedSearchControlsState extends State<AdvancedSearchControls> {
                   child: Text(key),
                 ),
             ],
-            builder: (context, controller, _) => Tooltip(
-              message: 'סמן אילו אפשרויות יופעלו אוטומטית בכל חיפוש חדש',
-              child: ActionButton.ghost(
-                text: 'ברירת מחדל לחיפוש חדש',
-                icon: FluentIcons.options_24_regular,
-                onPressed: () =>
-                    controller.isOpen ? controller.close() : controller.open(),
-              ),
+            // ה-tooltip דרך הכפתור ולא כעטיפה: בתוך MenuAnchor.builder עטיפה
+            // חיצונית מתמזגת לצומת הסמנטיקה של עוגן התפריט (issue #1399).
+            builder: (context, controller, _) => ActionButton.ghost(
+              text: 'ברירת מחדל לחיפוש חדש',
+              icon: FluentIcons.options_24_regular,
+              tooltip: 'סמן אילו אפשרויות יופעלו אוטומטית בכל חיפוש חדש',
+              onPressed: () =>
+                  controller.isOpen ? controller.close() : controller.open(),
             ),
           ),
           Tooltip(
