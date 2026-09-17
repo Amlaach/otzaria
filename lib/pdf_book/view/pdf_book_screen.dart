@@ -69,7 +69,6 @@ import 'package:otzaria/utils/navigation/talmud_bavli_open_format.dart';
 import 'package:otzaria/utils/text/global_search_helper.dart';
 import 'package:otzaria/utils/text/ref_helper.dart';
 import 'package:pdfrx/pdfrx.dart';
-import 'package:provider/provider.dart';
 
 import 'pdf_search_screen.dart';
 
@@ -3245,10 +3244,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     // מראה של עץ הווידג'טים החי: תוכן לפני-סינון בתוך שכבה עם אותו
     // ColorFilter של מצב כהה — אחרת הצילום היה נבדל מהתצוגה בסיום האנימציה.
     final canvasRect = Rect.fromLTWH(0, 0, viewSize.width, viewSize.height);
-    final isDarkMode = Provider.of<SettingsBloc>(
-      context,
-      listen: false,
-    ).state.isDarkMode;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     if (isDarkMode) {
       canvas.saveLayer(
         canvasRect,
@@ -4452,10 +4448,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                 child: ColorFiltered(
                   colorFilter: ColorFilter.mode(
                     Colors.white,
-                    Provider.of<SettingsBloc>(
-                          context,
-                          listen: true,
-                        ).state.isDarkMode
+                    Theme.of(context).brightness == Brightness.dark
                         ? BlendMode.difference
                         : BlendMode.dst,
                   ),
