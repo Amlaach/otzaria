@@ -227,6 +227,9 @@ jobs:
       - name: Prepare Flutter dependencies for Windows release
         shell: pwsh
         run: |
+          # תלות git על מונורפו נכשלת ב-checkout ("Filename too long") ומשאירה
+          # עץ חלקי, ואז הקומפילציה נופלת על קובץ חסר במקום על ה-clone.
+          git config --global core.longpaths true
           flutter pub get
           # Generate the settings .g.dart files: search index + translation catalog.
           dart run tool/generate_search_index.dart
@@ -684,6 +687,7 @@ jobs:
       - name: Prepare Flutter dependencies for Windows release
         shell: pwsh
         run: |
+          git config --global core.longpaths true
           flutter pub get
           dart run tool/generate_search_index.dart
           dart run tool/generate_settings_l10n.dart
