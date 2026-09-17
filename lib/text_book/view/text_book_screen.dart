@@ -673,6 +673,8 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   }
 
   Future<void> _exportWholeBook(TextBookLoaded state) async {
+    await ExportRestrictionService.ensureLoaded();
+    if (!mounted) return;
     if (ExportRestrictionService.isRestricted(state.book.title)) {
       UiSnack.showError(TextBookMessages.editableExportRestricted);
       return;
@@ -766,6 +768,12 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   @override
   void initState() {
     super.initState();
+
+    // רשימת הספרים המוגבלים לייצוא נטענת מ-asset, ולכן עשויה עוד לא להיות
+    // זמינה כשהכפתור נבנה. טעינה כאן במקום בעלייה מכסה גם חלון משני.
+    ExportRestrictionService.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
 
     // טעינת נתוני שמור וזכור ברקע כדי שהמצב יהיה נכון בפתיחת ספר
     WidgetsBinding.instance.addPostFrameCallback((_) {
