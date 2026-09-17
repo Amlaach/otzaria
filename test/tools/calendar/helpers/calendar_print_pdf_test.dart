@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kosher_dart/kosher_dart.dart';
 import 'package:opentype_shaper/opentype_shaper.dart';
 import 'package:otzaria/tools/calendar/helpers/calendar_print_helpers.dart';
 import 'package:otzaria/tools/calendar/helpers/zmanim_helpers.dart';
@@ -74,6 +75,32 @@ void main() {
     );
   }
 
+  /// מספר תאי היום שצוירו: מסגרות התאים הן המלבנים החוזרים ביותר במסמך.
+  int drawnCellCount(Uint8List bytes) {
+    final raw = latin1.decode(bytes, allowInvalid: true);
+    final rectangles = <String, int>{};
+    for (final match in RegExp(r'stream\r?\n').allMatches(raw)) {
+      final end = raw.indexOf('endstream', match.end);
+      if (end < 0) continue;
+      String content;
+      try {
+        content = latin1.decode(
+          ZLibCodec().decode(bytes.sublist(match.end, end)),
+          allowInvalid: true,
+        );
+      } catch (_) {
+        continue;
+      }
+      for (final rectangle in RegExp(
+        r'[-\d.]+ [-\d.]+ ([-\d.]+) ([-\d.]+) re',
+      ).allMatches(content)) {
+        final size = '${rectangle.group(1)}x${rectangle.group(2)}';
+        rectangles[size] = (rectangles[size] ?? 0) + 1;
+      }
+    }
+    return rectangles.values.fold<int>(0, (a, b) => a > b ? a : b);
+  }
+
   int pageCount(Uint8List bytes) => RegExp(
     r'/Type\s*/Page(?![s\w])',
   ).allMatches(latin1.decode(bytes)).length;
@@ -97,6 +124,23 @@ void main() {
       expect(name, contains(RegExp('[א-ת]')));
       expect(time, contains(RegExp('[0-9]')));
     }
+  });
+
+  test('חודש בן שש שורות מודפס במלואו גם לרוחב העמוד', () async {
+    // תשרי תשפ"ז מתחיל בשבת — שש שורות שנדחסות לגובה עמוד A4 לרוחב.
+    final greg = DateTime(2026, 9, 20);
+    final jewishDate = JewishDate.fromDateTime(greg);
+    final state = CalendarState.initial().copyWith(
+      calendarView: CalendarView.month,
+      currentGregorianDate: greg,
+      selectedGregorianDate: greg,
+      currentJewishDate: jewishDate,
+      selectedJewishDate: jewishDate,
+    );
+
+    final bytes = await createCalendarPdf(state, PdfPageFormat.a4.landscape);
+
+    expect(drawnCellCount(bytes), jewishDate.getDaysInJewishMonth());
   });
 
   test('רשימת זמנים ארוכה בתצוגת יום ממשיכה לעמוד הבא', () async {

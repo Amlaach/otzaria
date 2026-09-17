@@ -411,12 +411,11 @@ String _getWeekRangeText(CalendarState state) {
 
 pw.Widget _buildCalendarGrid(CalendarState state, _CalendarText font) {
   final days = kHebrewDays;
-  const cellHeight = 80.0;
 
   if (state.calendarType == CalendarType.gregorian) {
-    return _buildGregorianCalendarGrid(state, font, days, cellHeight);
+    return _buildGregorianCalendarGrid(state, font, days);
   } else {
-    return _buildHebrewCalendarGrid(state, font, days, cellHeight);
+    return _buildHebrewCalendarGrid(state, font, days);
   }
 }
 
@@ -424,7 +423,6 @@ pw.Widget _buildGregorianCalendarGrid(
   CalendarState state,
   _CalendarText font,
   List<String> days,
-  double cellHeight,
 ) {
   final current = state.currentGregorianDate;
   final firstDay = DateTime(current.year, current.month, 1);
@@ -433,7 +431,7 @@ pw.Widget _buildGregorianCalendarGrid(
 
   List<pw.Widget> cells = [];
   for (int i = 0; i < startingWeekday; i++) {
-    cells.add(pw.Container(height: cellHeight));
+    cells.add(pw.Container());
   }
   for (int day = 1; day <= daysInMonth; day++) {
     final date = DateTime(current.year, current.month, day);
@@ -446,7 +444,6 @@ pw.Widget _buildGregorianCalendarGrid(
         formatHebrewDay(jd.getJewishDayOfMonth()),
         events,
         font,
-        height: cellHeight,
         jewishEvents: jewishEvents,
       ),
     );
@@ -459,7 +456,6 @@ pw.Widget _buildHebrewCalendarGrid(
   CalendarState state,
   _CalendarText font,
   List<String> days,
-  double cellHeight,
 ) {
   final currentJd = state.currentJewishDate;
   final daysInMonth = currentJd.getDaysInJewishMonth();
@@ -469,7 +465,7 @@ pw.Widget _buildHebrewCalendarGrid(
 
   List<pw.Widget> cells = [];
   for (int i = 0; i < startingWeekday; i++) {
-    cells.add(pw.Container(height: cellHeight));
+    cells.add(pw.Container());
   }
   for (int day = 1; day <= daysInMonth; day++) {
     final jd = JewishDate()
@@ -487,7 +483,6 @@ pw.Widget _buildHebrewCalendarGrid(
         '${date.day}',
         events,
         font,
-        height: cellHeight,
         jewishEvents: jewishEvents,
       ),
     );
@@ -522,12 +517,16 @@ pw.Widget _buildGridFromCells(
             .toList(),
       ),
       pw.Divider(),
+      // שורות בגובה קבוע גלשו מהעמוד לרוחב, ו-Column של pdf מוחק ילד שגלש.
       for (int i = 0; i < cells.length; i += 7)
-        pw.Row(
-          children: cells
-              .sublist(i, i + 7)
-              .map((cell) => pw.Expanded(child: cell))
-              .toList(),
+        pw.Expanded(
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: cells
+                .sublist(i, i + 7)
+                .map((cell) => pw.Expanded(child: cell))
+                .toList(),
+          ),
         ),
     ],
   );
@@ -538,11 +537,9 @@ pw.Widget _buildDayCellPdf(
   String secondaryLabel,
   List<CustomEvent> events,
   _CalendarText font, {
-  double height = 80,
   List<String> jewishEvents = const [],
 }) {
   return pw.Container(
-    height: height,
     padding: const pw.EdgeInsets.all(4),
     decoration: pw.BoxDecoration(
       border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
