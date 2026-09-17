@@ -13,7 +13,11 @@ import 'package:otzaria/text_book/utils/reading_segments.dart';
 /// אם הקולקציה ריקה מוחזר 0 (פריט "ראשון" סביר כשאין מה לראות).
 int topmostVisibleIndex(Iterable<ItemPosition> positions) {
   if (positions.isEmpty) return 0;
-  return positions.map((p) => p.index).reduce(min);
+  // הרשימה מדווחת גם פריטים שנגללו כולם מעל החלון (ב-cache); בחירתם הקפיצה
+  // את "הקטע הקודם" לתחילת הספר (issue #1358). קודם הפריטים הנראים בפועל.
+  final visible = positions.where((p) => p.itemTrailingEdge > 0);
+  final candidates = visible.isEmpty ? positions : visible;
+  return candidates.map((p) => p.index).reduce(min);
 }
 
 /// **תמיד מחזיר שורת מקור**, גם במצב רצף שבו ה-itemIndex של ה-
