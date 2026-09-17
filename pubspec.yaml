@@ -124,6 +124,13 @@ dependency_overrides:
       url: https://github.com/Otzaria/dart_pdf
       ref: de6181ded2071eb0a9f9f8e66b99b6a557eefb34
       path: printing
+  # TODO: להחזיר ל-pub.dev כשיתמזג וישוחרר MaikuB/flutter_local_notifications#2826
+  # (קריאות WinRT ב-thread ייעודי). עד אז הפורק Otzaria, מוצמד לקומיט.
+  flutter_local_notifications_windows:
+    git:
+      url: https://github.com/Otzaria/flutter_local_notifications
+      ref: c4ccd5fe60d169450cf5de8534f1d79e31573723
+      path: flutter_local_notifications_windows
   matcher: ^0.12.20
   analyzer: ^14.2.0
   device_info_plus: ^13.2.0
