@@ -204,7 +204,7 @@ void main() {
       expect(data[1]['tabCount'], 1);
     });
 
-    test('כרטיסיית כלי אינה נספרת — עקבי עם openTabs', () async {
+    test('כרטיסיית כלי נספרת — עקבי עם openTabs', () async {
       await loadWorkspaces([Workspace(name: 'א', tabs: const [])]);
       tabsBloc.currentState = TabsState(
         tabs: [
@@ -218,7 +218,7 @@ void main() {
       final data =
           await buildAdapter().execute('workspace', 'list', {}) as List;
 
-      expect(data.single['tabCount'], 2);
+      expect(data.single['tabCount'], 3);
     });
   });
 

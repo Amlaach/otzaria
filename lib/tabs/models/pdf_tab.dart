@@ -27,6 +27,13 @@ class PdfBookTab extends OpenedTab {
   /// The pdf viewer controller.
   PdfViewerController pdfViewerController = PdfViewerController();
 
+  /// האם הדף רחב מהתצוגה (זום מוגדל), כך שיש לאן לגלול לרוחב.
+  bool get canPanHorizontally {
+    final controller = pdfViewerController;
+    return controller.isReady &&
+        controller.visibleRect.width < controller.documentSize.width - 1;
+  }
+
   final outline = ValueNotifier<List<PdfOutlineNode>?>(null);
 
   final documentRef = ValueNotifier<PdfDocumentRef?>(null);

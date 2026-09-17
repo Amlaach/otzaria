@@ -12,7 +12,6 @@ import 'package:otzaria/plugins/utils/plugin_version_utils.dart';
 /// האם להציג צ'יפ עדכון: קיים עדכון שגרסתו גבוהה ממש מהמותקנת.
 /// ההשוואה כאן (ולא בזמן הבדיקה) מעלימה את הצ'יפ מעצמו אחרי עדכון מוצלח,
 /// ברגע שגרסת התוסף ב-`PluginSystemLoaded` מתעדכנת.
-@visibleForTesting
 bool shouldShowUpdateChip(PluginUpdateInfo? update, String installedVersion) {
   if (update == null) return false;
   try {

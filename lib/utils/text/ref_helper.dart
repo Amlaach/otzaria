@@ -28,6 +28,21 @@ Future<String?> refFromDbLine(TextBook book, int index) async {
   }
 }
 
+/// כתובת השורה המלאה מה-DB, עד רמת הפסוק/ההלכה; `null` לספר
+/// שאינו ב-DB או לשורה בלי `heRef` (כותרות, ספרי קבצים).
+Future<String?> heRefFromDbLine(TextBook book, int index) async {
+  final bookId = book.id;
+  if (bookId == null) return null;
+  try {
+    final repository = book.isUserBook
+        ? await UserBooksDatabaseHolder.instance.repository
+        : SqliteDataProvider.instance.repository;
+    return await repository?.getLineHeRef(bookId, index);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// הגרסה הסינכרונית של [refFromIndex]: מחשבת את הכתובת ההיררכית עבור שורה
 /// [index] מתוך רשימת תוכן עניינים שכבר נטענה לזיכרון. נחוצה למקומות שצריכים
 /// חישוב מיידי בלי `await` (למשל תווית יעד ברחיפה מעל פס הגלילה), והחישוב
@@ -315,4 +330,30 @@ int? closestTocEntryIndex(List<TocEntry> entries, int targetIndex) {
 
   search(entries);
   return closest?.index;
+}
+
+/// הקטע שתחת הכותרת הקרובה ל-[line] (מעליה או בה): מהכותרת ועד הכותרת הבאה
+/// באותה רמה או גבוהה ממנה. `end` null = עד סוף הספר; null כשאין כותרת מעל.
+({int start, int? end, String title})? tocSectionAt(
+  List<TocEntry> entries,
+  int line,
+) {
+  final flat = flattenToc(entries);
+  int? closestPos;
+  for (var i = 0; i < flat.length; i++) {
+    if (flat[i].index <= line &&
+        (closestPos == null || flat[i].index >= flat[closestPos].index)) {
+      closestPos = i;
+    }
+  }
+  if (closestPos == null) return null;
+  final heading = flat[closestPos];
+  int? end;
+  for (var i = closestPos + 1; i < flat.length; i++) {
+    if (flat[i].level <= heading.level && flat[i].index > heading.index) {
+      end = flat[i].index;
+      break;
+    }
+  }
+  return (start: heading.index, end: end, title: heading.text);
 }

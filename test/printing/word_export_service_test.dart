@@ -774,4 +774,44 @@ void main() {
       expect(styles, contains('<w:sz w:val="34"/>')); // H1 = base+2
     });
   });
+
+  // ─── עיצוב סגנונות לעברית ───────────────────────────────────────────────────
+  group('WordExportService - סגנונות מודגשים בעברית', () {
+    test('כל סגנון מודגש נושא גם w:bCs (issue #1201)', () {
+      final archive = _buildArchive(const [
+        PrintBlock(kind: PrintBlockKind.text, text: 'טקסט'),
+      ]);
+      final styles = _readArchiveFile(archive, 'word/styles.xml');
+      expect(styles, isNot(contains(RegExp(r'<w:b/>(?!<w:bCs/>)'))));
+      expect(styles, contains('<w:b/><w:bCs/><w:i/><w:iCs/>')); // Heading4
+    });
+
+    test('סדר האלמנטים ב-w:pPr תואם את סכמת OOXML', () {
+      final archive = _buildArchive(const [
+        PrintBlock(kind: PrintBlockKind.text, text: 'טקסט'),
+      ]);
+      const order = [
+        'w:bidi',
+        'w:spacing',
+        'w:ind',
+        'w:jc',
+      ];
+      for (final part in ['word/styles.xml', 'word/numbering.xml']) {
+        final xml = _readArchiveFile(archive, part);
+        for (final match in RegExp(
+          r'<w:pPr>(.*?)</w:pPr>',
+          dotAll: true,
+        ).allMatches(xml)) {
+          final found = RegExp(r'<(w:[a-zA-Z]+)')
+              .allMatches(match.group(1)!)
+              .map((m) => m.group(1)!)
+              .where(order.contains)
+              .toList();
+          final sorted = [...found]
+            ..sort((a, b) => order.indexOf(a).compareTo(order.indexOf(b)));
+          expect(found, sorted, reason: 'סדר שגוי ב-$part: ${match.group(1)}');
+        }
+      }
+    });
+  });
 }

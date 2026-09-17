@@ -484,12 +484,24 @@ class MainWindowScreenState extends State<MainWindowScreen>
     // גם rebuild כשמשתנה מספר הפלאגינים הגלויים בכלים (לטובת _isAllToolsHidden)
     final prevVisible = prev is PluginSystemLoaded
         ? prev.plugins
-              .where((p) => p.enabled && p.showInTools && !p.pinnedToNavRail)
+              .where(
+                (p) =>
+                    p.enabled &&
+                    p.showInTools &&
+                    p.hasToolPage &&
+                    !p.pinnedToNavRail,
+              )
               .length
         : -1;
     final currVisible = curr is PluginSystemLoaded
         ? curr.plugins
-              .where((p) => p.enabled && p.showInTools && !p.pinnedToNavRail)
+              .where(
+                (p) =>
+                    p.enabled &&
+                    p.showInTools &&
+                    p.hasToolPage &&
+                    !p.pinnedToNavRail,
+              )
               .length
         : -1;
     return prevVisible != currVisible;
@@ -517,7 +529,10 @@ class MainWindowScreenState extends State<MainWindowScreen>
     if (!allBuiltInsHidden) return false;
     if (pluginState is! PluginSystemLoaded) return true;
     return pluginState.plugins
-        .where((p) => p.enabled && p.showInTools && !p.pinnedToNavRail)
+        .where(
+          (p) =>
+              p.enabled && p.showInTools && p.hasToolPage && !p.pinnedToNavRail,
+        )
         .isEmpty;
   }
 
@@ -1172,7 +1187,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
     final uri = Uri.tryParse(uriString);
     final action = uri == null ? null : ExternalUriRouter.parseUri(uri);
     // "חלון חדש" לא ביקש חלון קיים — אין למי להפנות.
-    if (action is OpenNewWindowAction || !MultiWindowService.isSupported) {
+    if (action is OpenNewWindowAction || !MultiWindowService.canOpenWindows) {
       await _handleExternalActivationUriString(uriString);
       return;
     }
@@ -1228,7 +1243,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
     if (kIsWeb) return;
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
     if (!mounted) return;
-    if (MultiWindowService.isSupported) {
+    if (MultiWindowService.canOpenWindows) {
       await const MultiWindowService().raiseSelf();
       return;
     }

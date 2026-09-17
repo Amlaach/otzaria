@@ -573,6 +573,7 @@
     ]
   },
   "versions": {
-    "whenCondition": "0.9.97"
+    "whenCondition": "0.9.97",
+    "headless": "0.9.98"
   }
 }

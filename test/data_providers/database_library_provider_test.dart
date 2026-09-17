@@ -11,6 +11,7 @@ import 'package:otzaria/data/data_providers/cache_database_holder.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/data/data_providers/database_library_provider.dart';
+import 'package:otzaria/models/books.dart';
 import 'package:otzaria/library/models/library.dart' as library_models;
 import 'package:otzaria/migration/models/author.dart';
 import 'package:otzaria/migration/models/book.dart' as migration_models;
@@ -1148,12 +1149,16 @@ void main() {
         final db = sqlite3.sqlite3.open(dbPath);
 
         try {
-          db.execute('CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT)');
+          db.execute(
+            'CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT, categoryId INTEGER)',
+          );
           db.execute(
             'CREATE TABLE alt_toc_structure (id INTEGER PRIMARY KEY, bookId INTEGER, key TEXT, title TEXT, heTitle TEXT)',
           );
 
-          db.execute("INSERT INTO book (id, title) VALUES (1, 'בראשית')");
+          db.execute(
+            "INSERT INTO book (id, title, categoryId) VALUES (1, 'בראשית', 5)",
+          );
           db.execute(
             "INSERT INTO alt_toc_structure (id, bookId, key, title, heTitle) VALUES (9, 1, 'chapters', 'Chapters', 'פרקים')",
           );
@@ -1169,6 +1174,42 @@ void main() {
           expect(rows.first['bookId'], 1);
           expect(rows.first['key'], 'chapters');
           expect(rows.first['heTitle'], 'פרקים');
+        } finally {
+          db.close();
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'loadAlternativeStructuresRowsForTesting מבחין בין ספרים בשם זהה לפי קטגוריה',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp('otzaria_db_alt');
+        final dbPath = path.join(tempDir.path, 'db.sqlite');
+        final db = sqlite3.sqlite3.open(dbPath);
+
+        try {
+          db.execute(
+            'CREATE TABLE book (id INTEGER PRIMARY KEY, title TEXT, categoryId INTEGER)',
+          );
+          db.execute(
+            'CREATE TABLE alt_toc_structure (id INTEGER PRIMARY KEY, bookId INTEGER, key TEXT, title TEXT, heTitle TEXT)',
+          );
+          db.execute(
+            "INSERT INTO book (id, title, categoryId) VALUES (1, 'הקדמה', 5), (2, 'הקדמה', 7)",
+          );
+          db.execute(
+            "INSERT INTO alt_toc_structure (id, bookId, key) VALUES (10, 1, 'a'), (20, 2, 'b')",
+          );
+
+          final rows =
+              DatabaseLibraryProvider.loadAlternativeStructuresRowsForTesting(
+                dbPath: dbPath,
+                bookTitle: 'הקדמה',
+                categoryId: 7,
+              );
+
+          expect(rows.map((r) => r['id']), [20]);
         } finally {
           db.close();
           await tempDir.delete(recursive: true);
@@ -1493,7 +1534,7 @@ void main() {
           );
 
           final structures = await provider.getAlternativeStructuresForBook(
-            'בראשית',
+            TextBook(title: 'בראשית', categoryId: catId),
           );
 
           expect(structures, hasLength(1));
@@ -2412,6 +2453,70 @@ void main() {
         expect(nestedCategory.books.single.category, same(nestedCategory));
       },
     );
+
+    test('תיקייה אישית "תנך" מתמזגת לקטגוריה "תנ״ך" (issue #1382)', () {
+      final provider = DatabaseLibraryProvider.instance;
+      provider.clearCache();
+
+      final library = library_models.Library(categories: []);
+      final parentCategory = library_models.Category(
+        title: 'שורש',
+        description: '',
+        shortDescription: '',
+        order: 1,
+        subCategories: [],
+        books: [],
+        parent: library,
+      );
+      final tanachCategory = library_models.Category(
+        title: 'תנ״ך',
+        description: '',
+        shortDescription: '',
+        order: 1,
+        subCategories: [],
+        books: [],
+        parent: parentCategory,
+      );
+      parentCategory.subCategories.add(tanachCategory);
+
+      provider.populateUserBooksCategoryForTesting(
+        targetCategory: parentCategory,
+        dbCategory: const migration_models.Category(
+          id: 20,
+          parentId: null,
+          title: 'שורש',
+          level: 0,
+          orderIndex: 1,
+        ),
+        booksByCategory: {
+          21: [
+            {
+              'id': 200,
+              'title': 'פירוש אישי',
+              'categoryId': 21,
+              'orderIndex': 1,
+              'fileType': 'txt',
+            },
+          ],
+        },
+        categoriesByParent: {
+          20: const [
+            migration_models.Category(
+              id: 21,
+              parentId: 20,
+              title: 'תנך',
+              level: 1,
+              orderIndex: 1,
+            ),
+          ],
+        },
+        authorsByBookId: const {},
+        metadata: const {},
+      );
+
+      expect(parentCategory.subCategories, hasLength(1));
+      expect(tanachCategory.books.map((b) => b.title), ['פירוש אישי']);
+    });
 
     test(
       'mergeLinksForTesting ממזג קישורים בלי כפילויות ושומר קישורים קודמים',

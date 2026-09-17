@@ -949,7 +949,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
     try {
       final textBookBloc = context.read<TextBookBloc>();
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.tab.book.title);
+          .getAlternativeStructuresForBook(widget.tab.book);
       final dibburim = await loadDibburimForBook(widget.tab.book);
 
       if (!mounted) return;
@@ -2697,7 +2697,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
                 : OtzariaIcons.book_24_regular,
             tooltip: edition.isCompanion
                 ? '${edition.book.title} — מהדורה מודפסת (אוצריא)'
-                : edition.book.title,
+                : edition.label ?? edition.book.title,
             onPressed: () => _openParallelEdition(context, state, edition),
           ),
       ],
@@ -2761,6 +2761,18 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   /// פותח את רשימת הנוסחאות של הספר; הנוסח שייבחר נפתח בכרטיסייה חדשה סמוכה,
   /// בשורה שמוצגת כרגע.
   void _showBookVersions(BuildContext context, TextBookLoaded state) {
+    // גרסת ספר אישי היא קובץ אחר, שמספור השורות בו אינו תואם.
+    if (state.book.isUserBook) {
+      showBookVersionsDialog(
+        context,
+        state.book,
+        title: 'נוסחאות נוספות — ${state.book.title}',
+        hint: 'הגרסה שתיבחר תיפתח בכרטיסייה חדשה.',
+        onVersionSelected: (target) =>
+            openBook(context, target, 0, '', insertAdjacent: true),
+      );
+      return;
+    }
     final lineIndex = _topmostVisibleSourceLine(state);
     showBookVersionsDialog(
       context,
@@ -3438,8 +3450,12 @@ bool _handleGlobalKeyEvent(
         }
         break;
 
-      // ESC - יציאה ממסך מלא
+      // ESC - ניקוי הדגשת החיפוש, ואם אין הדגשה — יציאה ממסך מלא
       case LogicalKeyboardKey.escape:
+        if (state.searchText.isNotEmpty) {
+          context.read<TextBookBloc>().add(const UpdateSearchText(''));
+          return true;
+        }
         if (!Platform.isAndroid && !Platform.isIOS) {
           final settingsBloc = context.read<SettingsBloc>();
           if (settingsBloc.state.isFullscreen) {

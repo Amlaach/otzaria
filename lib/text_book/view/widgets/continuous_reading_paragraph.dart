@@ -416,6 +416,7 @@ List<InlineSpan> _nodeToSpans(
         ..onTap = () {
           onTapUrl(href);
         };
+      trackLinkTapDown(recognizer);
       recognizerSink?.add(recognizer);
       if (HtmlLinkHandler.opensAnotherBook(href)) {
         registerInlineLinkRecognizer(

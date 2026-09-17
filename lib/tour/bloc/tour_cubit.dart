@@ -186,6 +186,13 @@ class TourCubit extends Cubit<TourState> {
     _persistResolvedTips(updatedResolved);
   }
 
+  /// מסמן את כל הטיפים כסגורים — אף "הידעת?" לא יוצג עוד.
+  void dismissAllLiveTips() {
+    final allTips = LiveTipId.values.toSet();
+    emit(state.copyWith(resolvedTips: allTips, clearLiveTip: true));
+    _persistResolvedTips(allTips);
+  }
+
   void _persistResolvedTips(Set<LiveTipId> resolvedTips) {
     Settings.setValue<String>(
       LiveTipStorage.resolvedTipsKey,

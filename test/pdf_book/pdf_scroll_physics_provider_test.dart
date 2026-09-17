@@ -1,6 +1,7 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/pdf_book/utils/pdf_scroll_physics_provider.dart';
+import 'package:otzaria/widgets/misc/smooth_wheel_scroll.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 class _RecordingDelegate implements PdfViewerScrollInteractionDelegate {
@@ -70,6 +71,23 @@ void main() {
     test('ברירת המחדל עוטפת את ה-delegate הפיזיקלי של pdfrx', () {
       final provider = StoppablePdfScrollPhysicsProvider();
       expect(provider.create(), isA<PdfViewerScrollInteractionDelegate>());
+    });
+
+    // מעבר בין ספר טקסט ל-PDF באותה תוכנה חייב להרגיש באותה מהירות,
+    // ולכן שני אזורי הקריאה נגזרים מאותו קבוע.
+    test('קצב גלילת ה-PDF נגזר מקצב גלילת הטקסט', () {
+      final inner =
+          StoppablePdfScrollPhysicsProvider().inner
+              as PdfViewerScrollInteractionDelegateProviderPhysics;
+
+      expect(inner.panFriction, SmoothWheelScroll.decayRatePerMs * 1000);
+      expect(
+        inner.panFriction,
+        isNot(
+          const PdfViewerScrollInteractionDelegateProviderPhysics().panFriction,
+        ),
+        reason: 'ברירת המחדל של pdfrx איטית כמעט כפול מגלילת הטקסט',
+      );
     });
 
     test('שוויון לפי זהות — אותו מופע לא גורם ליצירת delegate חדש', () {

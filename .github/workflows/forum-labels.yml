@@ -15,7 +15,7 @@ jobs:
         with:
           script: |
             const body = context.payload.issue.body || '';
-            const match = body.match(/<!--\s*forum-labels:\s*([^>]*?)\s*-->/);
+            const match = body.match(/<!--\s*(?:forum|app)-labels:\s*([^>]*?)\s*-->/);
             if (!match) return;
             const labels = match[1].split(',').map(s => s.trim()).filter(Boolean).slice(0, 10);
             if (!labels.length) return;

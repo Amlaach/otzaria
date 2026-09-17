@@ -135,7 +135,10 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
   final Map<String, Bookmark> _pendingSnapshots = {};
   late final Future<void> Function() _preCloseCallback;
 
-  HistoryBloc(this._repository) : super(HistoryInitial()) {
+  /// הכרטיסיה הפעילה, ללכידה אחרונה לפני סגירה.
+  final OpenedTab? Function()? currentTab;
+
+  HistoryBloc(this._repository, {this.currentTab}) : super(HistoryInitial()) {
     on<LoadHistory>(_onLoadHistory);
     on<SetCurrentWorkspaceName>(_onSetCurrentWorkspaceName);
     on<AddHistory>(_onAddHistory);
@@ -157,9 +160,22 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
 
   StreamSubscription<void>? _remoteChanges;
 
+  /// לוכד את הכרטיסיה הפעילה במיקומה הנוכחי.
+  ///
+  /// ⚠️ בלי לכידה בסגירה הספר שנקרא עכשיו אינו נרשם כלל: הלכידה שבפתיחתו
+  /// רצה לפני שה-bloc שלו נטען, ומחזירה null, ואין אחריה לכידה נוספת.
+  Future<void> _captureCurrentTab() async {
+    final tab = currentTab?.call();
+    if (tab == null) return;
+    for (final bookmark in await _bookmarksFromTab(tab)) {
+      _pendingSnapshots[bookmark.historyKey] = bookmark;
+    }
+  }
+
   /// שומר את כל ה-snapshots הממתינים לפני סגירת האפליקציה.
   Future<void> _flushPendingSnapshots() async {
     _debounce?.cancel();
+    await _captureCurrentTab();
     if (_pendingSnapshots.isNotEmpty) {
       final snapshots = _pendingSnapshots.values.toList();
       _pendingSnapshots.clear();
@@ -321,6 +337,7 @@ class HistoryBloc extends Bloc<HistoryEvent, HistoryState> {
     Emitter<HistoryState> emit,
   ) async {
     _debounce?.cancel();
+    await _captureCurrentTab();
     if (_pendingSnapshots.isNotEmpty) {
       final snapshots = _pendingSnapshots.values.toList();
       _pendingSnapshots.clear();

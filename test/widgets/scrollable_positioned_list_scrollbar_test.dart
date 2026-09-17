@@ -255,6 +255,43 @@ void main() {
     expect(tester.getTopLeft(find.byKey(contentKey)).dx, 0.0);
   });
 
+  testWidgets('המסילה נשארת בסוף הרשימה כש-maxScrollExtent מתאפס (issue #1278)', (
+    tester,
+  ) async {
+    final listener = ItemPositionsListener.create();
+    final controller = ItemScrollController();
+    final stubKey = GlobalKey<_ScrollableStubState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScrollablePositionedListScrollbar(
+            scrollController: controller,
+            itemPositionsListener: listener,
+            itemCount: 100,
+            child: _ScrollableStub(key: stubKey),
+          ),
+        ),
+      ),
+    );
+
+    (listener.itemPositions as ValueNotifier<Iterable<ItemPosition>>).value =
+        const [
+          ItemPosition(index: 98, itemLeadingEdge: 0, itemTrailingEdge: 0.5),
+          ItemPosition(index: 99, itemLeadingEdge: 0.5, itemTrailingEdge: 1.0),
+        ];
+    await tester.pump();
+
+    // הדיווח מגיע אחרי עדכון המיקומים האחרון, ואחריו אין עוד עדכון שיחזיר אותה.
+    stubKey.currentState!.dispatchMetrics(0);
+    await tester.pump();
+
+    expect(
+      find.byKey(ScrollablePositionedListScrollbar.thumbKey),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('תוכן נמוך מהמסילה נשאר בראש ולא מתמרכז לגובה', (tester) async {
     final listener = ItemPositionsListener.create();
     final controller = ItemScrollController();
@@ -853,8 +890,15 @@ void main() {
     await tester.pump();
     expect(find.textContaining('יעד'), findsOneWidget);
 
-    // בקצה הרשימה maxScrollExtent מתאפס, והמסילה יוצאת מהעץ כשהסמן עליה.
-    stubKey.currentState!.dispatchMetrics(0);
+    // כל הפריטים נכנסים למסך (למשל אחרי סינון) — המסילה יוצאת מהעץ כשהסמן עליה.
+    (listener.itemPositions as ValueNotifier<Iterable<ItemPosition>>).value = [
+      for (var i = 0; i < 100; i++)
+        ItemPosition(
+          index: i,
+          itemLeadingEdge: i * 0.005,
+          itemTrailingEdge: (i + 1) * 0.005,
+        ),
+    ];
     await tester.pump();
     expect(
       find.byKey(ScrollablePositionedListScrollbar.thumbKey),

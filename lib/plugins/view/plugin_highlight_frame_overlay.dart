@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:otzaria/plugins/services/plugin_highlight_renderer.dart';
+import 'package:otzaria/widgets/smart_text/selection_fill_text.dart';
 
 class PluginHighlightFrameOverlay extends SingleChildRenderObjectWidget {
   final List<PluginHighlightRenderedRange> ranges;
@@ -92,7 +93,8 @@ class RenderPluginHighlightFrameOverlay extends RenderProxyBox {
           final radius = Radius.circular(
             style.borderRadius.clamp(0, 16).toDouble(),
           );
-          for (final box in object.getBoxesForSelection(
+          for (final box in glyphBoxesForSelection(
+            object,
             TextSelection(baseOffset: startUtf16, extentOffset: endUtf16),
           )) {
             var rect = box.toRect().shift(offset + paragraphOffset);

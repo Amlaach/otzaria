@@ -245,8 +245,8 @@ const Map<String, PluginPermissionInfo> _permissionLabels = {
     label: 'פתיחת ספרים וניהול כרטיסיות',
     icon: OtzariaIcons.otzaria_icon_2_page_24_regular,
     description:
-        'פתיחת ספרים בקורא האפליקציה, מעבר בין הכרטיסיות הפתוחות וסגירתן. '
-        'אינה משנה את תוכן הספרים',
+        'פתיחת ספרים בקורא האפליקציה, ומעבר בין כל הכרטיסיות הפתוחות וסגירתן — '
+        'כולל כרטיסיות של כלים ותוספים אחרים. אינה משנה את תוכן הספרים',
   ),
 
   'reader.context_menu': PluginPermissionInfo(

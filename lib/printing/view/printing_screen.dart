@@ -11,9 +11,7 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/core/messages/pdf_messages.dart';
-import 'package:otzaria/core/messages/window_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
-import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/personal_notes/models/personal_note.dart';
@@ -27,6 +25,7 @@ import 'package:otzaria/printing/shaped_text/shaped_text_layout.dart';
 import 'package:otzaria/printing/shaped_text/shaped_text_widget.dart';
 import 'package:otzaria/printing/export_restriction_service.dart';
 import 'package:otzaria/printing/safer_print_service.dart';
+import 'package:otzaria/printing/view/slow_preview_hint.dart';
 import 'package:otzaria/printing/word_export_service.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart';
@@ -375,15 +374,17 @@ class _PrintingScreenState extends State<PrintingScreen> {
   }
 
   Future<void> _loadAltHeaders() async {
-    if (widget.createPdfOverride != null) return;
+    final book = widget.book;
+    if (widget.createPdfOverride != null || book == null) return;
     try {
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.bookId);
+          .getAlternativeStructuresForBook(book);
       if (structures.isEmpty || !mounted) return;
 
       // שימוש ב-structure הראשון בלבד - ריבוי structures מערבב ערכים
       final rows = await DatabaseLibraryProvider.instance.getAltTocLineIndices(
         structures.first.id,
+        isUserBook: structures.first.isUserBook,
       );
       if (!mounted || rows.isEmpty) return;
 
@@ -1516,15 +1517,6 @@ class _PrintingScreenState extends State<PrintingScreen> {
   Future<void> _performDestinationAction(BuildContext context) async {
     switch (_destination) {
       case _PrintDestination.printer:
-        // ⚠️ פלאגין ההדפסה נרשם בחלון הראשון בלבד (החלטה מתועדת
-        // ב-`docs/multi-window.md`: הרישום שלו אינו בטוח פעמיים בתהליך).
-        // בלי ההודעה הזו לחיצה על "הדפס" בחלון משני נכשלה ב-
-        // `MissingPluginException` ולא קרה שום דבר נראה. שמירה ל-PDF/Word
-        // כן עובדת בכל חלון, וזו החלופה.
-        if (WindowRole.isSecondary) {
-          UiSnack.show(WindowMessages.printOnlyInMainWindow);
-          return;
-        }
         final printed = await printPdfWithSaferMode(
           context: context,
           name: widget.bookId,
@@ -1536,19 +1528,23 @@ class _PrintingScreenState extends State<PrintingScreen> {
           Navigator.of(context).pop(true);
         }
       case _PrintDestination.pdf:
-        await _saveToFile(_ExportFormat.pdf);
+        if (await _saveToFile(_ExportFormat.pdf) && context.mounted) {
+          Navigator.of(context).pop(true);
+        }
       case _PrintDestination.word:
         if (_editableExportRestricted) {
           UiSnack.showError(PdfMessages.editableExportRestricted);
           return;
         }
-        await _saveToFile(_ExportFormat.word);
+        if (await _saveToFile(_ExportFormat.word) && context.mounted) {
+          Navigator.of(context).pop(true);
+        }
     }
   }
 
-  Future<void> _saveToFile(_ExportFormat selectedFormat) async {
-    if (!await verifySaferModePassword(context)) return;
-    if (!mounted) return;
+  Future<bool> _saveToFile(_ExportFormat selectedFormat) async {
+    if (!await verifySaferModePassword(context)) return false;
+    if (!mounted) return false;
     try {
       final selectedExtension = selectedFormat.extension;
       final Uint8List bytes;
@@ -1575,16 +1571,19 @@ class _PrintingScreenState extends State<PrintingScreen> {
         extension: selectedExtension,
         bytes: bytes,
       );
-      if (path == null) return;
+      if (path == null) return false;
       UiSnack.showSuccess(successMessage);
+      return true;
     } on FileSystemException catch (e) {
       if (_isLockedFileException(e)) {
         UiSnack.showError(PdfMessages.fileLockedByAnotherApp);
-        return;
+        return false;
       }
       UiSnack.showError(PdfMessages.fileExportFailed(e.message));
+      return false;
     } catch (e) {
       UiSnack.showError(PdfMessages.fileExportFailed(e));
+      return false;
     }
   }
 
@@ -2357,6 +2356,7 @@ class _PrintingScreenState extends State<PrintingScreen> {
                           'מכין תצוגה מקדימה...',
                           style: TextStyle(color: colorScheme.onSurfaceVariant),
                         ),
+                        const SlowPreviewHint(),
                       ],
                     ),
                   );

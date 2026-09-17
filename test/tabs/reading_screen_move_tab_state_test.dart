@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:otzaria/tabs/utils/touch_tab_swipe_recognizer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
@@ -104,7 +105,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('מחוות מעבר טאבים בדסקטופ מקבלות trackpad בלבד', (
+  testWidgets('מחוות מעבר טאבים בדסקטופ: trackpad, ומגע במזהה נפרד', (
     tester,
   ) async {
     final tabs = [_tab('א')];
@@ -125,6 +126,12 @@ void main() {
     addTearDown(recognizer.dispose);
     expect(recognizer.supportedDevices, const {PointerDeviceKind.trackpad});
 
+    final touchFactory = detector.gestures[TouchTabSwipeRecognizer];
+    expect(touchFactory, isNotNull);
+    final touch = touchFactory!.constructor() as TouchTabSwipeRecognizer;
+    addTearDown(touch.dispose);
+    expect(touch.supportedDevices, const {PointerDeviceKind.touch});
+
     // ה"בולען" האנכי — המתחרה שמונע מהאופקי לזכות מיד כחבר יחיד בזירה
     // מעל תוכן ללא Scrollable (WebView של תוסף).
     final verticalFactory = detector.gestures[VerticalDragGestureRecognizer];
@@ -132,7 +139,10 @@ void main() {
     final vertical =
         verticalFactory!.constructor() as VerticalDragGestureRecognizer;
     addTearDown(vertical.dispose);
-    expect(vertical.supportedDevices, const {PointerDeviceKind.trackpad});
+    expect(vertical.supportedDevices, const {
+      PointerDeviceKind.trackpad,
+      PointerDeviceKind.touch,
+    });
   });
 
   testWidgets('גלילה אנכית ב-trackpad אינה גוררת את ה-PageView', (
@@ -431,7 +441,9 @@ class _FakeTabsRepository implements TabsRepository {
   dynamic noSuchMethod(Invocation invocation) {
     if (invocation.isMethod) {
       final name = invocation.memberName.toString();
-      if (name.contains('save') || name.contains('remap')) {
+      if (name.contains('save') ||
+          name.contains('remap') ||
+          name.contains('flush')) {
         return Future<void>.value();
       }
       if (name.contains('loadTabs')) return <OpenedTab>[];

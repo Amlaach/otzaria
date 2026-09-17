@@ -25,6 +25,40 @@ void main() {
     });
   });
 
+  group('isAlignedBlockLine', () {
+    test('מזהה div עם text-align ו-center, גם אחרי עוגנים ו-br', () {
+      expect(
+        isAlignedBlockLine('<div style="text-align: center;">טקסט</div>'),
+        isTrue,
+      );
+      expect(
+        isAlignedBlockLine('<DIV STYLE="TEXT-ALIGN:left">x</DIV>'),
+        isTrue,
+      );
+      expect(isAlignedBlockLine('<br><center><b>הדרן</b></center>'), isTrue);
+      expect(
+        isAlignedBlockLine(
+          '<a id="b1"></a><a id="b2"></a><div style="text-align: right;">x</div>',
+        ),
+        isTrue,
+      );
+    });
+
+    test('שורה רגילה או יישור באמצע השורה אינם בלוק מיושר', () {
+      expect(isAlignedBlockLine('בראשית ברא אלהים'), isFalse);
+      expect(isAlignedBlockLine('<div class="x">טקסט</div>'), isFalse);
+      expect(isAlignedBlockLine('<centered>x</centered>'), isFalse);
+      expect(
+        isAlignedBlockLine('<a href="x">קישור</a><center>x</center>'),
+        isFalse,
+      );
+      expect(
+        isAlignedBlockLine('טקסט <div style="text-align: center;">x</div>'),
+        isFalse,
+      );
+    });
+  });
+
   group('buildReadingSegments — non-continuous', () {
     test('שורה אחת לכל סגמנט במצב הרגיל', () {
       final lines = ['<h1>פתיחה</h1>', 'שורה א', 'שורה ב', 'שורה ג'];
@@ -78,6 +112,26 @@ void main() {
       expect(segments[1].sourceLineIndices, [1]);
       expect(segments[2].sourceLineIndices, [2]);
     });
+
+    test(
+      'שורה מיושרת שוברת פסקה ונשארת קטע נפרד שאינו כותרת (issue #1293)',
+      () {
+        final lines = [
+          'שורה לפני',
+          '<div style="text-align: center;"><b>כותרת קבוצה</b></div>',
+          'שורה אחרי',
+          'עוד שורה',
+        ];
+        final segments = buildReadingSegments(lines, continuous: true);
+
+        expect(segments, hasLength(3));
+        expect(segments[0].sourceLineIndices, [0]);
+        expect(segments[1].sourceLineIndices, [1]);
+        expect(segments[1].isHeader, isFalse);
+        expect(segments[1].text, lines[1]);
+        expect(segments[2].sourceLineIndices, [2, 3]);
+      },
+    );
 
     test('lineRanges פסקאיים מצביעים על מיקום מדויק בטקסט המאוחד', () {
       final lines = ['אאא', 'בבב'];
@@ -212,6 +266,39 @@ void main() {
       expect(updated[0].sourceLineIndices, [0]);
       expect(updated[1].sourceLineIndices, [1, 2, 3]);
       expect(updated[1].text, 'קודם א ב');
+    });
+
+    test('טעינה הדרגתית לא ממזגת שורה מיושרת עם שכנותיה', () {
+      const aligned = '<div style="text-align: center;">מרכז</div>';
+      final initialSegments = buildReadingSegments(
+        ['א', '', ''],
+        continuous: true,
+        loadedLineFlags: const [true, false, false],
+      );
+
+      final updated = updateReadingSegmentsForRange(
+        initialSegments,
+        ['א', aligned, 'ב'],
+        loadedLineFlags: const [true, true, true],
+        continuous: true,
+        startLine: 1,
+        endLine: 2,
+      );
+
+      expect(
+        updated.map((s) => s.sourceLineIndices).toList(),
+        [
+          [0],
+          [1],
+          [2],
+        ],
+      );
+      expect(
+        updated,
+        hasLength(
+          buildReadingSegments(['א', aligned, 'ב'], continuous: true).length,
+        ),
+      );
     });
 
     test('append קדימה במצב רציף שומר סגמנטים קיימים במסלול ללא חפיפה', () {

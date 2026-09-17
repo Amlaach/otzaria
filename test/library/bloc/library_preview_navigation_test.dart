@@ -10,8 +10,8 @@ import '../../helpers/memory_settings_cache.dart';
 
 /// התצוגה המקדימה בספרייה מציגה ספר שהמשתמש לא בחר (issue #957):
 /// ניווט "חזור"/"בית" משאיר בפאנל את הספר מהתיקייה הקודמת. הטסטים כאן
-/// מקבעים את החוזה ההפוך — מעבר תיקייה מנקה את התצוגה המקדימה, והפאנל חוזר
-/// למצב "בחר ספר לתצוגה מקדימה".
+/// מקבעים את החוזה ההפוך — מעבר תיקייה מנקה את הספר, והפאנל מציג את התיקייה
+/// שאליה הגיעו (issue #1173).
 Category _category(
   String title, {
   List<Book> books = const [],
@@ -55,7 +55,10 @@ void main() {
     halachaBook = TextBook(title: 'שולחן ערוך', order: 1);
     chasidut = _category(
       'חסידות',
-      books: [firstChasidutBook, TextBook(title: 'נועם אלימלך', order: 2)],
+      books: [
+        firstChasidutBook,
+        TextBook(title: 'נועם אלימלך', order: 2),
+      ],
     );
     halacha = _category('הלכה', books: [halachaBook]);
     library = _library([chasidut, halacha]);
@@ -114,7 +117,8 @@ void main() {
       await bloc.close();
     });
 
-    test('"בית" (NavigateToCategory לשורש) מנקה את הספר מהתיקייה הקודמת',
+    test(
+      '"בית" (NavigateToCategory לשורש) מנקה את הספר מהתיקייה הקודמת',
       () async {
         // הרצף שמסך הספרייה שולח ב-_handleNavigateHome.
         bloc.add(NavigateToCategory(library));
@@ -128,7 +132,9 @@ void main() {
           isNull,
           reason: 'הספר שנבחר בחסידות אינו מוצג בשורש הספרייה',
         );
-    });
+        expect(bloc.state.previewCategory, library);
+      },
+    );
 
     test('"חזור" (NavigateUp) מנקה את הספר מהתיקייה הקודמת', () async {
       // הרצף שמסך הספרייה שולח ב-_handleNavigateUp.
@@ -141,6 +147,7 @@ void main() {
 
       expect(bloc.state.currentCategory, library);
       expect(bloc.state.previewBook, isNull);
+      expect(bloc.state.previewCategory, library);
     });
 
     test('כניסה לקטגוריה אחרת אינה גוררת את הספר הקודם', () async {
@@ -149,6 +156,11 @@ void main() {
 
       expect(bloc.state.currentCategory, halacha);
       expect(bloc.state.previewBook, isNull);
+      expect(
+        bloc.state.previewCategory,
+        halacha,
+        reason: 'התיקייה שנכנסו אליה מוצגת, ולא הספר הראשון שבה',
+      );
     });
 
     test('בחירת ספר אחרי הניווט עדיין עובדת', () async {

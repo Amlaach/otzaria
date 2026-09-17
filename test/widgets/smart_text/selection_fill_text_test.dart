@@ -330,4 +330,43 @@ void main() {
       expect(bottoms.first, lessThan(tops[1]));
     });
   });
+
+  // issue #1402: מי שממקם ציור ביחס לאותיות (סימונים מורמים, הדגשות תוספים)
+  // חייב לקבל תיבות בגובה הגליף גם כשהבחירה ממופה לגובה השורה.
+  testWidgets('glyphBoxesForSelection מחזיר תיבות tight גם בטקסט בר-בחירה', (
+    tester,
+  ) async {
+    Future<(List<ui.TextBox>, List<ui.TextBox>)> boxes({
+      required bool selectable,
+    }) async {
+      await tester.pumpWidget(
+        _wrap(
+          const SelectionFillText.rich(
+            TextSpan(text: _longText),
+            style: _baseStyle,
+          ),
+          selectable: selectable,
+        ),
+      );
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.byWidgetPredicate((w) => w is RichText),
+      );
+      const selection = TextSelection(baseOffset: 0, extentOffset: 20);
+      return (
+        glyphBoxesForSelection(paragraph, selection),
+        paragraph.getBoxesForSelection(selection),
+      );
+    }
+
+    final (plainGlyph, plainPainted) = await boxes(selectable: false);
+    final (selectableGlyph, selectablePainted) = await boxes(selectable: true);
+
+    expect(selectableGlyph, plainGlyph);
+    expect(plainGlyph, plainPainted);
+    expect(
+      selectablePainted.first.bottom - selectablePainted.first.top,
+      greaterThan(plainGlyph.first.bottom - plainGlyph.first.top),
+      reason: 'ציור הבחירה עצמו עדיין ממלא את גובה השורה',
+    );
+  });
 }

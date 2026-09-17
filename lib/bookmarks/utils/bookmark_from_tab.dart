@@ -9,17 +9,24 @@ import 'package:otzaria/text_book/bloc/text_book_state.dart';
 import 'package:otzaria/utils/text/ref_helper.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+/// כתובת השורה עם שם הספר: ה-heRef המלא (עד הפסוק) כשיש, אחרת נתיב הכותרות.
+Future<String> _lineRef(
+  TextBook book,
+  int index,
+  Future<List<TocEntry>> Function() tableOfContents,
+) async {
+  final ref =
+      await heRefFromDbLine(book, index) ??
+      await refFromDbLine(book, index) ??
+      await refFromIndex(index, tableOfContents());
+  return addBookTitleToRef(ref, book.title);
+}
+
 /// בונה סימניה מטאב קריאה (טקסט/PDF/מפרשים) במיקומו הנוכחי.
 ///
 /// מחזיר null לטאב שאינו ספר. [useStoredPositionFallback] — כשהטאב טרם נטען
 /// (רקע), ליפול למיקום השמור בטאב במקום להחזיר null; ההיסטוריה משאירה false
 /// כדי לא לרשום טאבים שלא נקראו בפועל.
-
-/// כתובת שורה כשאין מצב טעון: קריאת שורה אחת מה-DB, ורק בהיעדרה טעינת עץ
-/// הכותרות המלא.
-Future<String> _refForStoredPosition(TextBook book, int index) async =>
-    await refFromDbLine(book, index) ??
-    await refFromIndex(index, book.tableOfContents);
 Future<Bookmark?> bookmarkFromReadingTab(
   OpenedTab tab, {
   String? workspaceName,
@@ -29,11 +36,11 @@ Future<Bookmark?> bookmarkFromReadingTab(
     final blocState = tab.bloc.state;
     if (blocState is TextBookLoaded && blocState.visibleIndices.isNotEmpty) {
       final index = blocState.visibleIndices.first;
-      String ref = await refFromIndex(
+      final ref = await _lineRef(
+        blocState.book,
         index,
-        Future.value(blocState.tableOfContents),
+        () => Future.value(blocState.tableOfContents),
       );
-      ref = addBookTitleToRef(ref, blocState.book.title);
       return Bookmark(
         ref: 'מפרשים | $ref',
         book: blocState.book,
@@ -45,8 +52,11 @@ Future<Bookmark?> bookmarkFromReadingTab(
     }
     if (!useStoredPositionFallback) return null;
     final source = tab.sourceTab;
-    String ref = await _refForStoredPosition(source.book, source.index);
-    ref = addBookTitleToRef(ref, source.book.title);
+    final ref = await _lineRef(
+      source.book,
+      source.index,
+      () => source.book.tableOfContents,
+    );
     return Bookmark(
       ref: 'מפרשים | $ref',
       book: source.book,
@@ -62,11 +72,11 @@ Future<Bookmark?> bookmarkFromReadingTab(
     final blocState = tab.bloc.state;
     if (blocState is TextBookLoaded && blocState.visibleIndices.isNotEmpty) {
       final index = blocState.visibleIndices.first;
-      String ref = await refFromIndex(
+      final ref = await _lineRef(
+        blocState.book,
         index,
-        Future.value(blocState.tableOfContents),
+        () => Future.value(blocState.tableOfContents),
       );
-      ref = addBookTitleToRef(ref, blocState.book.title);
       return Bookmark(
         ref: ref,
         book: blocState.book,
@@ -76,8 +86,11 @@ Future<Bookmark?> bookmarkFromReadingTab(
       );
     }
     if (!useStoredPositionFallback) return null;
-    String ref = await _refForStoredPosition(tab.book, tab.index);
-    ref = addBookTitleToRef(ref, tab.book.title);
+    final ref = await _lineRef(
+      tab.book,
+      tab.index,
+      () => tab.book.tableOfContents,
+    );
     return Bookmark(
       ref: ref,
       book: tab.book,

@@ -91,6 +91,7 @@ class PluginRuntimeDispatcher {
   // קבוצה ולא מפתח יחיד: טאב מפוצל בעיון יכול להציג שני מופעים בו-זמנית.
   Set<PluginInstanceKey> _visibleInstanceKeys = const {};
   bool _readerScreenVisible = true;
+  bool _windowShown = true;
   Set<PluginInstanceKey> _runningForegroundKeys = const {};
 
   // מסדר את כל פעולות מחזור-החיים בשרשרת אחת. בלי זה, שני reconciles
@@ -355,8 +356,16 @@ class PluginRuntimeDispatcher {
     unawaited(_serializeLifecycle(_reconcileForeground));
   }
 
+  /// מעדכן אם החלון עצמו מוצג. חלון שנסגר מוסתר ולא נהרס, ובלי זה
+  /// התוספים שבו היו ממשיכים לרוץ ברקע.
+  void setWindowShown(bool shown) {
+    if (_windowShown == shown) return;
+    _windowShown = shown;
+    unawaited(_serializeLifecycle(_reconcileForeground));
+  }
+
   Set<PluginInstanceKey> get _desiredForegroundKeys =>
-      _readerScreenVisible ? _visibleInstanceKeys : const {};
+      _readerScreenVisible && _windowShown ? _visibleInstanceKeys : const {};
 
   /// מאפס את מצב הנראות בלבד (בלי לגעת ב-controllers). הדיספצ'ר הוא singleton,
   /// ובלי איפוס מפורש מצב מטסט אחד דולף לבא אחריו.
@@ -372,6 +381,7 @@ class PluginRuntimeDispatcher {
       instance.graceTimer = null;
     }
     _readerScreenVisible = true;
+    _windowShown = true;
     _lifecycleLock = Future.value();
   }
 
@@ -584,6 +594,7 @@ class PluginRuntimeDispatcher {
     _visibleInstanceKeys = const {};
     _runningForegroundKeys = const {};
     _readerScreenVisible = true;
+    _windowShown = true;
     _lastThemePayload = null;
     _lifecycleLock = Future.value();
 

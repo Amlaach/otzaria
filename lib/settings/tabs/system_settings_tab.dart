@@ -18,8 +18,7 @@ import 'package:otzaria/core/messages/report_messages.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/app_runtime_reset.dart';
 import 'package:otzaria/core/update_check_frequency.dart';
-import 'package:otzaria/core/windowing/shared_hive_store.dart';
-import 'package:otzaria/core/windowing/window_role.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/data/data_providers/hive_data_provider.dart';
 import 'package:otzaria/settings/engine/settings_engine_exports.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
@@ -27,6 +26,9 @@ import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
 import 'package:otzaria/settings/dialogs/settings_dialogs_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/offline_send_target.dart';
+import 'package:otzaria/settings/panels/app_reports_panel.dart';
+import 'package:otzaria/app_report/services/crash_report_decision.dart';
 import 'package:otzaria/settings/services/backup_service.dart';
 import 'package:otzaria/settings/services/backup/backup_import_merge.dart';
 import 'package:otzaria/settings/services/backup/backup_maintenance.dart';
@@ -147,6 +149,30 @@ class SystemSettingsTab extends StatefulWidget {
       tab: SettingsTab.system,
       cardId: 'system.reports',
       keywords: ['דיווח', 'היסטוריה'],
+    ),
+    SettingsSearchEntry(
+      id: 'system.appReports.open',
+      title: 'דווח על תקלה בתוכנה',
+      subtitle: 'תקלה, קריסה, בעיית ביצועים או הצעה לשיפור',
+      tab: SettingsTab.system,
+      cardId: 'system.appReports',
+      keywords: ['דיווח', 'באג', 'תקלה', 'קריסה', 'github'],
+    ),
+    SettingsSearchEntry(
+      id: 'system.appReports.crash_mode',
+      title: 'דיווח אחרי סגירה לא צפויה',
+      subtitle: 'מה לעשות כשהתוכנה מזהה שנסגרה בלי סגירה מסודרת',
+      tab: SettingsTab.system,
+      cardId: 'system.appReports',
+      keywords: ['קריסה', 'דיווח', 'אוטומטי', 'שאל'],
+    ),
+    SettingsSearchEntry(
+      id: 'system.advanced.restoreAllWindows',
+      title: 'שחזר את כל החלונות בהפעלה',
+      subtitle: 'פתיחת כל החלונות מחדש בהפעלה הבאה',
+      tab: SettingsTab.system,
+      cardId: 'system.advanced',
+      keywords: ['חלון', 'חלונות', 'הפעלה', 'שחזור', 'מופעל', 'לא מופעל'],
     ),
     SettingsSearchEntry(
       id: 'system.advanced.backup',
@@ -754,44 +780,8 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// קובע לאיזו מערכת הפעלה יותאם סקריפט השליחה. בוינדוס מחזיר מיד Windows;
   /// ב-Linux/macOS שואל את המשתמש; בשאר (נייד) מחזיר Windows אחרי הבהרה
   /// שהקובץ מיועד למחשב Windows מחובר. מחזיר null אם המשתמש ביטל.
-  Future<OfflineSendScriptTarget?> _resolveOfflineSendTarget() async {
-    if (Platform.isWindows) {
-      return OfflineSendScriptTarget.windows;
-    }
-
-    if (Platform.isMacOS || Platform.isLinux) {
-      return showSelectionDialog<OfflineSendScriptTarget>(
-        context: context,
-        title: context.settingsText('מערכת ההפעלה של המחשב המחובר'),
-        searchHint: context.settingsText('חיפוש מערכת הפעלה...'),
-        items: const [
-          SelectionItem(
-            label: 'Windows',
-            value: OfflineSendScriptTarget.windows,
-          ),
-          SelectionItem(
-            label: 'Linux / macOS',
-            value: OfflineSendScriptTarget.unix,
-          ),
-        ],
-      );
-    }
-
-    final proceed = await showTwoActionsDialog(
-      context: context,
-      title: context.settingsText('הקובץ מיועד למחשב Windows'),
-      content: context.settingsText(
-        'במכשיר זה אי אפשר להריץ את סקריפט השליחה. יורד קובץ עבור '
-        'מחשב Windows מחובר — העבירו אליו את הקובץ והפעילו אותו שם.',
-      ),
-      cancelText: context.settingsText('ביטול'),
-      confirmText: context.settingsText('המשך'),
-    );
-    if (proceed != true) {
-      return null;
-    }
-    return OfflineSendScriptTarget.windows;
-  }
+  Future<OfflineSendScriptTarget?> _resolveOfflineSendTarget() =>
+      resolveOfflineSendTarget(context);
 
   Future<void> _exportPendingReportsScript() async {
     final verified = await verifySaferModePassword(context);
@@ -859,6 +849,18 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
         });
       }
     }
+  }
+
+  AppCrashReportMode get _crashReportMode => AppCrashReportMode.parse(
+    Settings.getValue<String>(SettingsRepository.keyAppCrashReportMode),
+  );
+
+  Future<void> _setCrashReportMode(AppCrashReportMode mode) async {
+    await Settings.setValue(
+      SettingsRepository.keyAppCrashReportMode,
+      mode.wireName,
+    );
+    if (mounted) setState(() {});
   }
 
   Widget _buildManagedActionButton({
@@ -935,6 +937,13 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
 
                     // 3ב. דיווחים על תוספים
                     _buildPluginReportsSection(context, state),
+
+                    // 3ג. דיווחים על התוכנה
+                    AppReportsPanel(
+                      isOfflineMode: state.isOfflineMode,
+                      crashReportMode: _crashReportMode,
+                      onCrashReportModeChanged: _setCrashReportMode,
+                    ),
 
                     // 4. מתקדם (גיבוי + מצב סייפר)
                     _buildAdvancedSection(context, state),
@@ -2156,10 +2165,6 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
           icon: FluentIcons.checkmark_circle_24_regular,
         );
       }
-    } on SharedHiveUnavailable {
-      // ⚠️ עדיף להיכשל מלכתוב סעיף ריק שנראה כמו גיבוי תקין.
-      if (!mounted) return;
-      UiSnack.showError(SettingsMessages.backupSharedDataUnavailable);
     } catch (e) {
       if (!mounted) return;
       UiSnack.showError(SettingsMessages.backupCreateError(e));
@@ -2348,6 +2353,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
     if (!mounted) return;
     await resetRuntimeStateForAppRestart();
     if (!mounted) return;
+    MultiWindowService.restartPeers();
     RestartWidget.restartApp(
       context,
       afterRestart: WebViewEnvironmentHolder.disposeForAppRestart,
@@ -2358,14 +2364,6 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
     String filePath, {
     BackupImportMode mode = BackupImportMode.replace,
   }) async {
-    // ⚠️ שחזור בחלון משני שבור משני קצותיו: הכרטיסיות המשוחזרות נכתבות
-    // למפתח של החלון הראשי (`TabsRepository.importRaw`) ונדרסות ב-save הבא
-    // שלו, ו-`RestartWidget.restartApp` מרסטרט את החלון הזה בלבד — כך
-    // ששאר החלונות ממשיכים עם המצב הקודם וכותבים אותו בחזרה.
-    if (WindowRole.isSecondary) {
-      UiSnack.showError(SettingsMessages.restoreOnlyInMainWindow);
-      return;
-    }
     try {
       final result = await BackupService.restoreFromBackup(
         filePath,
@@ -2425,6 +2423,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
       if (!mounted) return;
       await resetRuntimeStateForAppRestart();
       if (!mounted) return;
+      MultiWindowService.restartPeers();
       RestartWidget.restartApp(
         context,
         afterRestart: WebViewEnvironmentHolder.disposeForAppRestart,
@@ -2567,6 +2566,34 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
       cardId: 'system.advanced',
       title: context.settingsText('מתקדם'),
       children: [
+        if (MultiWindowService.canOpenWindows)
+          SettingsActionTile.switchTile(
+            icon: FluentIcons.window_apps_24_regular,
+            title: context.settingsText('שחזר את כל החלונות בהפעלה'),
+            subtitle:
+                Settings.getValue<bool>(
+                      SettingsRepository.keyRestoreAllWindows,
+                    ) ??
+                    false
+                ? context.settingsText(
+                    'כל החלונות שהיו פתוחים בסגירה ייפתחו שוב, במקומם',
+                  )
+                : context.settingsText(
+                    'ייפתח חלון אחד, עם הכרטיסיות של כל החלונות',
+                  ),
+            value:
+                Settings.getValue<bool>(
+                  SettingsRepository.keyRestoreAllWindows,
+                ) ??
+                false,
+            onChanged: (value) {
+              Settings.setValue<bool>(
+                SettingsRepository.keyRestoreAllWindows,
+                value,
+              );
+              setState(() {});
+            },
+          ),
         // ── צור/שחזר גיבוי ──
         SettingsActionTile.text(
           icon: FluentIcons.arrow_sync_24_regular,

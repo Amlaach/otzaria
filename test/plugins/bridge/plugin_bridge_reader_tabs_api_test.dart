@@ -46,7 +46,9 @@ class _FakeTabsRepository implements TabsRepository {
   dynamic noSuchMethod(Invocation invocation) {
     if (invocation.isMethod) {
       final name = invocation.memberName.toString();
-      if (name.contains('save') || name.contains('remap')) {
+      if (name.contains('save') ||
+          name.contains('remap') ||
+          name.contains('flush')) {
         return Future<void>.value();
       }
       if (name.contains('loadTabs')) return <OpenedTab>[];
@@ -94,8 +96,9 @@ Matcher _codedError(String code) => throwsA(
 void main() {
   late TabsBloc tabsBloc;
 
-  PluginBridgeAdapter buildAdapter() => PluginBridgeAdapter(
+  PluginBridgeAdapter buildAdapter({String? instanceId}) => PluginBridgeAdapter(
     _plugin(const ['reader.open']),
+    instanceId: instanceId ?? 'fg',
     dependencies: PluginBridgeDependencies(
       historyBloc: _MockHistoryBloc(),
       tabsBloc: tabsBloc,
@@ -161,37 +164,51 @@ void main() {
       expect(titles(), ['ברכות', 'עירובין']);
     });
 
-    test('כרטיסיית כלי פתוחה לפני היעד — נסגרת הכרטיסייה הנכונה', () async {
-      // ToolTab אינו מופיע ב-openTabs, ולכן אינדקס 1 של התוסף הוא "שבת"
-      // ולא "עירובין". אינדקס גולמי היה סוגר את הכרטיסייה הלא נכונה.
-      await openTabs([
-        textTab('ברכות'),
-        toolTab(),
-        textTab('שבת'),
-        textTab('עירובין'),
-      ]);
+    test('כרטיסיות כלים מופיעות ב-openTabs ונסגרות לפי האינדקס', () async {
+      await openTabs([textTab('ברכות'), toolTab(), textTab('שבת')]);
 
       final adapter = buildAdapter();
       final state =
           await adapter.execute('reader', 'getCurrentState', {})
               as Map<String, dynamic>;
-      expect(
-        (state['openTabs'] as List).map((tab) => tab['bookId']),
-        ['ברכות', 'שבת', 'עירובין'],
-      );
+      final tabs = state['openTabs'] as List;
+      expect(tabs.map((tab) => tab['bookId']), ['ברכות', 'גימטריה', 'שבת']);
+      expect(tabs.map((tab) => tab['toolId']), [null, 'gematria', null]);
 
       await adapter.execute('reader', 'closeTab', {'index': 1});
-      await waitFor((state) => state.tabs.length == 3);
+      await waitFor((state) => state.tabs.length == 2);
 
-      expect(titles(), ['ברכות', 'גימטריה', 'עירובין']);
+      expect(titles(), ['ברכות', 'שבת']);
+    });
+
+    test('תוסף מזהה את הכרטיסייה שלו לפי isSelf וסוגר את עצמו', () async {
+      final self = ToolTab(toolId: 'test.plugin', title: 'Test Plugin');
+      await openTabs([
+        ToolTab(toolId: 'test.plugin', title: 'מופע אחר'),
+        self,
+        textTab('ברכות'),
+      ]);
+
+      final adapter = buildAdapter(instanceId: self.instanceId);
+      final state =
+          await adapter.execute('reader', 'getCurrentState', {})
+              as Map<String, dynamic>;
+      final index = (state['openTabs'] as List).indexWhere(
+        (tab) => tab['isSelf'] == true,
+      );
+      expect(index, 1);
+
+      await adapter.execute('reader', 'closeTab', {'index': index});
+      await waitFor((state) => state.tabs.length == 2);
+
+      expect(titles(), ['מופע אחר', 'ברכות']);
     });
 
     test('אינדקס מחוץ לתחום מוחזר כשגיאת ארגומנטים', () async {
       await openTabs([textTab('ברכות'), toolTab()]);
 
-      // שני טאבים פתוחים, אך רק אחד נראה לתוסף.
       expect(
-        () => buildAdapter().execute('reader', 'closeTab', {'index': 1}),
+        () => buildAdapter().execute('reader', 'closeTab', {'index': 2}),
         _codedError('error.invalid_params'),
       );
       expect(
@@ -246,18 +263,17 @@ void main() {
       expect(tabsBloc.state.currentTab?.title, 'שבת');
     });
 
-    test('כרטיסיית כלי פתוחה לפני היעד — מופעלת הכרטיסייה הנכונה', () async {
+    test('כרטיסיית כלי ניתנת להפעלה לפי האינדקס', () async {
       await openTabs([
         toolTab(),
         textTab('ברכות'),
         textTab('שבת'),
-      ], currentIndex: 0);
+      ], currentIndex: 2);
 
-      // אינדקס 1 של התוסף = "שבת", שהוא אינדקס 2 ב-TabsBloc.
-      await buildAdapter().execute('reader', 'activateTab', {'index': 1});
-      await waitFor((state) => state.currentTabIndex == 2);
+      await buildAdapter().execute('reader', 'activateTab', {'index': 0});
+      await waitFor((state) => state.currentTabIndex == 0);
 
-      expect(tabsBloc.state.currentTab?.title, 'שבת');
+      expect(tabsBloc.state.currentTab?.title, 'גימטריה');
     });
 
     test('אינדקס מחוץ לתחום מוחזר כשגיאת ארגומנטים', () async {

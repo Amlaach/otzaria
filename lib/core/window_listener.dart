@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:otzaria/app_report/services/app_crash_session.dart';
 import 'package:otzaria/core/http_client_registry.dart';
 import 'package:otzaria/core/pre_close_registry.dart';
 import 'package:otzaria/core/window_persistence.dart';
@@ -12,8 +13,12 @@ import 'package:otzaria/core/windowing/window_manager_app_window_controller.dart
 import 'package:otzaria/core/windowing/last_active_window.dart';
 import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
+import 'package:otzaria/core/user_state/user_state_database.dart';
+import 'package:otzaria/data/data_providers/cache_database_holder.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
+import 'package:otzaria/personal_notes/storage/personal_notes_database.dart';
+import 'package:otzaria/plugins/storage/plugin_system_database.dart';
 import 'package:otzaria/plugins/services/plugin_crash_guard.dart';
 import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
@@ -33,6 +38,16 @@ class AppWindowListener extends WindowListener {
     // הערוץ היה חד-כיווני (Dart → נייטיב) עד כאן. כיבוי מערכת הוא המקרה
     // הראשון שבו הנייטיב צריך לקרוא **לנו**.
     _processControlChannel.setMethodCallHandler(_handleProcessControlCall);
+    if (!kIsWeb && Platform.isMacOS) {
+      _macTerminationChannel.setMethodCallHandler(_handleMacTerminationCall);
+    }
+  }
+
+  Future<Object?> _handleMacTerminationCall(MethodCall call) async {
+    if (call.method == 'quitRequested') {
+      await handleWindowClose(quit: true);
+    }
+    return null;
   }
 
   /// האם שטיפת סיום הסשן כבר רצה. `WM_QUERYENDSESSION` מגיע לא פעם יותר
@@ -48,6 +63,7 @@ class AppWindowListener extends WindowListener {
         // הכיבוי בוטל (`shutdown /a`) — כתיבות חדשות שיצטברו מכאן ואילך
         // חייבות להישטף בפעם הבאה.
         _sessionEndFlushStarted = false;
+        unawaited(AppCrashSession.restoreSessionLockIfReleased());
         return null;
       default:
         return null;
@@ -63,6 +79,7 @@ class AppWindowListener extends WindowListener {
     try {
       if (!_sessionEndFlushStarted) {
         _sessionEndFlushStarted = true;
+        AppCrashSession.markCleanExitSync();
         final flushFailure = await _closeWindowScoped();
         if (flushFailure != null) {
           // אותו טיפול כמו במסלול הסגירה הרגיל: הכשל הוא האות היחיד
@@ -117,8 +134,16 @@ class AppWindowListener extends WindowListener {
     }
   }
 
+  /// האם סגירת החלון האחרון משאירה את התהליך חי (macOS: האפליקציה נשארת
+  /// ב-Dock ורק ⌘Q יוצא). דריסה לבדיקות בלבד.
+  @visibleForTesting
+  static bool? debugKeepsProcessAfterLastWindowOverride;
+
+  static bool get _keepsProcessAfterLastWindow =>
+      debugKeepsProcessAfterLastWindowOverride ?? (!kIsWeb && Platform.isMacOS);
+
   /// מתיר ל-AppKit להשלים `NSApplication.terminate` אחרי שכל רצף הסגירה
-  /// של Dart הסתיים. בלי ההיתר, ⌘Q הבא היה חוזר ל-`performClose`.
+  /// של Dart הסתיים. בלי ההיתר, ⌘Q הבא היה חוזר ל-Dart.
   static Future<void> allowMacOSApplicationTermination() async {
     if (kIsWeb || !Platform.isMacOS) return;
     await _macTerminationChannel.invokeMethod<void>('allowTermination');
@@ -174,6 +199,13 @@ class AppWindowListener extends WindowListener {
         debugPrint('WebView shutdown step failed ($stepName): $e');
       }
     }
+  }
+
+  Future<void> _closeWritableDatabases() async {
+    await CacheDatabaseHolder.instance.close();
+    await PersonalNotesDatabase.instance.close();
+    await PluginSystemDatabase.instance.close();
+    UserStateDatabase.instance.close();
   }
 
   Future<void> _armForceExitWatchdog() async {
@@ -237,8 +269,13 @@ class AppWindowListener extends WindowListener {
   /// ⚠️ נפרד מ-[onWindowClose] כי החוזה של `window_manager` הוא `void`,
   /// ורצף הסגירה — ה-flush, מחיקת הסשן והסגירה עצמה — הוא בדיוק מה שצריך
   /// להיות ניתן לבדיקה.
+  ///
+  /// [quit] — יציאה מהאפליקציה (⌘Q) ולא סגירת חלון: מסיים את התהליך תמיד.
   @visibleForTesting
-  Future<void> handleWindowClose({bool Function()? canClose}) async {
+  Future<void> handleWindowClose({
+    bool Function()? canClose,
+    bool quit = false,
+  }) async {
     if (_isClosing) {
       return;
     }
@@ -263,13 +300,16 @@ class AppWindowListener extends WindowListener {
     // ⚠️ נשאל **פעם אחת**, בתחילת הסגירה. שאלה חוזרת אחרי ה-flush עלולה
     // לקבל תשובה אחרת אם חלון אחר נסגר בינתיים, והתוצאה תהיה חצי כיבוי:
     // הצעדים שלפני ה-flush רצו והצעדים שאחריו לא, או להפך.
-    final isLast = await _isLastWindowClosing();
+    final isLast = quit || await _isLastWindowClosing();
+    final endsProcess = isLast && (quit || !_keepsProcessAfterLastWindow);
 
-    if (isLast) {
+    if (endsProcess) {
+      // לפני הפירוק: כשל בהמשך הסגירה אינו קריסה שכדאי להציע לדווח עליה.
+      AppCrashSession.markCleanExitSync();
       await _shutdownProcessUpToFlush();
     }
     final flushFailure = await _closeWindowScoped();
-    if (isLast) {
+    if (endsProcess) {
       await _shutdownProcessAfterFlush(flushFailure);
     } else {
       // חלון אחד מתוך כמה: לסגור רק אותו. `setPreventClose(true)` מנע את
@@ -279,7 +319,11 @@ class AppWindowListener extends WindowListener {
       // ולכן הסשן שלו אינו "פתוח" יותר: השארתו הייתה מחזירה בהפעלה הבאה
       // כרטיסיות שהוא בחר לסגור (`adoptOrphanWindowSessions`).
       // `Ctrl+Shift+T` אינו נשען עליו אלא על המנוע שנשאר חי בזיכרון.
-      await TabsRepository().discardWindowSession();
+      // החלון האחרון במק נשאר ב-Dock, והכרטיסיות שלו הן הסשן הבא.
+      if (!isLast) await TabsRepository().discardWindowSession();
+
+      // מוסתר ולא נהרס: תוספים שממשיכים לרוץ היו צורכים משאבים ברקע.
+      PluginRuntimeDispatcher.instance.setWindowShown(false);
 
       // ⚠️ דרך ה-runner ולא `quitApplication()`: האחרון הוא
       // `PostQuitMessage` — הוא סוגר את התוכנה כולה ולא את החלון הזה.
@@ -377,6 +421,13 @@ class AppWindowListener extends WindowListener {
     //     hive_ce שורד dirty shutdown מעיצוב (checksum על כל record).
     //     `PreCloseRegistry.runAll()` ב-step2 כבר flushed את ההיסטוריה.
     try {
+      // אחרי ה-flush, שכותב ל-user_state.db — אחרת הוא היה פותח אותו מחדש.
+      await _runBestEffortShutdownStep(
+        'closeWritableDatabases',
+        _closeWritableDatabases,
+        timeout: const Duration(seconds: 2),
+      );
+
       if (flushFailure != null) {
         // Report BEFORE Sentry.close() so the event can still be sent.
         try {
@@ -542,6 +593,8 @@ class AppWindowListener extends WindowListener {
       );
     }
     LastActiveWindow.markActive(windowId);
+    // חלון שהוחזר מהסתרה מקבל פוקוס — זה האות שהוא מוצג שוב.
+    PluginRuntimeDispatcher.instance.setWindowShown(true);
   }
 
   @override

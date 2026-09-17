@@ -20,6 +20,7 @@ import 'toc_dao.dart';
 import 'toc_text_dao.dart';
 import 'topic_dao.dart';
 import '../query_loader.dart';
+import '../sqlite3_utils.dart';
 
 class MyDatabase {
   // הקובץ מוחזק ברמת המופע, לא static. זה מאפשר ליצור כמה מופעים
@@ -294,7 +295,10 @@ class MyDatabase {
   }
 
   void close() {
-    _database?.close();
+    final db = _database;
+    if (db != null) {
+      _readOnly ? db.close() : closeWithCheckpoint(db);
+    }
     _database = null;
   }
 
@@ -799,6 +803,60 @@ class MyDatabase {
       ''',
       'CREATE INDEX IF NOT EXISTS idx_user_link_source ON user_link(sourceTitle, sourceIsUserBook);',
       'CREATE INDEX IF NOT EXISTS idx_user_link_target ON user_link(targetTitle, targetIsUserBook);',
+
+      // כותרות חלופיות ('כותרות') לספרים אישיים. נפרדות מ-alt_toc_*: לספר אישי
+      // אין שורות במסד, ולכן הערך מצביע על lineIndex ולא על line.id.
+      // [source] — נתיב קובץ הכותרות או 'import'; מחיקת הקובץ מוחקת רק את שלו.
+      '''
+      CREATE TABLE IF NOT EXISTS user_alt_toc_structure (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          bookId INTEGER NOT NULL,
+          key TEXT NOT NULL,
+          heTitle TEXT NOT NULL,
+          position INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL,
+          UNIQUE (bookId, key)
+      );
+      ''',
+      'CREATE INDEX IF NOT EXISTS idx_user_alt_toc_structure_source ON user_alt_toc_structure(source);',
+      '''
+      CREATE TABLE IF NOT EXISTS user_alt_toc_entry (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          structureId INTEGER NOT NULL,
+          parentId INTEGER,
+          level INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          lineIndex INTEGER,
+          isLastChild INTEGER NOT NULL DEFAULT 0,
+          hasChildren INTEGER NOT NULL DEFAULT 0
+      );
+      ''',
+      'CREATE INDEX IF NOT EXISTS idx_user_alt_toc_entry_structure ON user_alt_toc_entry(structureId, lineIndex);',
+
+      // גרסאות של ספר אישי: כל גרסה היא קובץ-ספר נפרד. הגרסה הראשית מוצגת
+      // בעץ, והשאר נגישות רק מתפריט 'גרסאות'. שורה שבה versionBookId =
+      // primaryBookId נותנת שם לגרסה הראשית עצמה.
+      '''
+      CREATE TABLE IF NOT EXISTS user_book_version (
+          versionBookId INTEGER PRIMARY KEY,
+          primaryBookId INTEGER NOT NULL,
+          versionTitle TEXT NOT NULL,
+          versionNotes TEXT,
+          priority REAL,
+          source TEXT NOT NULL
+      );
+      ''',
+      'CREATE INDEX IF NOT EXISTS idx_user_book_version_primary ON user_book_version(primaryBookId);',
+      'CREATE INDEX IF NOT EXISTS idx_user_book_version_source ON user_book_version(source);',
+
+      // קובצי כותרות/גרסאות שנקלטו בסריקת תיקייה. [signature] מצרף את מצב
+      // הקובץ ואת מזהי ומצב הספרים שאליהם נפתר — שינוי באחד מהם מחייב יישום מחדש.
+      '''
+      CREATE TABLE IF NOT EXISTS user_sidecar_file (
+          path TEXT PRIMARY KEY,
+          signature TEXT NOT NULL
+      );
+      ''',
     ];
   }
 }

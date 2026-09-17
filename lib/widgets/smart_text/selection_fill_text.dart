@@ -232,4 +232,16 @@ class _RenderSelectionFillParagraph extends RenderParagraph {
       boxWidthStyle: boxWidthStyle,
     );
   }
+
+  List<ui.TextBox> _glyphBoxesForSelection(TextSelection selection) =>
+      super.getBoxesForSelection(selection);
 }
+
+/// תיבות בגובה הגליף (`tight`) גם בפסקה שמילוי הבחירה ממפה בה `tight` ל-`max` —
+/// למי שממקם ציור ביחס לאותיות עצמן ולא ביחס לשורה.
+List<ui.TextBox> glyphBoxesForSelection(
+  RenderParagraph paragraph,
+  TextSelection selection,
+) => paragraph is _RenderSelectionFillParagraph
+    ? paragraph._glyphBoxesForSelection(selection)
+    : paragraph.getBoxesForSelection(selection);

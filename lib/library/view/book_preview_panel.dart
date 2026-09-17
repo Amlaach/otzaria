@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'dart:ui';
 
@@ -58,6 +59,9 @@ class BookPreviewPanel extends StatefulWidget {
   final int searchDistance;
   final SearchMatchPolicy matchPolicy;
 
+  /// הכיתוב כשלא נבחר דבר.
+  final String emptyMessage;
+
   const BookPreviewPanel({
     super.key,
     this.book,
@@ -71,6 +75,7 @@ class BookPreviewPanel extends StatefulWidget {
     this.searchMode = SearchMode.exact,
     this.searchDistance = 0,
     this.matchPolicy = SearchMatchPolicy.standard,
+    this.emptyMessage = 'בחר ספר לתצוגה מקדימה',
   });
 
   @override
@@ -431,7 +436,7 @@ class _BookPreviewPanelState extends State<BookPreviewPanel> {
             ),
             const SizedBox(height: 16),
             Text(
-              'בחר ספר לתצוגה מקדימה',
+              widget.emptyMessage,
               style: TextStyle(
                 fontSize: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -616,11 +621,13 @@ class _BookPreviewPanelState extends State<BookPreviewPanel> {
     }
     return Stack(
       children: [
-        PdfViewer.file(
-          filePath,
+        PdfViewer(
+          PdfFontFallback.documentRef(
+            filePath,
+            passwordProvider: () => passwordDialog(context),
+          ),
           key: ValueKey('pdf_${widget.book!.title}'),
           initialPageNumber: widget.initialPdfPage ?? 1,
-          passwordProvider: () => passwordDialog(context),
           controller: _pdfController!,
           params: PdfViewerParams(
             backgroundColor: Theme.of(context).colorScheme.surface,

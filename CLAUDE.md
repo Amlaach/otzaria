@@ -813,6 +813,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | TabbedCommentaryPanel tab switching / onTabChanged | `test/text_book/view/tabbed_commentary_panel_test.dart` |
 | Page shape commentary selection | `test/text_book/view/page_shape_commentary_selection_test.dart` |
 | התאמת מפרשי צורת הדף בין ספרים (היקף קטגוריה) | `test/text_book/view/page_shape/page_shape_category_commentator_matching_test.dart` |
+| הסתרת טורים בצורת הדף — נשמרת לצד בחירת המפרשים (קטגוריה/ספר/שולחן עבודה) | `test/text_book/view/page_shape/page_shape_column_visibility_scope_test.dart` |
 | חלונית הצד של צורת הדף (3 לשוניות) | `test/text_book/view/page_shape/page_shape_sidebar_tabs_test.dart` |
 | תפריט הקשר בצורת הדף (מפרשים / קטע היעד) | `test/text_book/view/page_shape/simple_text_viewer_context_menu_test.dart` |
 | תת-תפריט "מפרשים" המשותף + מדיניות הצגה | `test/text_book/utils/commentators_context_menu_test.dart` |
@@ -902,6 +903,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Backup store (blobs, dedup, GC) + maintenance helpers | `test/unit/settings/backup/backup_store_test.dart` |
 | Backup rotation (GFS) | `test/unit/settings/backup/backup_rotation_test.dart` |
 | Backup archive merge rules | `test/unit/settings/backup/backup_merge_test.dart` |
+| ייבוא ספרים אישיים במובייל (קבצים, ותיקייה שלמה באנדרואיד דרך SAF) | `test/settings/panels/personal_books_import_panel_test.dart`, `test/settings/services/custom_folders/personal_books_import_service_test.dart`, `…android_folder_import_channel_test.dart` |
 | SegmentedSettingsTile | `test/settings/widgets/segmented_settings_tile_test.dart` |
 | SwitchSettingsTile | `test/settings/widgets/switch_settings_tile_test.dart` |
 
@@ -918,9 +920,11 @@ dart format lib/file.dart    # Format ONLY files you modified
 | רוחב עמודת הטקסט (בסיס אזור הקריאה, יציב בפתיחת חלונית) | `test/widgets/layout/reading_area_width_test.dart` |
 | Scrollable list scrollbar | `test/widgets/scrollable_positioned_list_scrollbar_test.dart` |
 | Smooth mouse-wheel scrolling | `test/widgets/smooth_wheel_scroll_test.dart` |
+| עיגון מחדש של מיקום הקריאה בשינוי רוחב | `test/widgets/lists/scroll_position_reanchor_test.dart` |
 | גלילה אוטומטית בלחיצת גלגל העכבר | `test/widgets/middle_click_autoscroll_test.dart` |
 | פתיחה בכרטיסייה חדשה בלחיצת גלגל (`MiddleClickOpen`) | `test/widgets/middle_click_open_test.dart` |
 | זיהוי קישור `<a>` תחת הסמן (תפריט הקשר / לחיצת גלגל) | `test/widgets/inline_link_targets_test.dart` |
+| הקשת מגע על קישור שנפתח בריחוף → תצוגה מקדימה מקובעת (issue #1320) | `test/widgets/smart_text/smart_text_touch_preview_test.dart` |
 | Smart text render settings | `test/widgets/smart_text/render_settings_test.dart` |
 | הדגשת חיפוש כששם הוי"ה מוחלף (הדגשה לפני ההחלפה, issue #1248) | `test/widgets/smart_text/text_renderer_holy_name_highlight_test.dart` |
 | Smart text ↔ plugin section sync gate | `test/widgets/smart_text/smart_text_section_sync_gate_test.dart` |
@@ -955,16 +959,22 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Empty library screen | `test/empty_library/empty_library_screen_test.dart` |
 | PDF isolate | `test/printing/pdf_isolate_test.dart` |
 | טקסט מעוצב ב-PDF (גופן Type0 עם גליפים מ-shaper, פריסה ויישור, bidi) | `test/printing/shaped_text/pdf_shaped_font_test.dart`, `…shaped_text_layout_test.dart` |
+| גופן לא מוטמע ב-PDF (עברית נעלמת מתצוגה/חיפוש/אינדוקס — `PdfFontFallback`) | `test/pdf_book/pdf_font_fallback_test.dart` |
 | PDF in-book search highlight pattern | `test/pdf_book/pdf_search_highlight_pattern_test.dart` |
 | ניתוב החיפוש בתוך PDF (פשוט מול מנוע) | `test/pdf_book/pdf_search_in_book_routing_test.dart` |
 | Printing models | `test/printing/print_content_models_test.dart` |
 | File sync / background sync | `test/migration/sync/file_sync_service_prune_test.dart`, `…background_db_sync_worker_test.dart`, `…background_sync_initializer_test.dart` |
+| כותרות וגרסאות לספרים אישיים — פענוח, בניית העץ ואיתור לפי טקסט | `test/user_content_import/user_headings_import_test.dart` |
+| קליטת `<ספר>.כותרות.csv` / `גרסאות.csv` מתיקיית הספרים והייבוא מההגדרות, ניקוי במחיקת ספר | `test/user_content_import/user_sidecar_sync_test.dart` |
+| קריאת לשונית 'כותרות' של ספר אישי (ניווט, כותרת פעילה, סימני חלוקה) | `test/user_content_import/user_alt_toc_repository_test.dart` |
+| קבוצת הגרסאות של ספר אישי + דיאלוג 'גרסאות' | `test/user_content_import/user_book_versions_test.dart`, `test/library/view/book_versions_dialog_test.dart` |
 | DB migration / generator | `test/migration/generator_create_and_process_book_test.dart`, `test/migration/dao/daos/database_locked_test.dart` |
 | Indexing repository | `test/indexing/repository/indexing_repository_test.dart` |
 | External catalog | `test/external_catalog/external_catalog_repository_test.dart`, `…settings_helper_test.dart` |
 | Plugins | `test/plugins/utils/reader_location_resolver_test.dart`, `…plugin_store_link_parser_test.dart`, `…plugin_bridge_adapter_test.dart` |
 | Plugin links API (`getLinks`, `getRawLinks`, `getCommentators`, `getLinkContent`) | `test/plugins/bridge/plugin_bridge_links_api_test.dart` |
 | דגל שינויים שלא נשמרו בתוסף (`ui.setUnsavedChanges`, רגיסטרי, שומר סגירת כרטיסיה) | `test/plugins/bridge/plugin_bridge_set_unsaved_changes_test.dart`, `test/plugins/services/plugin_unsaved_changes_registry_test.dart`, `test/tabs/utils/confirm_close_tabs_test.dart` |
+| תוסף ללא ממשק (`headless`: מניפסט, אימות חוסם, המעטפת הווירטואלית) | `test/plugins/services/plugin_headless_test.dart`, `test/tools/tool_catalog_test.dart` |
 | Plugin permission enforcement / rate limiting | `test/plugins/bridge/plugin_bridge_handler_test.dart` |
 | קיצורי ניווט של התוכנה בתוך WebView של תוסף (רשימה מוזרקת, תפיסה ב-JS, הזרקה לצינור המקלדת) | `test/plugins/services/plugin_host_shortcuts_test.dart`, `test/plugins/view/plugin_host_shortcut_script_test.dart` |
 | Plugin highlights / reader section tracking | `test/plugins/services/plugin_highlight_registry_test.dart`, `…reader_section_content_tracker_test.dart`, `…reader_section_sync_gate_test.dart` |
@@ -1006,6 +1016,18 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Core (activation queue/channel, error log) | `test/core/` |
 | תעודות ה-CA של נטפרי שנטענות בהפעלה (שלושת הבאנדלים ב-`assets/ca/`) | `test/core/netfree_ca_assets_test.dart` |
 | Error logging | `test/core/main_error_logging_test.dart`, `test/services/direct_error_report_service_test.dart` |
+| דיווח על התוכנה — מודל (חוזה, גבולות, חיתוך גוף, JSON) | `test/app_report/app_report_model_test.dart` |
+| דיווח על התוכנה — חתימת קריסה (נרמול פריימים, hash) | `test/app_report/crash_signature_test.dart` |
+| דיווח על התוכנה — הסתרת מידע אישי (פרופיל, שם משתמש, מייל) | `test/app_report/app_report_redactor_test.dart` |
+| דיווח על התוכנה — איסוף אבחון ולוג (מקטע שנכשל, חלון 7 ימים, ארכיטקטורה) | `test/app_report/app_report_collector_test.dart` |
+| דיווח על התוכנה — שירות השליחה (תור, 409/422/429, היסטוריה, סקריפט אופליין) | `test/app_report/app_report_service_test.dart` |
+| זיהוי יציאה לא נקייה (נעילת הפעלה, ראיות, מגבלת דיווח אוטומטי) | `test/app_report/unclean_exit_detector_test.dart` |
+| טופס הדיווח (BLoC: איסוף, ולידציה לפי מקור, החרגת צרופות, שמירת מייל) | `test/app_report/bloc/app_report_bloc_test.dart` |
+| דיאלוג הדיווח הידני (מייל חובה, תצוגה מקדימה, הודעות סיום) | `test/app_report/view/app_report_dialog_test.dart` |
+| הצעת דיווח אחרי קריסה (בלי מייל, בחירת "תמיד"/"אל תשאל") | `test/app_report/view/crash_prompt_dialog_test.dart` |
+| עריכת דיווח תוכנה שמור בתור (שדות, שימור צרופות, מייל לפי מקור) | `test/app_report/view/app_report_edit_fields_test.dart` |
+| הכרעת הדיווח אחרי קריסה (מצב × מועמד × מגבלה, כותרת, מפתח מגבלה) | `test/app_report/crash_report_decision_test.dart` |
+| זרימת הקריסה בעלייה (never/ask/always, auto_crash, רישום במגבלה) | `test/app_report/crash_report_flow_test.dart` |
 | תיקוני טקסט — חוזה A (מודל schema 2, round-trip מדויק, null מול "", לקוח ישן, 409/413/429, `correction_supported`) | `test/models/direct_error_report_text_correction_test.dart`, `test/services/direct_error_report_service_test.dart` |
 | digest קנוני OCJ-1 מול ה-fixtures המשותפים לאתר | `test/utils/canonical_json_test.dart` |
 | סקריפט שליחה אופליין (bat/sh) — ה-payload מגיע לשרת כלשונו (הרצה אמיתית ב-bash/PowerShell) | `test/services/offline_report_script_payload_test.dart` |

@@ -397,8 +397,39 @@ class SearchNavigationTree extends StatelessWidget {
       onTap: () => isMultiSelectPressed()
           ? onToggleFacet(category.path)
           : onSetFacet(category.path),
-      onToggleExpand: () => onToggleExpand(category.path, isExpanded),
+      onToggleExpand: () => _toggleExpand(category, isExpanded),
     );
+  }
+
+  /// פתיחה ממשיכה לרדת דרך ענף שיש לו ילד גלוי יחיד (תת-קטגוריה), עד
+  /// הרמה שבה התוצאות מתפצלות — חוסך לחיצה לכל רמת ביניים.
+  void _toggleExpand(Category category, bool isExpanded) {
+    onToggleExpand(category.path, isExpanded);
+    if (isExpanded) return;
+    final selectedPaths = _selectedPaths();
+    var only = _singleVisibleSubCategory(category, selectedPaths);
+    while (only != null && _hasVisibleChildren(only, selectedPaths)) {
+      onToggleExpand(only.path, false);
+      only = _singleVisibleSubCategory(only, selectedPaths);
+    }
+  }
+
+  Category? _singleVisibleSubCategory(
+    Category category,
+    List<String> selectedPaths,
+  ) {
+    final hasVisibleBook = category.books.any((book) {
+      final facet = FacetHelper.buildBookFacet(category.path, book);
+      return (facetCounts[facet] ?? 0) > 0 || _isSelected(facet);
+    });
+    if (hasVisibleBook) return null;
+    final visible = category.subCategories.where(
+      (sub) =>
+          (facetCounts[sub.path] ?? 0) > 0 ||
+          _leadsToSelection(sub.path, selectedPaths) ||
+          _isSelected(sub.path),
+    );
+    return visible.length == 1 ? visible.single : null;
   }
 
   String _dimensionLabel(String facet) {

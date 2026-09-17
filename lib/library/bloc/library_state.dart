@@ -15,6 +15,9 @@ class LibraryState extends Equatable {
   final List<String>? selectedTopics;
   final Book? previewBook;
 
+  /// תיקייה שנבחרה לתצוגה מקדימה. בלעדית ל-[previewBook] — בחירת אחד מנקה את השני.
+  final Category? previewCategory;
+
   /// ספרים חדשים שנמצאו ברענון ודורשים אינדוקס. מתאפס אחרי כל copyWith.
   final List<Book>? newBooksToIndex;
 
@@ -41,6 +44,7 @@ class LibraryState extends Equatable {
     this.searchQuery,
     this.selectedTopics,
     this.previewBook,
+    this.previewCategory,
     this.newBooksToIndex,
     this.changedBooksToIndex,
     this.completedRefreshRequestIds,
@@ -229,7 +233,7 @@ class LibraryState extends Equatable {
     );
   }
 
-  /// [clearPreviewBook] מאפס את התצוגה המקדימה; בלי הדגל null נשמר ב-copyWith.
+  /// [clearPreviewBook] מאפס את התצוגה המקדימה (ספר ותיקייה); בלי הדגל null נשמר.
   LibraryState copyWith({
     Library? library,
     bool? isLoading,
@@ -240,6 +244,7 @@ class LibraryState extends Equatable {
     String? searchQuery,
     List<String>? selectedTopics,
     Book? previewBook,
+    Category? previewCategory,
     bool clearPreviewBook = false,
     List<Book>? newBooksToIndex,
     List<Book>? changedBooksToIndex,
@@ -256,7 +261,12 @@ class LibraryState extends Equatable {
       searchCategoryResults: searchCategoryResults,
       searchQuery: searchQuery ?? this.searchQuery,
       selectedTopics: selectedTopics ?? this.selectedTopics,
-      previewBook: clearPreviewBook ? null : (previewBook ?? this.previewBook),
+      previewBook: clearPreviewBook || previewCategory != null
+          ? null
+          : (previewBook ?? this.previewBook),
+      previewCategory: clearPreviewBook || previewBook != null
+          ? null
+          : (previewCategory ?? this.previewCategory),
       newBooksToIndex: newBooksToIndex, // null = אין ספרים לאינדוקס
       changedBooksToIndex: changedBooksToIndex, // null = אין ספרים שהשתנו
       completedRefreshRequestIds: completedRefreshRequestIds,
@@ -276,6 +286,7 @@ class LibraryState extends Equatable {
     searchQuery,
     selectedTopics,
     previewBook,
+    previewCategory,
     newBooksToIndex,
     changedBooksToIndex,
     completedRefreshRequestIds,

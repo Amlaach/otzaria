@@ -107,11 +107,13 @@ void main() {
       await tester.pumpWidget(_wrap(const WorkStatusOverlay(), cubit));
       await tester.pump();
 
-      // Primary: אינדוקס (big circle)
+      // שתי המשימות מוצגות באותו מבנה, בלי הטבעת של משימה יחידה
       expect(find.text('אינדוקס ספרים'), findsOneWidget);
-      // Secondary: סנכרון (compact row)
-      expect(find.text('סנכרון ספרייה: מוריד'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
+      expect(find.text('סנכרון ספרייה'), findsOneWidget);
+      expect(find.text('30%'), findsOneWidget);
+      expect(find.text('60%'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       cubit.close();
     });
 
@@ -185,8 +187,8 @@ void main() {
       await tester.pumpWidget(_wrap(const WorkStatusOverlay(), cubit));
       await tester.pump();
 
-      // לחיצה על השורה של עדכון הספרייה (משנית, ללא onTap) לא מנווטת
-      await tester.tap(find.text('עדכון ספרייה: מאמת'));
+      // לחיצה על השורה של עדכון הספרייה (ללא onTap) לא מנווטת
+      await tester.tap(find.text('עדכון ספרייה'));
       await tester.pump();
       expect(indexingTapped, isFalse);
 
@@ -269,6 +271,78 @@ void main() {
       cubit.close();
     });
 
+    testWidgets('בכמה משימות, פירוט ולחצנים מוצגים רק בהרחבה', (tester) async {
+      final cubit = WorkStatusCubit();
+      var pauseTaps = 0;
+      cubit.upsert(
+        WorkStatusItem(
+          id: 'indexing',
+          title: 'אינדוקס ספרים',
+          message: 'בתהליך',
+          detail: 'התקדמות: 25/100',
+          progress: 0.25,
+          actions: [
+            WorkStatusAction(
+              label: 'השהה',
+              icon: FluentIcons.pause_24_regular,
+              onPressed: () => pauseTaps++,
+            ),
+          ],
+        ),
+      );
+      cubit.upsert(
+        const WorkStatusItem(id: 'sync', title: 'סנכרון', message: 'מוריד'),
+      );
+
+      await tester.pumpWidget(_wrap(const WorkStatusOverlay(), cubit));
+      await tester.pump();
+
+      expect(find.text('התקדמות: 25/100'), findsNothing);
+      expect(find.text('השהה'), findsNothing);
+
+      await tester.tap(find.byTooltip('הרחב'));
+      await tester.pump();
+
+      expect(find.text('התקדמות: 25/100'), findsOneWidget);
+      await tester.tap(find.text('השהה'));
+      expect(pauseTaps, 1);
+      cubit.close();
+    });
+
+    testWidgets('בכמה משימות, משימה שנכשלה נפתחת מורחבת', (tester) async {
+      final cubit = WorkStatusCubit();
+      cubit.upsert(
+        const WorkStatusItem(id: 'sync', title: 'סנכרון', message: 'מוריד'),
+      );
+      cubit.upsert(
+        const WorkStatusItem(
+          id: 'library_update',
+          title: 'עדכון ספרייה',
+          message: 'מוריד',
+          detail: 'פירוט',
+          progress: 0.4,
+        ),
+      );
+
+      await tester.pumpWidget(_wrap(const WorkStatusOverlay(), cubit));
+      await tester.pump();
+      expect(find.text('פירוט'), findsNothing);
+
+      cubit.upsert(
+        const WorkStatusItem(
+          id: 'library_update',
+          title: 'עדכון ספרייה',
+          message: 'שגיאה',
+          detail: 'לחץ לניסיון חוזר',
+          kind: WorkStatusKind.failed,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('לחץ לניסיון חוזר'), findsOneWidget);
+      cubit.close();
+    });
+
     testWidgets('dismiss מסתיר את הכרטיס מבלי למחוק משימות', (tester) async {
       final cubit = WorkStatusCubit();
       cubit.upsert(
@@ -306,12 +380,10 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
       // משימה חדשה ב-ID שונה — overlay חוזר להיות גלוי
-      // item 'a' עדיין קיים כ-primary; item 'b' מוצג כ-secondary
       cubit.upsert(const WorkStatusItem(id: 'b', title: 'ב', message: 'רץ'));
       await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
-      // ה-secondary row מציג title:message
-      expect(find.text('ב: רץ'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+      expect(find.text('ב'), findsOneWidget);
       cubit.close();
     });
 

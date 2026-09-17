@@ -47,6 +47,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     on<UpdateLineHeight>(_onUpdateLineHeight);
     on<UpdateShowOtzarHachochma>(_onUpdateShowOtzarHachochma);
     on<UpdateShowHebrewBooks>(_onUpdateShowHebrewBooks);
+    on<UpdateShowLocalHebrewBooks>(_onUpdateShowLocalHebrewBooks);
     on<UpdateShowExternalBooks>(_onUpdateShowExternalBooks);
     on<UpdateAutoUpdateIndex>(_onUpdateAutoUpdateIndex);
     on<UpdateTextDisplayPolicy>(_onUpdateTextDisplayPolicy);
@@ -140,6 +141,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       lineHeight: settings['lineHeight'],
       showOtzarHachochma: settings['showOtzarHachochma'],
       showHebrewBooks: settings['showHebrewBooks'],
+      showLocalHebrewBooks: settings['showLocalHebrewBooks'] ?? true,
       showExternalBooks: settings['showExternalBooks'],
       autoUpdateIndex: settings['autoUpdateIndex'],
       textDisplayPolicy: settings['textDisplayPolicy'] as TextDisplayPolicy?,
@@ -486,6 +488,14 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     await _repository.updateShowHebrewBooks(event.showHebrewBooks);
     emit(state.copyWith(showHebrewBooks: event.showHebrewBooks));
+  }
+
+  Future<void> _onUpdateShowLocalHebrewBooks(
+    UpdateShowLocalHebrewBooks event,
+    Emitter<SettingsState> emit,
+  ) async {
+    await _repository.updateShowLocalHebrewBooks(event.showLocalHebrewBooks);
+    emit(state.copyWith(showLocalHebrewBooks: event.showLocalHebrewBooks));
   }
 
   Future<void> _onUpdateShowExternalBooks(

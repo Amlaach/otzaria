@@ -30,6 +30,7 @@ import 'package:otzaria/tabs/models/tool_tab.dart';
 import 'package:otzaria/tabs/resolving_tab_screen.dart';
 import 'package:otzaria/tools/view/tool_tab_screen.dart';
 import 'package:otzaria/tabs/utils/tab_swipe_direction.dart';
+import 'package:otzaria/tabs/utils/touch_tab_swipe_recognizer.dart';
 import 'package:otzaria/tabs/view/active_pane_marker.dart';
 import 'package:otzaria/tabs/view/pane_drag_handle.dart';
 import 'package:otzaria/tabs/view/pane_drop_geometry.dart';
@@ -163,8 +164,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     });
   }
 
-  /// מזהה החלקה בין טאבים בדסקטופ באמצעות trackpad בלבד.
-  /// החרגת touch מונעת תחרות בזירת המחוות עם הגלילה האנכית של התוכן.
+  /// מזהה החלקה בין טאבים בדסקטופ, בלוח מגע ובמסך מגע.
   /// הגרירה מזיזה את ה-PageView באופן הדרגתי, ובשחרור מתיישבים על
   /// הטאב הקרוב (או הסמוך, בהנפה מהירה) — כמו PageScrollPhysics במובייל.
   Widget _wrapWithDesktopTabSwipe(Widget child) {
@@ -176,7 +176,10 @@ class _ReadingScreenState extends State<ReadingScreen>
         VerticalDragGestureRecognizer:
             GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
               () => VerticalDragGestureRecognizer(
-                supportedDevices: const {PointerDeviceKind.trackpad},
+                supportedDevices: const {
+                  PointerDeviceKind.trackpad,
+                  PointerDeviceKind.touch,
+                },
               ),
               (recognizer) {
                 recognizer.onStart = (_) {};
@@ -189,49 +192,59 @@ class _ReadingScreenState extends State<ReadingScreen>
               () => HorizontalDragGestureRecognizer(
                 supportedDevices: const {PointerDeviceKind.trackpad},
               ),
-              (recognizer) {
-                recognizer
-                  // הזכייה בזירה מגיעה רק אחרי סף — down מוסר את הדלתא
-                  // שנצברה עד אז במקום לבלוע אותה (רציפות הגרירה).
-                  ..dragStartBehavior = DragStartBehavior.down
-                  ..onStart = (_) {
-                    final controller = _pageController;
-                    if (controller == null || !controller.hasClients) return;
-                    _swipeDragging = true;
-                    _swipeStartPage = controller.page ?? 0;
-                  }
-                  ..onUpdate = (details) {
-                    final controller = _pageController;
-                    if (!_swipeDragging ||
-                        controller == null ||
-                        !controller.hasClients) {
-                      return;
-                    }
-                    final position = controller.position;
-                    final offsetDelta =
-                        details.delta.dx.abs() *
-                        tabSwipeDirection(
-                          accumulatedDx: details.delta.dx,
-                          textDirection: Directionality.of(context),
-                        );
-                    position.jumpTo(
-                      (position.pixels + offsetDelta).clamp(
-                        position.minScrollExtent,
-                        position.maxScrollExtent,
-                      ),
-                    );
-                  }
-                  ..onEnd = (details) {
-                    _settleSwipe(details.velocity.pixelsPerSecond.dx);
-                  }
-                  ..onCancel = () {
-                    _settleSwipe(0);
-                  };
-              },
+              _configureTabSwipe,
+            ),
+        TouchTabSwipeRecognizer:
+            GestureRecognizerFactoryWithHandlers<TouchTabSwipeRecognizer>(
+              () => TouchTabSwipeRecognizer(
+                singleFingerPansContent: () {
+                  final tab = context.read<TabsBloc>().state.currentTab;
+                  return tab is PdfBookTab && tab.canPanHorizontally;
+                },
+              ),
+              _configureTabSwipe,
             ),
       },
       child: child,
     );
+  }
+
+  void _configureTabSwipe(HorizontalDragGestureRecognizer recognizer) {
+    recognizer
+      // הזכייה בזירה מגיעה רק אחרי סף — down מוסר את הדלתא
+      // שנצברה עד אז במקום לבלוע אותה (רציפות הגרירה).
+      ..dragStartBehavior = DragStartBehavior.down
+      ..onStart = (_) {
+        final controller = _pageController;
+        if (controller == null || !controller.hasClients) return;
+        _swipeDragging = true;
+        _swipeStartPage = controller.page ?? 0;
+      }
+      ..onUpdate = (details) {
+        final controller = _pageController;
+        if (!_swipeDragging || controller == null || !controller.hasClients) {
+          return;
+        }
+        final position = controller.position;
+        final offsetDelta =
+            details.delta.dx.abs() *
+            tabSwipeDirection(
+              accumulatedDx: details.delta.dx,
+              textDirection: Directionality.of(context),
+            );
+        position.jumpTo(
+          (position.pixels + offsetDelta).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+      }
+      ..onEnd = (details) {
+        _settleSwipe(details.velocity.pixelsPerSecond.dx);
+      }
+      ..onCancel = () {
+        _settleSwipe(0);
+      };
   }
 
   /// משלים מחוות החלקה: מתיישב על הטאב הקרוב למיקום הנוכחי, או על

@@ -29,6 +29,10 @@ import 'package:pdf/src/pdf/obj/object_stream.dart';
 /// PDF glyph space: widths and `TJ` adjustments are thousandths of an em.
 const double _pdfGlyphSpace = 1000.0;
 
+/// An OpenType file whose outlines are CFF starts with this tag; one with
+/// TrueType outlines starts with a version number. The two embed differently.
+const List<int> _cffSignature = [0x4F, 0x54, 0x54, 0x4F];
+
 class PdfShapedFont extends PdfFont {
   PdfShapedFont(
     PdfDocument document, {
@@ -189,6 +193,8 @@ class PdfShapedFont extends PdfFont {
       if (end <= segmentStart) {
         return;
       }
+      // Ts הוא מצב טקסט שנשאר בתוקף עד שנכתב שוב; בלי אפס מפורש כל מה
+      // שמצויר אחרי סימן מורם נשאר מורם.
       final rise = run.yOffset(segmentStart) * unitScale;
       _pending = _PendingSegment(run, segmentStart, end);
       try {
@@ -198,7 +204,7 @@ class PdfShapedFont extends PdfFont {
           '',
           x + segmentPenUnits * unitScale,
           y,
-          rise: rise == 0 ? null : rise,
+          rise: rise,
         );
       } finally {
         _pending = null;
@@ -317,12 +323,22 @@ class PdfShapedFont extends PdfFont {
     }
   }
 
+  /// CFF outlines cannot be embedded as a TrueType file: the descendant font
+  /// is a CIDFontType0 and the file goes in `/FontFile3`, not `/FontFile2`.
+  bool get _isCff =>
+      fontBytes.length >= 4 &&
+      _cffSignature.indexed.every((e) => fontBytes[e.$1] == e.$2);
+
   @override
   void prepare() {
     super.prepare();
 
     _file.buf.putBytes(fontBytes);
-    _file.params['/Length1'] = PdfNum(fontBytes.length);
+    if (_isCff) {
+      _file.params['/Subtype'] = const PdfName('/OpenType');
+    } else {
+      _file.params['/Length1'] = PdfNum(fontBytes.length);
+    }
 
     _buildDescriptor();
     _buildWidths();
@@ -335,10 +351,11 @@ class PdfShapedFont extends PdfFont {
     params['/DescendantFonts'] = PdfArray([
       PdfDict.values({
         '/Type': const PdfName('/Font'),
-        '/Subtype': const PdfName('/CIDFontType2'),
+        '/Subtype': PdfName(_isCff ? '/CIDFontType0' : '/CIDFontType2'),
         '/BaseFont': base,
         '/FontDescriptor': _descriptor.ref(),
-        '/CIDToGIDMap': const PdfName('/Identity'),
+        // CIDFontType0 has no CIDToGIDMap: the CFF maps CIDs to glyphs itself.
+        if (!_isCff) '/CIDToGIDMap': const PdfName('/Identity'),
         '/DW': const PdfNum(0),
         '/W': PdfArray([const PdfNum(0), _widths.ref()]),
         '/CIDSystemInfo': PdfDict.values({
@@ -369,7 +386,7 @@ class PdfShapedFont extends PdfFont {
 
     _descriptor.params
       ..['/FontName'] = PdfName('/$fontName')
-      ..['/FontFile2'] = _file.ref()
+      ..[_isCff ? '/FontFile3' : '/FontFile2'] = _file.ref()
       ..['/Flags'] = PdfNum(flags)
       ..['/FontBBox'] = PdfArray.fromNum(<int>[
         (metrics.xMin * scale).round(),

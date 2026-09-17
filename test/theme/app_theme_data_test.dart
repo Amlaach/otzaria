@@ -42,6 +42,39 @@ void main() {
       expect(cs.surface, Colors.white);
     });
 
+    test('סולם המשטחים בהיר מזה של "אפור" ושומר על סדר עולה (issue #1221)', () {
+      final white = AppThemeData.createColorScheme(
+        AppSeedColors.white,
+        Brightness.light,
+      );
+      final grey = AppThemeData.createColorScheme(
+        AppSeedColors.grey,
+        Brightness.light,
+      );
+
+      final whiteRamp = [
+        white.surfaceContainerLow,
+        white.surfaceContainer,
+        white.surfaceContainerHigh,
+        white.surfaceContainerHighest,
+      ];
+      final greyRamp = [
+        grey.surfaceContainerLow,
+        grey.surfaceContainer,
+        grey.surfaceContainerHigh,
+        grey.surfaceContainerHighest,
+      ];
+
+      for (var i = 0; i < whiteRamp.length; i++) {
+        expect(whiteRamp[i].r, greaterThan(greyRamp[i].r), reason: 'שלב $i');
+      }
+      // סדר יורד בבהירות — ההיררכיה בין שכבות המשטח נשמרת.
+      for (var i = 1; i < whiteRamp.length; i++) {
+        expect(whiteRamp[i].r, lessThan(whiteRamp[i - 1].r), reason: 'שלב $i');
+      }
+      expect(white.surfaceContainerLow.r, lessThan(white.surface.r));
+    });
+
     test('במצב כהה הרקע נשאר כהה', () {
       final cs = AppThemeData.createColorScheme(
         AppSeedColors.white,

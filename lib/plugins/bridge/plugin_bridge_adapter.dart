@@ -31,9 +31,7 @@ import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/core/connectivity_status_service.dart';
-import 'package:otzaria/core/messages/window_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
-import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/models/link_types.dart';
@@ -459,10 +457,10 @@ class PluginBridgeDependencies {
   /// ממשיך במסלולי ה-TOC הקיימים.
   final Future<int?> Function(TextBook book, String ref)? resolveRefToLine;
 
-  /// מחזיר את מבני ה-AltToc של ספר לפי כותרתו. אופציונלי — אם לא סופק,
+  /// מחזיר את מבני ה-AltToc של ספר. אופציונלי — אם לא סופק,
   /// האדפטר משתמש ב-[DatabaseLibraryProvider.instance]. קיים בעיקר להזרקה
   /// בבדיקות (ה-DB אינו זמין בהן).
-  final Future<List<AltTocStructure>> Function(String bookTitle)?
+  final Future<List<AltTocStructure>> Function(TextBook book)?
   altStructuresProvider;
 
   /// מחזיר את ערכי מבנה ה-AltToc עם ה-lineIndex, לבניית העץ. אופציונלי —
@@ -1218,7 +1216,10 @@ class PluginBridgeAdapter {
           if (bookId is! String || bookId.isEmpty) {
             throw Exception('error.invalid_params: bookId required');
           }
-          final structures = await _loadAltStructures(bookId);
+          final book = _findPluginBook(library, args);
+          final structures = book is TextBook
+              ? await _loadAltStructures(book)
+              : const <AltTocStructure>[];
           // ה-id הפנימי של ה-DB אינו יציב בין גרסאות ספרייה — לא נחשף לתוסף.
           return structures
               .map(
@@ -1232,6 +1233,7 @@ class PluginBridgeAdapter {
           if (bookId is! String || bookId.isEmpty) {
             throw Exception('error.invalid_params: bookId required');
           }
+          final book = _findPluginBook(library, args);
           final rawKey = args['structureKey'];
           if (rawKey != null && (rawKey is! String || rawKey.isEmpty)) {
             throw Exception(
@@ -1239,7 +1241,9 @@ class PluginBridgeAdapter {
             );
           }
           final structureKey = rawKey as String?;
-          final structures = await _loadAltStructures(bookId);
+          final structures = book is TextBook
+              ? await _loadAltStructures(book)
+              : const <AltTocStructure>[];
           if (structures.isEmpty) {
             // ספר בלי AltToc (או ספר אישי/קובץ). key שלא קיים → שגיאה.
             if (structureKey != null) {
@@ -1263,7 +1267,7 @@ class PluginBridgeAdapter {
             }
             selected = match.first;
           }
-          final entries = await _loadAltTocEntries(selected.id);
+          final entries = await _loadAltTocEntries(selected);
           return _flattenAltToc(entries);
         }
       case 'getTree':
@@ -1705,19 +1709,21 @@ class PluginBridgeAdapter {
   }
 
   /// טוען את מבני ה-AltToc של ספר (דרך התלות המוזרקת או ה-DB).
-  Future<List<AltTocStructure>> _loadAltStructures(String bookId) {
+  Future<List<AltTocStructure>> _loadAltStructures(TextBook book) {
     final provider =
         _dependencies.altStructuresProvider ??
         DatabaseLibraryProvider.instance.getAlternativeStructuresForBook;
-    return provider(bookId);
+    return provider(book);
   }
 
   /// טוען את ערכי מבנה ה-AltToc עם ה-lineIndex (דרך התלות המוזרקת או ה-DB).
-  Future<List<AltTocEntryRow>> _loadAltTocEntries(int structureId) {
-    final provider =
-        _dependencies.altTocEntriesProvider ??
-        DatabaseLibraryProvider.instance.getAltTocEntriesWithLineIndex;
-    return provider(structureId);
+  Future<List<AltTocEntryRow>> _loadAltTocEntries(AltTocStructure structure) {
+    final provider = _dependencies.altTocEntriesProvider;
+    if (provider != null) return provider(structure.id);
+    return DatabaseLibraryProvider.instance.getAltTocEntriesWithLineIndex(
+      structure.id,
+      isUserBook: structure.isUserBook,
+    );
   }
 
   /// מסדר את ערכי ה-AltToc בסדר מסמך (depth-first) למערך שטוח זהה במבנה
@@ -2331,17 +2337,22 @@ class PluginBridgeAdapter {
         }
       case 'getCurrentState':
         final tabsState = _dependencies.tabsBloc.state;
-        final tabs = _pluginVisibleTabs();
+        final tabs = tabsState.tabs;
         final panes = tabs.map(_paneForPlugins).toList();
         // Use the same resolver as getCurrentRef for consistent currentRef values
         final snapshots = await Future.wait(panes.map(resolveReaderLocation));
         final openTabs = List.generate(tabs.length, (i) {
           final t = panes[i];
-          // טאב שאינו ספר (חיפוש) — id/type = null
+          // טאב שאינו ספר (חיפוש, כלי, תוסף) — id/type = null
           final tabBook = t is TextBookTab
               ? t.book
               : (t is PdfBookTab ? t.book : null);
           return {
+            'toolId': t is ToolTab ? t.toolId : null,
+            'isSelf':
+                t is ToolTab &&
+                t.toolId == plugin.pluginId &&
+                t.instanceId == instanceId,
             'id': tabBook?.id,
             'type': tabBook != null ? PluginBookIdentity.typeOf(tabBook) : null,
             'source': tabBook != null
@@ -2396,10 +2407,9 @@ class PluginBridgeAdapter {
           'openTabs': openTabs,
         };
       case 'closeTab':
-        // spec: closeTab({ index }) — האינדקס הוא ברשימה ש-getCurrentState
-        // מחזיר, לא ב-TabsBloc. הטאב עצמו נמסר לאירוע, ולכן אין המרת אינדקס.
+        // spec: closeTab({ index }) — האינדקס ברשימת openTabs של getCurrentState.
         {
-          final target = _pluginVisibleTabAt(args);
+          final target = _tabAt(args);
           final unsaved = unsavedPluginTabs([target]);
           if (unsaved.isNotEmpty) {
             final confirmed = await _dependencies.showWarningDialog(
@@ -2413,14 +2423,12 @@ class PluginBridgeAdapter {
           return true;
         }
       case 'activateTab':
-        // spec: activateTab({ index }) — כאן דרוש דווקא האינדקס הגולמי, ולכן
-        // הוא נגזר מזהות הטאב ולא מהאינדקס שהתוסף מסר.
+        // spec: activateTab({ index })
         {
           final tabsBloc = _dependencies.tabsBloc;
-          final rawIndex = tabsBloc.state.tabs.indexOf(
-            _pluginVisibleTabAt(args),
+          tabsBloc.add(
+            SetCurrentTab(tabsBloc.state.tabs.indexOf(_tabAt(args))),
           );
-          tabsBloc.add(SetCurrentTab(rawIndex));
           return true;
         }
       case 'getCurrentRef':
@@ -3013,8 +3021,8 @@ class PluginBridgeAdapter {
                 // בשולחן הפעיל הטאבים חיים ב-TabsBloc ונשמרים אליו רק במעבר,
                 // ולכן הספירה שלו חייבת לבוא משם ולא מהעותק השמור.
                 'tabCount': workspace.id == activeId
-                    ? _pluginVisibleTabs().length
-                    : workspace.tabs.where(_isPluginVisibleTab).length,
+                    ? _dependencies.tabsBloc.state.tabs.length
+                    : workspace.tabs.length,
               },
             )
             .toList();
@@ -3316,12 +3324,6 @@ class PluginBridgeAdapter {
         _grantedFolders.add(p.normalize(p.absolute(path)));
         return {'path': path};
       case 'print':
-        // ⚠️ פלאגין ההדפסה נרשם בחלון הראשון בלבד, ובלי הגידור התוסף קיבל
-        // `MissingPluginException` אטומה והמשתמש לא ראה דבר.
-        if (WindowRole.isSecondary) {
-          UiSnack.show(WindowMessages.printOnlyInMainWindow);
-          return {'printed': false};
-        }
         final printer = _dependencies.printPluginPage ?? _defaultPrintPage;
         final jobName = (args['jobName'] as String?)?.trim();
         final printLayout = _parsePdfLayout(args);
@@ -5608,18 +5610,9 @@ class PluginBridgeAdapter {
     };
   }
 
-  /// טאב שה-API חושף לתוסף. טאבי הכלים (ToolTab) מסוננים, ולכן אינדקס
-  /// ברשימה שהתוסף רואה **אינו** האינדקס ב-tabsBloc.state.tabs.
-  static bool _isPluginVisibleTab(OpenedTab tab) => tab is! ToolTab;
-
-  /// הטאבים שה-API חושף, בסדר שבו התוסף מקבל אותם. כל פעולה לפי אינדקס
-  /// שהתוסף מסר חייבת לעבור דרך כאן — אינדקס גולמי יפגע בטאב הלא נכון.
-  List<OpenedTab> _pluginVisibleTabs() =>
-      _dependencies.tabsBloc.state.tabs.where(_isPluginVisibleTab).toList();
-
-  /// הטאב שבאינדקס `index` **ברשימה שהתוסף רואה** ([_pluginVisibleTabs]).
+  /// הטאב שבאינדקס `index` שהתוסף מסר (כמו ב-`openTabs`).
   /// אינדקס חסר או מחוץ לתחום נדחה כשגיאת ארגומנטים ולא כחריגה.
-  OpenedTab _pluginVisibleTabAt(Map<String, dynamic> args) {
+  OpenedTab _tabAt(Map<String, dynamic> args) {
     final rawIndex = args['index'];
     if (rawIndex is! num ||
         !rawIndex.isFinite ||
@@ -5627,7 +5620,7 @@ class PluginBridgeAdapter {
       throw Exception('error.invalid_params: index must be an integer');
     }
     final index = rawIndex.toInt();
-    final tabs = _pluginVisibleTabs();
+    final tabs = _dependencies.tabsBloc.state.tabs;
     if (index < 0 || index >= tabs.length) {
       throw Exception(
         'error.invalid_params: index $index out of range '

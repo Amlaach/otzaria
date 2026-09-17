@@ -23,6 +23,7 @@ import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
 import 'package:otzaria/data/data_providers/library_provider_manager.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/pdf_book/utils/pdf_links_window.dart';
 import 'package:otzaria/pdf_book/utils/pdf_scroll_physics_provider.dart';
 import 'package:otzaria/text_book/text_book_repository.dart';
@@ -513,11 +514,11 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   late final PdfBookBloc _bloc;
   late final String _resolvedPdfPath;
   late final bool _pdfFileExists;
-  // שמור reference יציב ל-PdfDocumentRefFile כדי למנוע race-condition ב-pdfrx:
-  // כל parent-rebuild יוצר widget חדש עם PdfDocumentRefFile חדש (object שונה).
+  // שמור reference יציב ל-PdfDocumentRef כדי למנוע race-condition ב-pdfrx:
+  // כל parent-rebuild יוצר widget חדש עם PdfDocumentRef חדש (object שונה).
   // pdfrx משתמש ב-identical() לבדוק אם ה-document השתנה במהלך await.
   // אם ה-object ישתנה, pdfrx מדלג על .load() והמסמך לא נטען לעולם.
-  late PdfDocumentRefFile _pdfDocumentRef;
+  late PdfDocumentRef _pdfDocumentRef;
   PdfTextSearcher? textSearcher;
   TabController? _leftPaneTabController;
 
@@ -569,7 +570,13 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   bool _rightPaneUsesPushLayout = false;
 
   /// מצב יד — גרירת עכבר גוללת את הדף במקום לסמן טקסט (issue #916).
-  bool _isHandMode = false;
+  bool _isHandMode =
+      Settings.getValue<bool>(SettingsRepository.keyPdfHandMode) ?? false;
+
+  void _toggleHandMode() {
+    setState(() => _isHandMode = !_isHandMode);
+    Settings.setValue<bool>(SettingsRepository.keyPdfHandMode, _isHandMode);
+  }
 
   /// פעיל רק בפתיחה לעמוד שאינו ראשון (דף יומי, חיפוש, היסטוריה,
   /// קישור מטקסט). כשהדגל true:
@@ -1740,6 +1747,8 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                               () => TrackpadPanRecognizer(
                                 onPanDelta: _handleTrackpadPanDelta,
                                 onPanEnd: _trackpadPanAxisLock.reset,
+                                canPanHorizontally: () =>
+                                    widget.tab.canPanHorizontally,
                               ),
                               (recognizer) {},
                             ),
@@ -1921,12 +1930,12 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     );
   }
 
-  PdfDocumentRefFile _createDocumentRef() {
+  PdfDocumentRef _createDocumentRef() {
     // מסמך חדש = מחזור חיים חדש לדגל הטעינה. זה המקום הריכוזי והבטוח
     // לאיפוס: נקרא בכל יצירת ref (initial load + retry) ולא רגיש
     // לסדר ההפעלה של onViewerReady / onDocumentLoadFinished.
     _documentFullyLoaded = false;
-    return PdfDocumentRefFile(
+    return PdfFontFallback.documentRef(
       _resolvedPdfPath,
       // תמיד progressive: pdfrx מציג את העמוד הראשון מיד במקום
       // להמתין למטא-דאטה של כל העמודים. המעבר ל"stable" מטופל ב-screen
@@ -5191,7 +5200,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
               ? 'מצב יד פעיל — לחץ לחזרה לסימון טקסט'
               : 'מצב יד — גלילה בגרירת העכבר',
           selected: _isHandMode,
-          onPressed: () => setState(() => _isHandMode = !_isHandMode),
+          onPressed: _toggleHandMode,
           compact: isCompact,
           actionId: ToolbarActionId.handMode,
         ),
@@ -5496,7 +5505,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                 : OtzariaIcons.book_24_regular,
             tooltip: edition.isCompanion
                 ? '${edition.book.title} — מהדורת טקסט (אוצריא)'
-                : edition.book.title,
+                : edition.label ?? edition.book.title,
             onPressed: () => _openParallelEdition(context, edition),
           ),
       ],

@@ -117,9 +117,9 @@ void main() {
       expect(offset(), closeTo(_notch, 0.01));
     });
 
-    // מלכודת: דעיכה מונחת-מרחק נותנת את המהירות המקסימלית בפריים הראשון —
-    // נמדד 44 מתוך 100 פיקסלים בפריים אחד, וזו בדיוק הקפיצה שיש להחליק.
-    testWidgets('התנועה מאיצה ואז מאטה — הפריים הראשון אינו הגדול', (
+    // עקומה שמאיצה לשיא באמצע נקראת כהיסוס בתחילת כל נקישה. דפדפן מתחיל
+    // מהמהירות המלאה ומאט משם, וזו התחושה שיש לשמר.
+    testWidgets('התנועה מאטה לאורך כל הדרך — הפריים הראשון הוא הגדול', (
       tester,
     ) async {
       await tester.pumpWidget(buildList());
@@ -136,10 +136,39 @@ void main() {
       }
 
       final peak = steps.reduce(math.max);
-      final peakIndex = steps.indexOf(peak);
-      expect(peakIndex, greaterThan(0), reason: 'שיא בפריים הראשון = קפיצה');
-      expect(steps.first, lessThan(peak * 0.75));
-      expect(steps.last, lessThan(peak), reason: 'הסיום חייב להאט');
+      expect(steps.indexOf(peak), 0, reason: 'שיא אחרי הפריים הראשון = היסוס');
+      for (var i = 1; i < steps.length; i++) {
+        if (steps[i] == 0) break;
+        expect(
+          steps[i],
+          lessThanOrEqualTo(steps[i - 1] + 0.01),
+          reason: 'הצעד גדל שוב בפריים $i',
+        );
+      }
+    });
+
+    // זנב של צעדים תת-פיקסליים נקרא כרעד ולא כתנועה: מרגע שהצעד הבא קטן
+    // מפיקסל יש לנחות על היעד, ולא לפרוס אותו על עוד פריימים.
+    testWidgets('אין פריימים תת-פיקסליים לפני הנחיתה', (tester) async {
+      await tester.pumpWidget(buildList());
+      await tester.pumpAndSettle();
+
+      final steps = <double>[];
+      var previous = offset();
+      wheel(tester);
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final current = offset();
+        if ((current - previous).abs() < 0.01) break;
+        steps.add(current - previous);
+        previous = current;
+      }
+
+      expect(offset(), closeTo(_notch, 0.01));
+      // הצעד האחרון הוא הנחיתה עצמה ומותר לו להיות קטן.
+      for (var i = 0; i < steps.length - 1; i++) {
+        expect(steps[i], greaterThan(0.5), reason: 'זחילה בפריים $i');
+      }
     });
 
     testWidgets('התנועה מונוטונית — אין ריצוד או חזרה אחורה', (tester) async {

@@ -1640,6 +1640,7 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
     );
     final columnVisibility = PageShapeSettingsManager.getColumnVisibility(
       state.book.title,
+      heCategories: state.book.heCategories,
       workspaceId: workspaceId,
     );
     Map<String, String?> configuration;

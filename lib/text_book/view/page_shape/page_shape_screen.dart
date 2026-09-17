@@ -404,6 +404,7 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
 
     _columnVisibility = PageShapeSettingsManager.getColumnVisibility(
       state.book.title,
+      heCategories: state.book.heCategories,
       workspaceId: _activeWorkspaceId,
     );
 
@@ -609,42 +610,12 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
     TextBookLoaded state,
     List<String> commentators,
   ) async {
-    final updatedConfig = {
-      'left': _leftCommentator,
-      'right': encodePageShapeCommentatorsSelection(
+    await _saveCommentatorConfiguration(
+      state,
+      right: encodePageShapeCommentatorsSelection(
         commentators,
         forceMultipleMode: true,
       ),
-      'bottom': _bottomCommentator,
-      'bottomRight': _bottomRightCommentator,
-    };
-
-    // כששולחן העבודה מחזיק בחירה משלו לספר, שינוי חי חייב להיכתב אליה -
-    // אחרת הוא נשמר לספר/לקטגוריה ונדרס מיד בטעינה הבאה.
-    final workspaceToSave = PageShapeSettingsManager.commentatorWorkspaceTarget(
-      _activeWorkspaceId,
-      state.book.title,
-    );
-
-    final hasActualBookConfig =
-        PageShapeSettingsManager.loadConfiguration(state.book.title) != null;
-
-    final categoryToSave =
-        workspaceToSave == null &&
-            !hasActualBookConfig &&
-            state.book.heCategories != null &&
-            state.book.heCategories!.isNotEmpty
-        ? PageShapeSettingsManager.getActiveCategory(state.book.heCategories) ??
-              PageShapeSettingsManager.getParentCategory(
-                state.book.heCategories,
-              )
-        : null;
-
-    await PageShapeSettingsManager.saveConfiguration(
-      state.book.title,
-      updatedConfig,
-      saveToCategory: categoryToSave,
-      saveToWorkspaceId: workspaceToSave,
     );
 
     if (!mounted) {
@@ -682,21 +653,7 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
       if (resolvedSingle == null) {
         return _buildEmptyColumnContent(
           columnName: 'right',
-          onSelectCommentator: () {
-            setState(() {
-              _columnVisibility['right'] = true;
-            });
-            final blocState = context.read<TextBookBloc>().state;
-            if (blocState is TextBookLoaded) {
-              PageShapeSettingsManager.saveColumnVisibility(
-                blocState.book.title,
-                _columnVisibility,
-                scope: _activeDisplaySettingsScope(blocState.book.title),
-                workspaceId: _activeWorkspaceId,
-              );
-            }
-            _openSettingsPane();
-          },
+          onSelectCommentator: () => _showColumnAndOpenSettings('right'),
           onHideColumn: () => _hideColumn('right'),
         );
       }
@@ -710,7 +667,6 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
           selectionSyncController: _selectionSyncController,
           onLoadFailed: () => _hideColumn(
             'right',
-            global: false,
             showSnack: false,
             persist: false,
           ),
@@ -746,58 +702,82 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
     );
   }
 
-  PageShapeDisplaySettingsScope _activeDisplaySettingsScope(String bookTitle) {
-    return PageShapeSettingsManager.getDisplaySettingsScope(
-      bookTitle,
-      workspaceId: _activeWorkspaceId,
+  /// שמירת המפרשים והטורים המוסתרים ליעד שממנו נטענו: שולחן העבודה, הספר
+  /// או הקטגוריה. מחזיר את היעד שנבחר.
+  Future<({String? workspaceId, String? category})>
+  _saveCommentatorConfiguration(TextBookLoaded state, {String? right}) async {
+    // כששולחן העבודה מחזיק בחירה משלו לספר, שינוי חי חייב להיכתב אליה -
+    // אחרת הוא נשמר לספר/לקטגוריה ונדרס מיד בטעינה הבאה.
+    final workspaceToSave = PageShapeSettingsManager.commentatorWorkspaceTarget(
+      _activeWorkspaceId,
+      state.book.title,
     );
+
+    final hasActualBookConfig =
+        PageShapeSettingsManager.loadConfiguration(state.book.title) != null;
+
+    final categoryToSave =
+        workspaceToSave == null &&
+            !hasActualBookConfig &&
+            state.book.heCategories != null &&
+            state.book.heCategories!.isNotEmpty
+        ? PageShapeSettingsManager.getActiveCategory(state.book.heCategories) ??
+              PageShapeSettingsManager.getParentCategory(
+                state.book.heCategories,
+              )
+        : null;
+
+    await PageShapeSettingsManager.saveConfiguration(
+      state.book.title,
+      {
+        'left': _leftCommentator,
+        'right': right ?? _rightCommentator,
+        'bottom': _bottomCommentator,
+        'bottomRight': _bottomRightCommentator,
+      },
+      saveToCategory: categoryToSave,
+      saveToWorkspaceId: workspaceToSave,
+      columnVisibility: Map.of(_columnVisibility),
+    );
+    return (workspaceId: workspaceToSave, category: categoryToSave);
   }
 
-  String _hiddenColumnMessage(PageShapeDisplaySettingsScope scope) {
-    switch (scope) {
-      case PageShapeDisplaySettingsScope.book:
-        return TextBookMessages.columnHiddenInBook;
-      case PageShapeDisplaySettingsScope.workspace:
-        return TextBookMessages.columnHiddenInWorkspace;
-      case PageShapeDisplaySettingsScope.global:
-        return TextBookMessages.columnHiddenGlobally;
+  void _showColumnAndOpenSettings(String column) {
+    setState(() {
+      _columnVisibility[column] = true;
+    });
+    final state = context.read<TextBookBloc>().state;
+    if (state is TextBookLoaded) {
+      _saveCommentatorConfiguration(state);
     }
+    _openSettingsPane();
   }
 
-  /// הסתרת טור לפי תחום השמירה הפעיל בהגדרות צורת הדף.
-  void _hideColumn(
+  /// הסתרת טור. [persist] שומר את ההסתרה יחד עם בחירת המפרשים.
+  Future<void> _hideColumn(
     String column, {
-    bool global = true,
     bool showSnack = true,
     bool persist = true,
-  }) {
+  }) async {
     final state = context.read<TextBookBloc>().state;
     if (state is! TextBookLoaded) return;
 
     setState(() {
       _columnVisibility[column] = false;
     });
-
-    if (persist) {
-      final scope = global
-          ? _activeDisplaySettingsScope(state.book.title)
-          : PageShapeDisplaySettingsScope.book;
-      PageShapeSettingsManager.saveColumnVisibility(
-        state.book.title,
-        _columnVisibility,
-        scope: scope,
-        workspaceId: _activeWorkspaceId,
-      );
-    }
-
-    if (showSnack && global && persist) {
-      UiSnack.show(
-        _hiddenColumnMessage(_activeDisplaySettingsScope(state.book.title)),
-      );
-    }
-
     _refreshLinksForCurrentConfiguration(
       'page-shape column visibility changed',
+    );
+    if (!persist) return;
+
+    final target = await _saveCommentatorConfiguration(state);
+    if (!showSnack) return;
+    UiSnack.show(
+      target.workspaceId != null
+          ? TextBookMessages.columnHiddenInWorkspace
+          : target.category != null
+          ? TextBookMessages.columnHiddenInCategory(target.category!)
+          : TextBookMessages.columnHiddenInBook,
     );
   }
 
@@ -1233,7 +1213,6 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                         onLoadFailed: () =>
                                                             _hideColumn(
                                                               'left',
-                                                              global: false,
                                                               showSnack: false,
                                                               persist: false,
                                                             ),
@@ -1249,33 +1228,10 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                               _kCommentaryPaneWidthFactor,
                                                       child: _buildEmptyColumnContent(
                                                         columnName: 'left',
-                                                        onSelectCommentator: () {
-                                                          setState(() {
-                                                            _columnVisibility['left'] =
-                                                                true;
-                                                          });
-                                                          final state = context
-                                                              .read<
-                                                                TextBookBloc
-                                                              >()
-                                                              .state;
-                                                          if (state
-                                                              is TextBookLoaded) {
-                                                            PageShapeSettingsManager.saveColumnVisibility(
-                                                              state.book.title,
-                                                              _columnVisibility,
-                                                              scope:
-                                                                  _activeDisplaySettingsScope(
-                                                                    state
-                                                                        .book
-                                                                        .title,
-                                                                  ),
-                                                              workspaceId:
-                                                                  _activeWorkspaceId,
-                                                            );
-                                                          }
-                                                          _openSettingsPane();
-                                                        },
+                                                        onSelectCommentator: () =>
+                                                            _showColumnAndOpenSettings(
+                                                              'left',
+                                                            ),
                                                         onHideColumn: () =>
                                                             _hideColumn('left'),
                                                       ),
@@ -1446,33 +1402,10 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                               _kCommentaryPaneWidthFactor,
                                                       child: _buildEmptyColumnContent(
                                                         columnName: 'right',
-                                                        onSelectCommentator: () {
-                                                          setState(() {
-                                                            _columnVisibility['right'] =
-                                                                true;
-                                                          });
-                                                          final state = context
-                                                              .read<
-                                                                TextBookBloc
-                                                              >()
-                                                              .state;
-                                                          if (state
-                                                              is TextBookLoaded) {
-                                                            PageShapeSettingsManager.saveColumnVisibility(
-                                                              state.book.title,
-                                                              _columnVisibility,
-                                                              scope:
-                                                                  _activeDisplaySettingsScope(
-                                                                    state
-                                                                        .book
-                                                                        .title,
-                                                                  ),
-                                                              workspaceId:
-                                                                  _activeWorkspaceId,
-                                                            );
-                                                          }
-                                                          _openSettingsPane();
-                                                        },
+                                                        onSelectCommentator: () =>
+                                                            _showColumnAndOpenSettings(
+                                                              'right',
+                                                            ),
                                                         onHideColumn: () =>
                                                             _hideColumn(
                                                               'right',
@@ -1565,8 +1498,6 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                                         _openCommentaryPersonalNote,
                                                                     onLoadFailed: () => _hideColumn(
                                                                       'bottom',
-                                                                      global:
-                                                                          false,
                                                                       showSnack:
                                                                           false,
                                                                       persist:
@@ -1633,15 +1564,14 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                                       _selectionSyncController,
                                                                   onOpenPersonalNote:
                                                                       _openCommentaryPersonalNote,
-                                                                  onLoadFailed: () => _hideColumn(
-                                                                    'bottomRight',
-                                                                    global:
-                                                                        false,
-                                                                    showSnack:
-                                                                        false,
-                                                                    persist:
-                                                                        false,
-                                                                  ),
+                                                                  onLoadFailed: () =>
+                                                                      _hideColumn(
+                                                                        'bottomRight',
+                                                                        showSnack:
+                                                                            false,
+                                                                        persist:
+                                                                            false,
+                                                                      ),
                                                                 ),
                                                               ),
                                                               const SizedBox(
@@ -1704,8 +1634,6 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
                                                                   onLoadFailed: () =>
                                                                       _hideColumn(
                                                                         'bottom',
-                                                                        global:
-                                                                            false,
                                                                         showSnack:
                                                                             false,
                                                                         persist:

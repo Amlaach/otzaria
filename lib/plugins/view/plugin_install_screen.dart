@@ -273,6 +273,13 @@ class _PluginInstallScreenState extends State<PluginInstallScreen> {
             const SizedBox(height: 16),
           ],
 
+          if (widget.manifest.headless &&
+              (_requestsRunOnStartup ||
+                  _showsPermission(pluginStartupContributionsPermission))) ...[
+            _HeadlessBanner(colorScheme: colorScheme),
+            const SizedBox(height: 16),
+          ],
+
           if (_requestsKeepAlive) ...[
             _KeepAliveBanner(colorScheme: colorScheme),
             const SizedBox(height: 16),
@@ -437,6 +444,63 @@ class _BackgroundActivationBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     color: colorScheme.onTertiaryContainer,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// תוסף ללא ממשק אינו יכול ליפול לפתיחת דף, ולכן כיבוי הרשאות הרקע משבית אותו.
+class _HeadlessBanner extends StatelessWidget {
+  final ColorScheme colorScheme;
+
+  const _HeadlessBanner({required this.colorScheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer,
+        borderRadius: AppTokens.borderRadiusAll,
+        border: Border.all(color: colorScheme.secondary, width: 1.5),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            FluentIcons.info_24_filled,
+            color: colorScheme.secondary,
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'זהו תוסף ללא ממשק',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: colorScheme.onSecondaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'אין לו דף משלו, והוא פועל רק ברקע. בלי ההרשאות '
+                  '"${getPermissionInfo(pluginStartupContributionsPermission).label}" '
+                  'ו-"${getPermissionInfo(pluginRunOnStartupPermission).label}" '
+                  'התוסף לא יפעל כראוי.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSecondaryContainer,
                     height: 1.4,
                   ),
                 ),

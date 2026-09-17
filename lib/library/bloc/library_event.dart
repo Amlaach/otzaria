@@ -77,11 +77,20 @@ class NavigateUp extends LibraryEvent {}
 class SearchBooks extends LibraryEvent {
   final bool? showOtzarHachochma;
   final bool? showHebrewBooks;
+  final bool? showLocalHebrewBooks;
 
-  const SearchBooks({this.showOtzarHachochma, this.showHebrewBooks});
+  const SearchBooks({
+    this.showOtzarHachochma,
+    this.showHebrewBooks,
+    this.showLocalHebrewBooks,
+  });
 
   @override
-  List<Object?> get props => [showOtzarHachochma, showHebrewBooks];
+  List<Object?> get props => [
+    showOtzarHachochma,
+    showHebrewBooks,
+    showLocalHebrewBooks,
+  ];
 }
 
 class UpdateSearchQuery extends LibraryEvent {
@@ -109,4 +118,13 @@ class SelectBookForPreview extends LibraryEvent {
 
   @override
   List<Object?> get props => [book];
+}
+
+class SelectCategoryForPreview extends LibraryEvent {
+  final Category category;
+
+  const SelectCategoryForPreview(this.category);
+
+  @override
+  List<Object?> get props => [category];
 }

@@ -21,12 +21,13 @@ import 'package:otzaria/tabs/models/text_tab.dart';
 import 'package:otzaria/text_book/bloc/text_book_bloc.dart';
 import 'package:otzaria/text_book/bloc/text_book_state.dart';
 import 'package:otzaria/text_book/utils/dibburim_structure.dart';
+import 'package:otzaria/text_book/utils/inline_section_markers.dart';
 import 'package:otzaria/text_book/utils/reading_segment_navigation.dart';
 import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class AltTocSidebarView extends StatefulWidget {
-  final Book book;
+  final TextBook book;
   final void Function() closeLeftPaneCallback;
   final ItemScrollController scrollController;
 
@@ -254,7 +255,7 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
     });
     try {
       final structures = await DatabaseLibraryProvider.instance
-          .getAlternativeStructuresForBook(widget.book.title);
+          .getAlternativeStructuresForBook(widget.book);
       if (mounted) {
         setState(() {
           _structures = [
@@ -308,6 +309,7 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
           ? buildDibburimEntries(widget.tableOfContents, widget.dibburim)
           : await DatabaseLibraryProvider.instance.getAllAlternativeEntries(
               structureId,
+              isUserBook: widget.book.isUserBook,
             );
 
       if (mounted) {
@@ -373,12 +375,26 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
     }
   }
 
+  bool _isTopicStructure(int structureId) =>
+      _structures.any((s) => s.id == structureId && s.key == 'Topic');
+
   Future<int?> _entryIdForLine(int lineIndex, int structureId) async {
     if (structureId != kDibburimStructureId) {
+      // כותרת סימן מעל פתיחת נושא משויכת במסד לנושא הקודם, אך מוצגת תחת
+      // הנושא החדש — הרשומה נקבעת לפי שורת התוכן שהיא פותחת.
+      final state = context.read<TextBookBloc>().state;
+      if (_isTopicStructure(structureId) && state is TextBookLoaded) {
+        final content = state.content;
+        while (lineIndex + 1 < content.length &&
+            sectionHeadingLinesAbove([content[lineIndex]]) == 1) {
+          lineIndex++;
+        }
+      }
       return DatabaseLibraryProvider.instance.getAltTocEntryForLine(
         widget.book.title,
         lineIndex,
         structureId,
+        isUserBook: widget.book.isUserBook,
       );
     }
     if (_structureExpanded[structureId] != true) return null;
@@ -596,6 +612,7 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
       var links = await DatabaseLibraryProvider.instance.getLinksForAltTocEntry(
         structureId,
         entry.id,
+        isUserBook: widget.book.isUserBook,
       );
 
       // 2. If no links, but has children, try to get link from first child (recursively)
@@ -606,7 +623,11 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
           if (children != null && children.isNotEmpty) {
             current = children.first;
             links = await DatabaseLibraryProvider.instance
-                .getLinksForAltTocEntry(structureId, current.id);
+                .getLinksForAltTocEntry(
+                  structureId,
+                  current.id,
+                  isUserBook: widget.book.isUserBook,
+                );
           } else {
             current = null;
           }
@@ -616,7 +637,21 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
       if (!mounted) return;
 
       if (links.isNotEmpty) {
-        _openLink(links.first);
+        final link = links.first;
+        final state = context.read<TextBookBloc>().state;
+        if (_isTopicStructure(structureId) &&
+            link.path2 == widget.book.title &&
+            state is TextBookLoaded) {
+          // כותרת הנושא מוצגת מעל כותרות הסימן שלפני שורת היעד — אליה מנווטים.
+          final line = link.index2 - 1;
+          final content = state.content;
+          String? at(int i) => i >= 0 && i < content.length ? content[i] : null;
+          _scrollToLine(
+            line - sectionHeadingLinesAbove([at(line - 1), at(line - 2)]),
+          );
+        } else {
+          _openLink(link);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('לא נמצא קישור לכותרת זו')),
@@ -811,8 +846,7 @@ class _AltTocSidebarViewState extends State<AltTocSidebarView>
     final roots = _structureRoots[structure.id] ?? [];
     final hasChildren =
         roots.isNotEmpty ||
-        (structure.id == kDibburimStructureId &&
-            _hasDibburimEntries);
+        (structure.id == kDibburimStructureId && _hasDibburimEntries);
 
     return Column(
       children: [

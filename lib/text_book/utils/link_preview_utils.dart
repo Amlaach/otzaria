@@ -10,6 +10,13 @@ bool isPreviewHoverableUrl(String url) =>
     url.startsWith('otzaria://note-marker') ||
     url.startsWith('otzaria://note');
 
+/// קישורים שהתצוגה המקדימה שלהם נגישה רק בריחוף, ולכן במגע ההקשה פותחת אותה.
+/// עוגן-מילה והערה אישית נשארים בהקשה שלהם: היא פותחת חלונית עם אותו תוכן.
+bool isTouchPreviewUrl(String url) =>
+    url.startsWith('otzaria://inline-link') ||
+    url.startsWith('otzaria://book-note') ||
+    url.startsWith('otzaria://note-marker');
+
 /// בונה קישור לתצוגה מקדימה מכתובת של קישור־טווח (`start/end`).
 Link? inlineLinkFromPreviewUrl(String url) {
   final uri = Uri.tryParse(url);

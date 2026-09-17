@@ -27,6 +27,90 @@ const Map<String, String> kHebrewConnectionTypes = {
   'אחר': 'OTHER',
 };
 
+/// שמות מבנה שמקבלים את תצוגת המבנה הרשמי המקביל: סימנים/סעיפים מוצגים
+/// כסימני חלוקה בגוף הטקסט, ונושאים ככותרת מעל השורה.
+const Map<String, String> kHebrewAltTocStructureKeys = {
+  'סימנים': 'Simanim',
+  'סעיפים': 'Seifim',
+  'נושאים': 'Topic',
+};
+
+/// שורת כותרת שפוענחה מקובץ כותרות.
+class ParsedHeading {
+  /// מספר השורה בקובץ הכותרות (1-based), לדיווח שגיאות.
+  final int rowNumber;
+
+  /// כותרת הספר — רק בקובץ רוחבי (עמודת "ספר"); בקובץ פר-ספר null.
+  final String? bookTitle;
+
+  /// מזהה קטגוריה, אם צוין (לפירוק כפילות-כותרת).
+  final int? categoryId;
+
+  /// שם המבנה כפי שיוצג בלשונית (למשל "סימנים").
+  final String structure;
+
+  /// רמת הכותרת בעץ (1 = שורש).
+  final int level;
+
+  final String title;
+
+  /// מספר השורה בספר (1-based), כשצוין.
+  final int? lineNumber;
+
+  /// טקסט שהשורה בספר פותחת בו, כשלא צוין מספר שורה.
+  final String? anchorText;
+
+  const ParsedHeading({
+    required this.rowNumber,
+    this.bookTitle,
+    this.categoryId,
+    required this.structure,
+    required this.level,
+    required this.title,
+    this.lineNumber,
+    this.anchorText,
+  });
+}
+
+/// שורת גרסה שפוענחה מקובץ גרסאות. בקובץ שבתיקיית הספרים [primary] ו-[version]
+/// הם נתיבי קבצים יחסיים לקובץ; בייבוא מההגדרות — כותרות ספרים.
+class ParsedBookVersion {
+  final int rowNumber;
+  final String primary;
+  final String version;
+
+  /// שם הגרסה לתצוגה; כשחסר — שם ספר הגרסה.
+  final String? label;
+  final String? notes;
+  final double? priority;
+
+  const ParsedBookVersion({
+    required this.rowNumber,
+    required this.primary,
+    required this.version,
+    this.label,
+    this.notes,
+    this.priority,
+  });
+}
+
+/// רשומת גרסה כפי שהיא נשמרת ב-user_book_version.
+class UserBookVersionRecord {
+  final int versionBookId;
+  final int primaryBookId;
+  final String versionTitle;
+  final String? versionNotes;
+  final double? priority;
+
+  const UserBookVersionRecord({
+    required this.versionBookId,
+    required this.primaryBookId,
+    required this.versionTitle,
+    this.versionNotes,
+    this.priority,
+  });
+}
+
 /// שורת דור שפוענחה מקובץ הדורות.
 class ParsedBookGeneration {
   /// כותרת הספר האישי שאליו משויך הדור.

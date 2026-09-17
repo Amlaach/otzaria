@@ -139,10 +139,11 @@ String toolUnavailableMessage(
     ToolUnavailableReason.pluginDisabled => LibraryMessages.pluginDisabled(
       name ?? toolId,
     ),
-    ToolUnavailableReason.pluginHiddenFromTools =>
-      ToolsMessages.pluginNotShownInTools(name ?? toolId),
     ToolUnavailableReason.pluginRequiresInternet =>
       ToolsMessages.pluginRequiresInternet(name ?? toolId),
+    ToolUnavailableReason.pluginHeadless => ToolsMessages.pluginIsHeadless(
+      name ?? toolId,
+    ),
     _ => ToolsMessages.toolNotFound(toolId),
   };
 }

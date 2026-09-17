@@ -20,6 +20,7 @@ import 'package:otzaria/indexing/utils/pdf_extraction_prefetcher.dart';
 import 'package:otzaria/indexing/models/catalogue_order_resolver.dart';
 import 'package:otzaria/indexing/models/indexing_run_result.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
+import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/pdf_book/utils/pdf_viewer_activity.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
@@ -114,6 +115,10 @@ class IndexingRepository {
       final RangeError rangeError
           when rangeError.invalidValue == -1 && rangeError.end == 3 =>
         IndexingFailureKind.pdfUnsupported,
+      // מ-PDF חורגת רק פתיחת המסמך (timeout של עמוד בודד מחזיר null), וקובץ
+      // ש-pdfium לא פותח תוך דקה לא ייפתח גם בניסיון הבא.
+      final TimeoutException _ when error is _PdfExtractionFailure =>
+        IndexingFailureKind.unreadableDocument,
       final TimeoutException _ => IndexingFailureKind.timeout,
       EncryptedDocumentException _ => IndexingFailureKind.passwordProtected,
       CorruptedDocumentException _ || UnsupportedDocumentFormatException _ =>
@@ -131,8 +136,9 @@ class IndexingRepository {
               normalized.contains('os error 5') =>
         IndexingFailureKind.permissionDenied,
       _
-          when normalized.contains('timeout') ||
-              normalized.contains('timed out') =>
+          when error is! _PdfExtractionFailure &&
+              (normalized.contains('timeout') ||
+                  normalized.contains('timed out')) =>
         IndexingFailureKind.timeout,
       _ when error is _PdfExtractionFailure =>
         IndexingFailureKind.pdfUnsupported,
@@ -1001,7 +1007,7 @@ class IndexingRepository {
 
     // הקורא קודם — טאב שממתין לעמוד היעד לא יחכה בתור מאחורי האינדוקס.
     await PdfViewerActivity.instance.waitUntilIdle();
-    final document = await PdfDocument.openFile(
+    final document = await PdfFontFallback.openFile(
       book.path,
     ).timeout(const Duration(seconds: 60));
     try {
@@ -1771,7 +1777,7 @@ class IndexingRepository {
   /// Clears the index and resets the list of indexed books.
   Future<bool> clearIndex() async {
     if (WindowRole.isSecondary) {
-      UiSnack.show(WindowMessages.indexingOnlyInMainWindow);
+      UiSnack.show(WindowMessages.indexResetOnlyInMainWindow);
       return false;
     }
     await _tantivyDataProvider.clear();

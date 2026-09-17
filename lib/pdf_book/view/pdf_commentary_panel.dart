@@ -116,6 +116,19 @@ String pdfCommentaryItemKey(Link link) =>
 String pdfCommentaryListStorageKey(Iterable<String> activeCommentators) =>
     'commentary_${(activeCommentators.toList()..sort()).join(',')}';
 
+/// סדר מפרשי הקטע: לפי מפרש, שורת מקור, ואז שורת היעד במפרש. בלי [Link.index2]
+/// קטעים על אותה שורה יוצאים בסדר שרירותי — המיון של Dart אינו יציב (#1330).
+@visibleForTesting
+int comparePdfCommentaryLinks(Link a, Link b) {
+  final titleCompare = utils
+      .getTitleFromPath(a.path2)
+      .compareTo(utils.getTitleFromPath(b.path2));
+  if (titleCompare != 0) return titleCompare;
+  final sourceCompare = a.index1.compareTo(b.index1);
+  if (sourceCompare != 0) return sourceCompare;
+  return a.index2.compareTo(b.index2);
+}
+
 /// מפתח מטמון התוכן הנראה. [linksIdentity] חייב להיות זהות רשימת הקישורים
 /// ולא אורכה: רענון חלון-קישורים מחליף את הרשימה, ואורך זהה אינו מבדיל.
 @visibleForTesting
@@ -1845,15 +1858,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
       }
     }
 
-    commentaryLinks.sort((a, b) {
-      final titleA = utils.getTitleFromPath(a.path2);
-      final titleB = utils.getTitleFromPath(b.path2);
-      final titleCompare = titleA.compareTo(titleB);
-      if (titleCompare != 0) {
-        return titleCompare;
-      }
-      return a.index1.compareTo(b.index1);
-    });
+    commentaryLinks.sort(comparePdfCommentaryLinks);
     final sortedNonCommentaryLinks = CommentaryService.sortLinksByEraSync(
       nonCommentaryLinks,
     );

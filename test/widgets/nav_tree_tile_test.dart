@@ -99,7 +99,7 @@ void main() {
     });
 
     testWidgets(
-      'NavTreeTile.heading: אייקון רשימה (ללא תיקייה) והזחה זהה עם ובלי ילדים',
+      'NavTreeTile.heading: טקסט בלבד ללא אייקון, והזחה זהה עם ובלי ילדים',
       (tester) async {
         var toggled = false;
         await pump(
@@ -126,12 +126,12 @@ void main() {
           ),
         );
 
-        // כל הכותרות משתמשות באייקון רשימה, ללא אייקון תיקייה
+        // שורות תוכן עניינים הן טקסט בלבד — אין קופסת אייקון (issue #1226).
         expect(find.byIcon(FluentIcons.folder_24_regular), findsNothing);
         expect(find.byIcon(FluentIcons.folder_open_24_regular), findsNothing);
         expect(
           find.byIcon(OtzariaIcons.text_bullet_list_24_regular),
-          findsNWidgets(3),
+          findsNothing,
         );
 
         // וידוא שהזחת start שווה בדיוק בין שתי כותרות רמה 0

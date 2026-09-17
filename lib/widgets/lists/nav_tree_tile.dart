@@ -53,6 +53,7 @@ class NavTreeTile extends StatelessWidget {
   final int? count;
 
   /// אייקון מותאם (כשלא משתמשים בקופסת תיקייה). נעטף בקופסת האייקון.
+  /// null יחד עם [useFolderIcon] כבוי ובלי [leading] — שורה ללא קופסת אייקון.
   final IconData? icon;
 
   /// קופסת תיקייה פתוחה/סגורה לפי [isExpanded] במקום [icon].
@@ -177,11 +178,8 @@ class NavTreeTile extends StatelessWidget {
     );
   }
 
-  /// שורת כותרת בתוכן עניינים (TOC) של ספר (טקסט או PDF).
-  ///
-  /// אינה משתמשת באייקון תיקייה (כותרות ספר אינן תיקיות) ואינה מוסיפה
-  /// הזחה עודפת לפי קיום ילדים — ההזחה נקבעת אך ורק לפי [level],
-  /// כדי שכל הכותרות באותה רמה ייושרו תמיד לאותו קו.
+  /// שורת כותרת בתוכן עניינים (TOC) של ספר (טקסט או PDF) — טקסט בלבד,
+  /// וההזחה לפי [level] בלבד, כדי שכותרות באותה רמה ייושרו לאותו קו.
   factory NavTreeTile.heading({
     Key? key,
     required String title,
@@ -191,7 +189,7 @@ class NavTreeTile extends StatelessWidget {
     bool isExpanded = false,
     bool hasChildren = false,
     int? count,
-    IconData icon = OtzariaIcons.text_bullet_list_24_regular,
+    IconData? icon,
     Widget? leading,
     Widget? trailing,
     VoidCallback? onTap,
@@ -245,21 +243,23 @@ class NavTreeTile extends StatelessWidget {
         ? (isExpanded
               ? FluentIcons.folder_open_24_regular
               : FluentIcons.folder_24_regular)
-        : (icon ?? FluentIcons.document_text_24_regular);
+        : icon;
 
-    final Widget baseLeading =
+    final Widget? baseLeading =
         leading ??
-        iconBox(
-          context,
-          child: Icon(
-            iconData,
-            color: cs.onSecondaryContainer,
-            size: iconContentSize,
-          ),
-        );
+        (iconData == null
+            ? null
+            : iconBox(
+                context,
+                child: Icon(
+                  iconData,
+                  color: cs.onSecondaryContainer,
+                  size: iconContentSize,
+                ),
+              ));
 
     // קופסת האייקון כיעד סינון: בריחוף/מגע מתחלפת לאייקון סינון ולחיצה מסננת.
-    final leadingWidget = onFilter == null
+    final leadingWidget = (baseLeading == null || onFilter == null)
         ? baseLeading
         : _FilterableIconBox(
             base: baseLeading,
@@ -277,61 +277,68 @@ class NavTreeTile extends StatelessWidget {
           top: 8,
           bottom: 8,
         ),
-        child: Row(
-          children: [
-            leadingWidget,
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OverflowTooltipText(
-                    text: title,
-                    maxLines: 1,
-                    style: AppTextStyles.settingTitle.copyWith(
-                      fontWeight: fontWeight,
-                      color: cs.onSurface,
-                      fontSize: AppTokens.fontMD,
-                    ),
-                  ),
-                  if (subtitle != null && subtitle!.isNotEmpty)
+        // גובה מזערי כגובה קופסת האייקון — שורה ללא קופסה (TOC) שומרת על
+        // אותו קצב רשימה כמו שורה שיש בה קופסה.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: iconBoxSize),
+          child: Row(
+            children: [
+              if (leadingWidget != null) ...[
+                leadingWidget,
+                const SizedBox(width: 9),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     OverflowTooltipText(
-                      text: subtitle!,
+                      text: title,
                       maxLines: 1,
-                      style: AppTextStyles.settingSubtitle.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontSize: AppTokens.fontSM,
+                      style: AppTextStyles.settingTitle.copyWith(
+                        fontWeight: fontWeight,
+                        color: cs.onSurface,
+                        fontSize: AppTokens.fontMD,
                       ),
                     ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (trailing != null)
-              trailing!
-            else if (onClearFilter != null)
-              _ClearFilterButton(onTap: onClearFilter!)
-            else if (count != null && count! > 0)
-              Text(
-                '($count)',
-                style: TextStyle(
-                  fontSize: AppTokens.fontMD,
-                  color: cs.onSurfaceVariant,
+                    if (subtitle != null && subtitle!.isNotEmpty)
+                      OverflowTooltipText(
+                        text: subtitle!,
+                        maxLines: 1,
+                        style: AppTextStyles.settingSubtitle.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontSize: AppTokens.fontSM,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            if (hasChildren) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                icon: ExpandingChevron(
-                  isExpanded: isExpanded,
-                  color: cs.onSurfaceVariant,
-                  size: 18,
+              const SizedBox(width: 8),
+              if (trailing != null)
+                trailing!
+              else if (onClearFilter != null)
+                _ClearFilterButton(onTap: onClearFilter!)
+              else if (count != null && count! > 0)
+                Text(
+                  '($count)',
+                  style: TextStyle(
+                    fontSize: AppTokens.fontMD,
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
-                visualDensity: VisualDensity.compact,
-                onPressed: onToggleExpand,
-              ),
+              if (hasChildren) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: ExpandingChevron(
+                    isExpanded: isExpanded,
+                    color: cs.onSurfaceVariant,
+                    size: 18,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onToggleExpand,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

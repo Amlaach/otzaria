@@ -5,14 +5,19 @@ import 'package:otzaria/models/books.dart';
 
 /// האם להציע לספר [book] את הפעולה "הצג נוסחאות נוספות".
 ///
-/// מהדורות (book_version) קיימות רק לספרי הספרייה הרשמית, ורק כשיש מהדורה
-/// לבחירה בפועל — ראו [DatabaseLibraryProvider.hasSelectableBookVersions].
-Future<bool> hasBookVersionsToOpen(TextBook book) async {
+/// בספר רשמי — כשיש מהדורה לבחירה בפועל (ראו
+/// [DatabaseLibraryProvider.hasSelectableBookVersions]); בספר אישי — כשהוא
+/// חלק מקבוצת גרסאות.
+Future<bool> hasBookVersionsToOpen(Book book) async {
   final probe = bookVersionsProbeForTesting;
   if (probe != null) return probe(book);
 
+  if (book.isUserBook) {
+    return DatabaseLibraryProvider.instance.getUserBookVersions(book).length >
+        1;
+  }
   final categoryId = book.categoryId;
-  if (book.isUserBook || categoryId == null) return false;
+  if (book is! TextBook || categoryId == null) return false;
   if (book.versionTitle != null) {
     final probe = availableBookVersionsProbeForTesting;
     final versions =
@@ -31,7 +36,7 @@ Future<bool> hasBookVersionsToOpen(TextBook book) async {
 
 /// מחליף את שאילתת המהדורות בבדיקות widget שאין להן seforim.db.
 @visibleForTesting
-Future<bool> Function(TextBook book)? bookVersionsProbeForTesting;
+Future<bool> Function(Book book)? bookVersionsProbeForTesting;
 
 /// מחליף את טעינת המהדורות כשכבר פתוח נוסח מסוים.
 @visibleForTesting

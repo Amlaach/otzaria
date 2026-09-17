@@ -1,3 +1,5 @@
+import 'package:otzaria/models/books.dart';
+
 /// מהדורה (גרסה) של ספר מטבלת book_version ב-seforim.db.
 ///
 /// [hasContent] — הטקסט המלא של המהדורה שמור ב-version_line וניתן לפתיחה.
@@ -13,6 +15,9 @@ class BookVersionInfo {
   final String? heVersionNotes;
   final bool hasContent;
 
+  /// גרסה של ספר אישי: קובץ-ספר נפרד שנפתח במקום הנוסח (ולא דרך version_line).
+  final Book? userBook;
+
   const BookVersionInfo({
     required this.versionTitle,
     this.heVersionTitle,
@@ -22,6 +27,7 @@ class BookVersionInfo {
     this.versionNotes,
     this.heVersionNotes,
     required this.hasContent,
+    this.userBook,
   });
 
   /// שם התצוגה: הכותרת העברית כשקיימת (ולא ריקה), אחרת ה-versionTitle של ספריא.

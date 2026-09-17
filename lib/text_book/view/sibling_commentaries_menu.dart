@@ -65,6 +65,7 @@ class SiblingCommentariesController {
     TextDisplayProfile? displayProfile,
     bool? removeNikud,
     bool? removePunctuation,
+    double? maxFontSize,
   }) {
     if (sourceLink == null) return null;
     // הכתובת המלאה (displayReference) מחושבת מה-TOC של המקור ולכן תואמת את
@@ -89,6 +90,7 @@ class SiblingCommentariesController {
         displayProfile: displayProfile,
         removeNikud: removeNikud,
         removePunctuation: removePunctuation,
+        maxFontSize: maxFontSize,
       ),
       childrenRefreshStream: _refresh.stream,
     );
@@ -101,6 +103,7 @@ class SiblingCommentariesController {
     TextDisplayProfile? displayProfile,
     bool? removeNikud,
     bool? removePunctuation,
+    double? maxFontSize,
   }) {
     if (!_cache.containsKey(lineIndex)) {
       _cache[lineIndex] = null; // מסמן "בטעינה" ומונע טעינה כפולה
@@ -134,6 +137,7 @@ class SiblingCommentariesController {
           displayProfile: displayProfile,
           removeNikud: removeNikud,
           removePunctuation: removePunctuation,
+          maxFontSize: maxFontSize,
           onTap: () => onNavigate(link),
         ),
       );

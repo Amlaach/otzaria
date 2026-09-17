@@ -26,6 +26,7 @@ class SettingsRepository {
   static const String keyLineHeight = 'key-line-height';
   static const String keyShowOtzarHachochma = 'key-show-otzar-hachochma';
   static const String keyShowHebrewBooks = 'key-show-hebrew-books';
+  static const String keyShowLocalHebrewBooks = 'key-show-local-hebrew-books';
   static const String keyShowExternalBooks = 'key-show-external-books';
   static const String keyShowTeamim = 'key-show-teamim';
   static const String keyReplaceHolyNames = 'key-replace-holy-names';
@@ -59,11 +60,15 @@ class SettingsRepository {
   static const String keyCopyWithHeaders = 'key-copy-with-headers';
   static const String keyCopyHeaderFormat = 'key-copy-header-format';
   static const String keyIsFullscreen = 'key-is-fullscreen';
+  static const String keyRestoreAllWindows = 'key-restore-all-windows';
   static const String keyLibraryViewMode = 'key-library-view-mode';
   static const String keyLibraryShowPreview = 'key-library-show-preview';
   static const String keySearchShowPreview = 'key-search-show-preview';
   static const String keyEnablePerBookSettings = 'key-enable-per-book-settings';
   static const String keyPdfBookViewByDefault = 'key-pdf-book-view-by-default';
+
+  /// הבחירה האחרונה במצב היד בצפיין ה-PDF — חלה על כל ספר שנפתח.
+  static const String keyPdfHandMode = 'key-pdf-hand-mode';
   static const String keyTalmudBavliOpenFormat = 'key-talmud-bavli-open-format';
   static const String keyOfflineMode = 'key-offline-mode';
   static const String keyAutoSync = 'key-auto-sync';
@@ -78,6 +83,9 @@ class SettingsRepository {
       'key-error-report-sender-email';
   static const String keyQueueErrorReportsWhenOffline =
       'key-queue-error-reports-when-offline';
+
+  /// דיווח אחרי קריסה: `ask` (ברירת מחדל) / `always` / `never`.
+  static const String keyAppCrashReportMode = 'key-app-crash-report-mode';
   static const String keyLibraryPath = 'key-library-path';
   static const String keyIndexPath = 'key-index-path';
   static const String keyDatabasesPath = 'key-databases-path';
@@ -199,6 +207,7 @@ class SettingsRepository {
     keyLineHeight,
     keyShowOtzarHachochma,
     keyShowHebrewBooks,
+    keyShowLocalHebrewBooks,
     keyShowExternalBooks,
     keyShowTeamim,
     keyReplaceHolyNames,
@@ -224,11 +233,13 @@ class SettingsRepository {
     keyCopyWithHeaders,
     keyCopyHeaderFormat,
     keyIsFullscreen,
+    keyRestoreAllWindows,
     keyLibraryViewMode,
     keyLibraryShowPreview,
     keySearchShowPreview,
     keyEnablePerBookSettings,
     keyPdfBookViewByDefault,
+    keyPdfHandMode,
     keyTalmudBavliOpenFormat,
     keyOfflineMode,
     keyAutoSync,
@@ -238,6 +249,7 @@ class SettingsRepository {
     keyLastLibraryUpdateCheck,
     keyErrorReportSenderEmail,
     keyQueueErrorReportsWhenOffline,
+    keyAppCrashReportMode,
     keyLibraryPath,
     keyIndexPath,
     keyDatabasesPath,
@@ -349,6 +361,10 @@ class SettingsRepository {
       'showHebrewBooks': _settings.getValue<bool>(
         keyShowHebrewBooks,
         defaultValue: false,
+      ),
+      'showLocalHebrewBooks': _settings.getValue<bool>(
+        keyShowLocalHebrewBooks,
+        defaultValue: true,
       ),
       'showExternalBooks': _settings.getValue<bool>(
         keyShowExternalBooks,
@@ -637,6 +653,10 @@ class SettingsRepository {
 
   Future<void> updateShowHebrewBooks(bool value) async {
     await _settings.setValue(keyShowHebrewBooks, value);
+  }
+
+  Future<void> updateShowLocalHebrewBooks(bool value) async {
+    await _settings.setValue(keyShowLocalHebrewBooks, value);
   }
 
   Future<void> updateShowExternalBooks(bool value) async {
@@ -1157,6 +1177,7 @@ class SettingsRepository {
     await _settings.setValue(keyLineHeight, 1.5);
     await _settings.setValue(keyShowOtzarHachochma, false);
     await _settings.setValue(keyShowHebrewBooks, false);
+    await _settings.setValue(keyShowLocalHebrewBooks, true);
     await _settings.setValue(keyShowExternalBooks, false);
     await updateTextDisplayPolicy(TextDisplayPolicy.empty);
     await _settings.setValue(keyAutoUpdateIndex, true);
@@ -1184,6 +1205,7 @@ class SettingsRepository {
     await _settings.setValue(keySoftwareAndBookUpdatesEnabled, true);
     await _settings.setValue(keyErrorReportSenderEmail, '');
     await _settings.setValue(keyQueueErrorReportsWhenOffline, true);
+    await _settings.setValue(keyAppCrashReportMode, 'ask');
     await _settings.setValue(keyPersonalNotesCollapsedByDefault, true);
 
     // Calendar Notification Settings

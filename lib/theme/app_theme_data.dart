@@ -47,11 +47,19 @@ class AppThemeData {
           ? DynamicSchemeVariant.monochrome
           : DynamicSchemeVariant.tonalSpot,
     );
-    // ערכת "לבן": זרע לבן נותן מ-fromSeed surface אפור (F9F9F9) — מסך העיון
-    // צריך לבן מוחלט, ולכן ה-surface מוחלף במפורש במצב בהיר.
+    // ערכת "לבן": monochrome מחזיר לזרע לבן ולזרע אפור את אותו סולם נייטרלי,
+    // ולכן גם ה-surface וגם סולם ה-surfaceContainer נדרסים — בלעדיו הסרגל,
+    // חלונית הניווט ורקע הלוח נשארים אפורים כמו בערכת "אפור" (issue #1221).
     if (seedColor.toARGB32() == AppSeedColors.white.toARGB32() &&
         brightness == Brightness.light) {
-      return scheme.copyWith(surface: Colors.white);
+      return scheme.copyWith(
+        surface: Colors.white,
+        surfaceContainerLowest: Colors.white,
+        surfaceContainerLow: const Color(0xFFFAFAFA),
+        surfaceContainer: const Color(0xFFF6F6F6),
+        surfaceContainerHigh: const Color(0xFFF1F1F1),
+        surfaceContainerHighest: const Color(0xFFECECEC),
+      );
     }
     return scheme;
   }

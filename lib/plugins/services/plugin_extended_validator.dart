@@ -581,6 +581,7 @@ class PluginExtendedValidator {
       warnings,
     );
     _checkNameVsToolTabTitle(manifestJson, warnings);
+    _validateHeadless(manifest, manifestJson, declaredPermissions, errors);
 
     final files = _collectScannableFiles(directoryPath);
     final apiUsage = <String, Set<String>>{};
@@ -753,6 +754,84 @@ class PluginExtendedValidator {
   static const String _searchSubmitRoutingMinVersion = '0.9.97';
   static const String _externalEditionsMinVersion = '0.9.97';
   static const String _whenConditionMinVersion = '0.9.97';
+  static const String _headlessMinVersion = '0.9.98';
+
+  /// תוסף ללא ממשק רץ רק כשמנוע הרקע מתעורר, ואין לו דף שאפשר לפתוח במקומו.
+  /// לכן תוסף שאין לו דרך להתעורר, או שמפנה לדף שלו, נחסם כבר בהתקנה.
+  static void _validateHeadless(
+    PluginManifest manifest,
+    Map<String, dynamic> manifestJson,
+    Set<String> declaredPermissions,
+    List<String> errors,
+  ) {
+    final raw = manifestJson['headless'];
+    if (raw != null && raw is! bool) {
+      errors.add('השדה headless חייב להיות true או false');
+      return;
+    }
+    if (!manifest.headless) return;
+
+    try {
+      if (PluginVersionUtils.compareCoreVersions(
+            _headlessMinVersion,
+            manifest.minAppVersion,
+          ) >
+          0) {
+        errors.add(
+          'תוסף ללא ממשק (headless) נתמך החל מגרסה $_headlessMinVersion, אך '
+          'minAppVersion שהוצהר הוא ${manifest.minAppVersion}. עדכן את '
+          'minAppVersion',
+        );
+      }
+    } on PluginVersionFormatException {
+      // minAppVersion לא חוקי — נתפס ב-PluginManifestValidator.
+    }
+
+    if (manifest.startup?.hasBackgroundActivationTrigger != true) {
+      errors.add(
+        'לתוסף ללא ממשק (headless) אין שום דרך לפעול: יש להצהיר ב-'
+        'contributes.startup על activationEvents, או על פקד או פריט תפריט '
+        'שמפעילים את התוסף',
+      );
+    }
+    if (!declaredPermissions.contains(pluginRunOnStartupPermission)) {
+      errors.add(
+        'תוסף ללא ממשק (headless) חייב לבקש את ההרשאה '
+        '"$pluginRunOnStartupPermission" — בלעדיה המנוע שלו לעולם לא מתעורר',
+      );
+    }
+    final contributes = manifestJson['contributes'];
+    if (contributes is Map && contributes['toolTab'] != null) {
+      errors.add(
+        'תוסף ללא ממשק (headless) אינו מוצג ככרטיסייה — הסירו את '
+        'contributes.toolTab',
+      );
+    }
+    if (_containsTrueKey(
+      contributes is Map ? contributes['startup'] : null,
+      const {
+        'openPlugin',
+        'openPluginOnSubmit',
+      },
+    )) {
+      errors.add(
+        'תוסף ללא ממשק (headless) אינו יכול להשתמש ב-openPlugin או '
+        'ב-openPluginOnSubmit — אין לו דף לפתוח',
+      );
+    }
+  }
+
+  static bool _containsTrueKey(Object? node, Set<String> keys) {
+    if (node is Map) {
+      for (final entry in node.entries) {
+        if (keys.contains(entry.key) && entry.value == true) return true;
+        if (_containsTrueKey(entry.value, keys)) return true;
+      }
+    } else if (node is List) {
+      return node.any((child) => _containsTrueKey(child, keys));
+    }
+    return false;
+  }
 
   /// ולידציית תנאי `when`: סכימה, מפתח הגדרה קריא וגרסת מינימום. מפתח
   /// חסום מוערך כ-false בזמן ריצה, ולכן נחשב לשגיאה כבר בהתקנה.

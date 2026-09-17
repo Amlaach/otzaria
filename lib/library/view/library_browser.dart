@@ -29,6 +29,7 @@ import 'package:otzaria/navigation/view/main_window_screen.dart';
 import 'package:otzaria/library/view/grid_items.dart';
 import 'package:otzaria/library/view/otzar_book_dialog.dart';
 import 'package:otzaria/library/view/book_preview_panel.dart';
+import 'package:otzaria/library/view/category_preview_panel.dart';
 import 'package:otzaria/library/view/library_empty_state_widget.dart';
 import 'package:otzaria/search/models/search_configuration.dart';
 import 'package:otzaria/search/view/search_dialog.dart';
@@ -293,6 +294,21 @@ LibraryBackspaceAction resolveLibraryBackspaceAction({
       : LibraryBackspaceAction.clearSearch;
 }
 
+/// נתיב האב של קטגוריה לתצוגה בתוצאות ('תנך, ראשונים'); ריק לקטגוריית שורש.
+/// [Library] היא ההורה של עצמה — בלי בדיקת הזהות הטיפוס למעלה לא מסתיים.
+@visibleForTesting
+String categoryParentPath(Category category) {
+  final parts = <String>[];
+  for (
+    var c = category.parent;
+    c != null && c.parent != null && !identical(c, c.parent);
+    c = c.parent
+  ) {
+    parts.insert(0, c.title);
+  }
+  return parts.join(', ');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 class LibraryBrowser extends StatefulWidget {
@@ -467,18 +483,16 @@ class _LibraryBrowserState extends State<LibraryBrowser>
               !current.isLoading &&
               current.library != null,
           listener: (context, state) {
-            final book = _getFirstDisplayedBook(
-              state.currentCategory ?? state.library!,
+            context.read<LibraryBloc>().add(
+              SelectCategoryForPreview(state.currentCategory ?? state.library!),
             );
-            if (book != null) {
-              context.read<LibraryBloc>().add(SelectBookForPreview(book));
-            }
           },
         ),
         BlocListener<SettingsBloc, SettingsState>(
           listenWhen: (p, c) =>
               p.showExternalBooks != c.showExternalBooks ||
               p.showHebrewBooks != c.showHebrewBooks ||
+              p.showLocalHebrewBooks != c.showLocalHebrewBooks ||
               p.showOtzarHachochma != c.showOtzarHachochma,
           listener: (ctx, s) {
             final q = ctx.read<LibraryBloc>().state.searchQuery;
@@ -1506,13 +1520,15 @@ class _LibraryBrowserState extends State<LibraryBrowser>
     );
   }
 
-  List<Widget> _buildCategoryContent(Category category) {
-    final List<Widget> items = [];
-    final filteredBooks = _visibleBooks(category.books);
+  /// תתי-התיקיות והספרים של [category], מסוננים וממוינים לתצוגה.
+  ({List<Category> subCategories, List<Book> books}) _displayedContent(
+    Category category,
+  ) {
+    final filteredBooks = _visibleBooks(category.books)
+      ..sort((a, b) => a.order.compareTo(b.order));
     final filteredSubCategories = category.subCategories
         .where((c) => c.hasBooks)
         .toList();
-    filteredBooks.sort((a, b) => a.order.compareTo(b.order));
     if (category is Library) {
       filteredSubCategories.sort(
         (a, b) => _getTopCategoryOrder(a).compareTo(_getTopCategoryOrder(b)),
@@ -1522,15 +1538,21 @@ class _LibraryBrowserState extends State<LibraryBrowser>
         (a, b) => _normalizeOrder(a.order).compareTo(_normalizeOrder(b.order)),
       );
     }
+    return (subCategories: filteredSubCategories, books: filteredBooks);
+  }
+
+  List<Widget> _buildCategoryContent(Category category) {
+    final List<Widget> items = [];
+    final (subCategories: filteredSubCategories, books: filteredBooks) =
+        _displayedContent(category);
 
     // הפריט הראשון ברשת מקבל את צומת הפוקוס — כניסה מהחיפוש ב-Tab/חץ-מטה.
     final allItems = <Widget>[
       ...filteredSubCategories.indexed.map(
         ((int, Category) entry) => KeyedSubtree(
           key: _tourCategoryKeys.putIfAbsent(entry.$2.path, GlobalKey.new),
-          child: CategoryGridItem(
-            category: entry.$2,
-            onCategoryClickCallback: () => _openCategory(entry.$2),
+          child: _buildCategoryGridItem(
+            entry.$2,
             focusNode: entry.$1 == 0 ? _firstGridItemFocusNode : null,
           ),
         ),
@@ -1664,41 +1686,96 @@ class _LibraryBrowserState extends State<LibraryBrowser>
     const double iconSize = 14.0;
     final cs = Theme.of(context).colorScheme;
 
-    return _buildLibraryListRowBase(
-      context: context,
-      leadingWidget: Container(
-        width: iconBoxSize,
-        height: iconBoxSize,
-        decoration: BoxDecoration(
-          color: cs.secondaryContainer,
-          borderRadius: AppTokens.borderRadiusAll,
-        ),
-        child: Center(
-          child: Icon(
-            FluentIcons.folder_24_regular,
-            color: cs.onSecondaryContainer,
-            size: iconSize,
+    return _withCategorySelection(
+      category,
+      (isSelected, onTap, onDoubleTap) => _buildLibraryListRowBase(
+        context: context,
+        leadingWidget: Container(
+          width: iconBoxSize,
+          height: iconBoxSize,
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer,
+            borderRadius: AppTokens.borderRadiusAll,
+          ),
+          child: Center(
+            child: Icon(
+              FluentIcons.folder_24_regular,
+              color: cs.onSecondaryContainer,
+              size: iconSize,
+            ),
           ),
         ),
+        title: category.title,
+        subtitle: null,
+        pathLine: categoryParentPath(category),
+        level: 0,
+        itemStyle: _LibraryListItemStyle.search,
+        isSelected: isSelected,
+        onTap: onTap,
+        onDoubleTap: onDoubleTap,
+        focusNode: focusNode,
       ),
-      title: category.title,
-      subtitle: null,
-      pathLine: _categoryParentPath(category),
-      level: 0,
-      itemStyle: _LibraryListItemStyle.search,
-      isSelected: false,
-      onTap: () => _openCategory(category),
-      focusNode: focusNode,
     );
   }
 
-  /// נתיב האב של קטגוריה לתצוגה בתוצאות ('תנך, ראשונים'); ריק לקטגוריית שורש.
-  String _categoryParentPath(Category category) {
-    final parts = <String>[];
-    for (var c = category.parent; c != null && c.parent != null; c = c.parent) {
-      parts.insert(0, c.title);
-    }
-    return parts.join(', ');
+  Widget _buildCategoryGridItem(Category category, {FocusNode? focusNode}) {
+    return _withCategorySelection(
+      category,
+      (isSelected, onTap, onDoubleTap) => GestureDetector(
+        onDoubleTap: onDoubleTap,
+        child: CategoryGridItem(
+          category: category,
+          isSelected: isSelected,
+          onCategoryClickCallback: onTap,
+          focusNode: focusNode,
+        ),
+      ),
+    );
+  }
+
+  /// כשהתצוגה המקדימה פעילה תיקייה מתנהגת כמו ספר: לחיצה בוחרת, כפולה או Enter
+  /// נכנסות. בלעדיה אין לחיצה כפולה — היא מעכבת את הלחיצה הבודדת.
+  Widget _withCategorySelection(
+    Category category,
+    Widget Function(
+      bool isSelected,
+      VoidCallback onTap,
+      VoidCallback? onDoubleTap,
+    )
+    builder,
+  ) {
+    return BlocBuilder<SettingsBloc, SettingsState>(
+      buildWhen: (p, c) => p.libraryShowPreview != c.libraryShowPreview,
+      builder: (ctx, settingsState) {
+        return BlocBuilder<LibraryBloc, LibraryState>(
+          buildWhen: (p, c) =>
+              p.previewCategory != c.previewCategory &&
+              (p.previewCategory == category || c.previewCategory == category),
+          builder: (ctx, libState) {
+            final previewVisible = _isPreviewPanelVisible(settingsState);
+            final child = builder(
+              previewVisible && libState.previewCategory == category,
+              previewVisible
+                  ? () => context.read<LibraryBloc>().add(
+                      SelectCategoryForPreview(category),
+                    )
+                  : () => _openCategory(category),
+              previewVisible ? () => _openCategory(category) : null,
+            );
+            if (!previewVisible) return child;
+            return CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.enter): () =>
+                    _openCategory(category),
+                const SingleActivator(LogicalKeyboardKey.numpadEnter): () =>
+                    _openCategory(category),
+              },
+              child: child,
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildSearchCategoriesGrid(
@@ -1708,9 +1785,8 @@ class _LibraryBrowserState extends State<LibraryBrowser>
     return MyGridView(
       items: [
         for (final (i, category) in categories.indexed)
-          CategoryGridItem(
-            category: category,
-            onCategoryClickCallback: () => _openCategory(category),
+          _buildCategoryGridItem(
+            category,
             focusNode: firstFocus && i == 0 ? _firstGridItemFocusNode : null,
           ),
       ],
@@ -2530,10 +2606,6 @@ class _LibraryBrowserState extends State<LibraryBrowser>
 
   void _openCategory(Category category) {
     context.read<LibraryBloc>().add(NavigateToCategory(category));
-    final book = _getFirstDisplayedBook(category);
-    if (book != null) {
-      context.read<LibraryBloc>().add(SelectBookForPreview(book));
-    }
     _refocusSearchBar();
   }
 
@@ -2639,6 +2711,7 @@ class _LibraryBrowserState extends State<LibraryBrowser>
       SearchBooks(
         showHebrewBooks: s.showExternalBooks && s.showHebrewBooks,
         showOtzarHachochma: s.showExternalBooks && s.showOtzarHachochma,
+        showLocalHebrewBooks: s.showLocalHebrewBooks,
       ),
     );
   }
@@ -2689,15 +2762,39 @@ class _LibraryBrowserState extends State<LibraryBrowser>
 
   Widget _buildPreviewPane(SettingsState settingsState) {
     return BlocBuilder<LibraryBloc, LibraryState>(
-      buildWhen: (p, c) => p.previewBook != c.previewBook,
-      builder: (ctx, previewState) => BookPreviewPanel(
-        book: previewState.previewBook,
-        onOpenInReader: (i, {bool? forcePdf}) {
-          if (previewState.previewBook != null) {
-            _openBookInReader(previewState.previewBook!, i, forcePdf: forcePdf);
-          }
-        },
-      ),
+      buildWhen: (p, c) =>
+          p.previewBook != c.previewBook ||
+          p.previewCategory != c.previewCategory ||
+          p.currentCategory != c.currentCategory,
+      builder: (ctx, previewState) {
+        final category = previewState.previewCategory;
+        if (category != null) {
+          final content = _displayedContent(category);
+          return CategoryPreviewPanel(
+            key: ObjectKey(category),
+            category: category,
+            parentPath: categoryParentPath(category),
+            subCategories: content.subCategories,
+            books: content.books,
+            onOpen: identical(category, previewState.currentCategory)
+                ? null
+                : () => _openCategory(category),
+          );
+        }
+        return BookPreviewPanel(
+          emptyMessage: 'בחר ספר או תיקייה לתצוגה מקדימה',
+          book: previewState.previewBook,
+          onOpenInReader: (i, {bool? forcePdf}) {
+            if (previewState.previewBook != null) {
+              _openBookInReader(
+                previewState.previewBook!,
+                i,
+                forcePdf: forcePdf,
+              );
+            }
+          },
+        );
+      },
     );
   }
 

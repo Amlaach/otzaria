@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:otzaria/tabs/models/tab.dart';
+import 'package:otzaria/text_book/utils/inline_section_markers.dart';
 import 'package:otzaria/text_book/utils/link_anchor_variants.dart';
 import 'package:otzaria/text_book/utils/link_preview_utils.dart';
 import 'package:otzaria/theme/app_fonts.dart';
@@ -60,6 +61,10 @@ class SmartTextWidget extends StatelessWidget {
   /// callback ליציאת הסמן מעוגן-מילה.
   final void Function(String url)? onAnchorHoverExit;
 
+  /// הקשת מגע על קישור שהתצוגה המקדימה שלו נפתחת במחשב בריחוף
+  /// ([isTouchPreviewUrl]) — מקבל את ה-URL ואת מיקום ההקשה.
+  final void Function(String url, Offset globalPosition)? onTouchPreview;
+
   /// מפתח ייחודי לווידג'ט (לאופטימיזציה)
   final Key? widgetKey;
 
@@ -87,6 +92,7 @@ class SmartTextWidget extends StatelessWidget {
     this.onAnchorTap,
     this.onAnchorHover,
     this.onAnchorHoverExit,
+    this.onTouchPreview,
     this.widgetKey,
     this.renderMode = RenderMode.column,
     this.highlightBookId,
@@ -366,6 +372,22 @@ class SmartTextWidget extends StatelessWidget {
                 'color': anchorLinkColorCss,
               };
             }
+            if (element.localName == 'h3' &&
+                element.classes.contains(kSectionHeadingClass)) {
+              return {
+                ...headingCss,
+                'color': toCssHex(colorScheme.onSurfaceVariant),
+                // הכותרת צמודה לתוכן שהיא פותחת — באותה שורה.
+                'margin-bottom': '0',
+              };
+            }
+            // כותרת הסימן שמתחת לכותרת נושא — צמודה אליה, בלי השוליים העליונים.
+            if (element.previousElementSibling?.classes.contains(
+                  kSectionHeadingClass,
+                ) ??
+                false) {
+              return {...headingCss, 'margin-top': '0'};
+            }
             if (!hasMarkdownBlock) {
               return headingCss.isEmpty ? null : headingCss;
             }
@@ -383,6 +405,13 @@ class SmartTextWidget extends StatelessWidget {
           onTapUrl:
               (onOpenBook != null || onNoteTap != null || onAnchorTap != null)
               ? (url) async {
+                  final touchPosition = touchLinkTapPosition();
+                  if (touchPosition != null &&
+                      onTouchPreview != null &&
+                      isTouchPreviewUrl(url)) {
+                    onTouchPreview!(url, touchPosition);
+                    return true;
+                  }
                   // עוגן-מילה — תצוגה מקדימה של המפרש, לפני שאר הקישורים.
                   if (url.startsWith('otzaria://anchor') &&
                       onAnchorTap != null) {
@@ -567,6 +596,7 @@ class _SmartTextWidgetFactory extends WidgetFactory {
     final href = tree.element.attributes['href'];
     if (recognizer != null && href != null && isPreviewHoverableUrl(href)) {
       _previewHrefByRecognizer[recognizer] = href;
+      if (recognizer is TapGestureRecognizer) trackLinkTapDown(recognizer);
     }
     if (recognizer is TapGestureRecognizer &&
         href != null &&

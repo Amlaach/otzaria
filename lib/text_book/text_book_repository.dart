@@ -453,9 +453,12 @@ class TextBookRepository {
     required int sourceLineIndex,
     required String currentBookTitle,
     required int? currentCategoryId,
+    bool sourceIsUserBook = false,
+    bool currentIsUserBook = false,
   }) async {
     final repository = _sqliteProvider.repository;
-    if (repository == null) return [];
+    // קישורי המפרשים קיימים רק במסד הרשמי; ספר אישי בשם זהה אינו אותו ספר.
+    if (repository == null || sourceIsUserBook) return [];
 
     final sourceBook = sourceCategoryId != null
         ? await repository.getBookByTitleAndCategory(
@@ -465,7 +468,9 @@ class TextBookRepository {
         : await repository.getBookByTitle(sourceBookTitle);
     if (sourceBook == null) return [];
 
-    final currentBook = currentCategoryId != null
+    final currentBook = currentIsUserBook
+        ? null
+        : currentCategoryId != null
         ? await repository.getBookByTitleAndCategory(
             currentBookTitle,
             currentCategoryId,

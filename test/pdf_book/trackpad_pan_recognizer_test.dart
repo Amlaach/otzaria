@@ -10,43 +10,91 @@ void main() {
   late List<Offset> panDeltas;
   late int panEnds;
   late int scaleUpdates;
+  late int tabSwipeUpdates;
 
-  Widget buildHarness() {
+  Widget buildHarness({bool canPanHorizontally = true}) {
     panDeltas = [];
     panEnds = 0;
     scaleUpdates = 0;
+    tabSwipeUpdates = 0;
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Stack(
-        children: [
-          // מדמה את ה-InteractiveViewer של pdfrx שמתחת לשכבת ה-overlay.
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onScaleUpdate: (_) => scaleUpdates++,
-            child: const SizedBox.expand(),
-          ),
-          Positioned.fill(
-            child: RawGestureDetector(
-              behavior: HitTestBehavior.translucent,
-              gestures: {
-                TrackpadPanRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      TrackpadPanRecognizer
-                    >(
-                      () => TrackpadPanRecognizer(
-                        onPanDelta: (delta, position) => panDeltas.add(delta),
-                        onPanEnd: () => panEnds++,
-                      ),
-                      (recognizer) {},
-                    ),
-              },
+      // מדמה את מזהה ההחלקה בין כרטיסיות שעוטף את כל הכרטיסיות.
+      child: RawGestureDetector(
+        gestures: {
+          HorizontalDragGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<
+                HorizontalDragGestureRecognizer
+              >(
+                () => HorizontalDragGestureRecognizer(
+                  supportedDevices: const {PointerDeviceKind.trackpad},
+                ),
+                (recognizer) => recognizer.onUpdate = (_) => tabSwipeUpdates++,
+              ),
+        },
+        child: Stack(
+          children: [
+            // מדמה את ה-InteractiveViewer של pdfrx שמתחת לשכבת ה-overlay.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onScaleUpdate: (_) => scaleUpdates++,
               child: const SizedBox.expand(),
             ),
-          ),
-        ],
+            Positioned.fill(
+              child: RawGestureDetector(
+                behavior: HitTestBehavior.translucent,
+                gestures: {
+                  TrackpadPanRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                        TrackpadPanRecognizer
+                      >(
+                        () => TrackpadPanRecognizer(
+                          onPanDelta: (delta, position) => panDeltas.add(delta),
+                          onPanEnd: () => panEnds++,
+                          canPanHorizontally: () => canPanHorizontally,
+                        ),
+                        (recognizer) {},
+                      ),
+                },
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Future<void> horizontalSwipe(WidgetTester tester) async {
+    final gesture = await tester.createGesture(
+      kind: PointerDeviceKind.trackpad,
+    );
+    const center = Offset(400, 300);
+    await gesture.panZoomStart(center);
+    for (var dx = 8.0; dx <= 80; dx += 8) {
+      await gesture.panZoomUpdate(center, pan: Offset(dx, 1));
+    }
+    await gesture.panZoomEnd();
+    await tester.pump();
+  }
+
+  testWidgets('בלי גלילה לרוחב, מחווה אופקית עוברת למעבר בין כרטיסיות', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildHarness(canPanHorizontally: false));
+    await horizontalSwipe(tester);
+
+    expect(panDeltas, isEmpty);
+    expect(tabSwipeUpdates, greaterThan(0));
+  });
+
+  testWidgets('כשיש גלילה לרוחב, מחווה אופקית מזיזה את הדף', (tester) async {
+    await tester.pumpWidget(buildHarness());
+    await horizontalSwipe(tester);
+
+    expect(panDeltas, isNotEmpty);
+    expect(tabSwipeUpdates, 0);
+  });
 
   testWidgets('מחוות pan נתבעת אצלנו ולא מגיעה ל-onScaleUpdate שמתחת', (
     tester,

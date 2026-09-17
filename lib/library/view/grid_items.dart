@@ -5,7 +5,6 @@ import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
-import 'package:otzaria/data/data_providers/database_library_provider.dart';
 import 'package:otzaria/data/data_providers/external_catalog_mapper.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'dart:math';
@@ -14,6 +13,7 @@ import 'package:otzaria/core/messages/library_messages.dart';
 import 'package:otzaria/data/book_locator.dart';
 import 'package:otzaria/library/view/category_details_dialog.dart';
 import 'package:otzaria/library/view/book_versions_dialog.dart';
+import 'package:otzaria/text_book/utils/book_versions_action.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/text_book/view/book_source_dialog.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
@@ -255,12 +255,14 @@ class CategoryGridItem extends StatelessWidget {
   final Category category;
   final VoidCallback onCategoryClickCallback;
   final FocusNode? focusNode;
+  final bool isSelected;
 
   const CategoryGridItem({
     super.key,
     required this.category,
     required this.onCategoryClickCallback,
     this.focusNode,
+    this.isSelected = false,
   });
 
   @override
@@ -271,6 +273,7 @@ class CategoryGridItem extends StatelessWidget {
     return AppCard(
       onTap: onCategoryClickCallback,
       focusNode: focusNode,
+      selected: isSelected,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
@@ -692,19 +695,10 @@ class BookActionsMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // מהדורות (book_version) קיימות רק לספרי הספרייה הרשמית (seforim.db).
-    final versionsEligible =
-        book is TextBook && !book.isUserBook && book.categoryId != null;
-
     return FutureBuilder<List<bool>>(
       future: Future.wait([
         _canDeleteBookFromLibrary(book),
-        versionsEligible
-            ? DatabaseLibraryProvider.instance.hasSelectableBookVersions(
-                book.title,
-                book.categoryId!,
-              )
-            : Future.value(false),
+        hasBookVersionsToOpen(book),
       ]),
       builder: (context, snapshot) {
         final canDelete = snapshot.data?[0] ?? false;
@@ -730,7 +724,7 @@ class BookActionsMenuButton extends StatelessWidget {
               if (value == 'delete') {
                 _showDeleteBookDialog(context, book, onBookDeleted);
               } else if (value == 'versions') {
-                showBookVersionsDialog(context, book as TextBook);
+                showBookVersionsDialog(context, book);
               }
             },
             entries: [
@@ -757,7 +751,6 @@ class BookActionsMenuButton extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MyGridView
-//  • ריווח top: 8 או מרווח מתאים
 //  • FocusTraversalGroup כדי לנווט Tab בסדר קריאה (ולא קפיצה ציגזג)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -768,8 +761,12 @@ const double kLibraryGridSpacing = 14;
 /// ולטור האייקונים בלי גלישה.
 const double kNarrowGridCardMinHeight = 112;
 
-/// השוליים האופקיים של רשת הספרייה — משמשים גם בחישוב רוחב התא בפועל.
-const double _kGridHorizontalPadding = 30;
+/// השוליים של רשת הספרייה — משמשים גם בחישוב רוחב התא בפועל.
+const double _kGridPadding = 30;
+
+/// השוליים העליונים מעט קטנים יותר, כדי שהשורה הראשונה לא תיראה נמוכה מדי
+/// מתחת לסרגל.
+const double _kGridTopPadding = 24;
 
 /// ניווט חיצים בין כרטיסי הרשת בלבד — הפוקוס עובר ברצף בין הכרטיסים
 /// ולא בורח לכפתורי הסרגל/הצד (המסלול הכיווני של Flutter אינו תחום לרשת).
@@ -876,7 +873,7 @@ class MyGridView extends StatelessWidget {
         // עם רצפת גובה שמותירה מקום לשם הספר, למחבר ולטור האייקונים.
         final double childAspectRatio;
         if (width < 800) {
-          final gridWidth = width - 2 * _kGridHorizontalPadding;
+          final gridWidth = width - 2 * _kGridPadding;
           final cellWidth =
               (gridWidth - kLibraryGridSpacing * (crossAxisCount - 1)) /
               crossAxisCount;
@@ -893,12 +890,11 @@ class MyGridView extends StatelessWidget {
           child: FocusTraversalGroup(
             policy: ReadingOrderTraversalPolicy(),
             child: Padding(
-              // top: 8 או מרווח מתאים; horizontal: 45 או רוחב אף
-              padding: const EdgeInsets.only(
-                top: 8,
-                left: _kGridHorizontalPadding,
-                right: _kGridHorizontalPadding,
-                bottom: 8,
+              padding: const EdgeInsets.fromLTRB(
+                _kGridPadding,
+                _kGridTopPadding,
+                _kGridPadding,
+                _kGridPadding,
               ),
               child: GridView.builder(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(

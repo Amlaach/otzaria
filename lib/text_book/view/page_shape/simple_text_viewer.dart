@@ -31,6 +31,7 @@ import 'package:otzaria/services/commentary_service.dart';
 import 'package:otzaria/services/target_line_links_service.dart';
 import 'package:otzaria/models/links.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/widgets/lists/scroll_position_reanchor.dart';
 import 'package:otzaria/widgets/feedback/scrollable_positioned_list_scrollbar.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:otzaria/tabs/models/tab.dart';
@@ -85,6 +86,7 @@ import 'package:otzaria/text_book/utils/inline_notes_utils.dart'
     as inline_notes;
 import 'package:otzaria/text_book/utils/link_anchor_markers.dart';
 import 'package:otzaria/text_book/utils/link_preview_utils.dart';
+import 'package:otzaria/widgets/misc/inline_link_targets.dart';
 import 'package:otzaria/text_book/utils/numbered_note_markers.dart';
 import 'package:otzaria/text_book/utils/reading_segments.dart';
 import 'package:otzaria/text_book/utils/reading_segment_navigation.dart';
@@ -239,6 +241,27 @@ bool isMenuFocusNode(FocusNode? focusNode) {
     return true;
   });
   return hasMenuAncestor;
+}
+
+/// האם הפוקוס נמצא בתוך חלונית מפרש של צורת הדף.
+bool isCommentaryFocusNode(FocusNode? focusNode) {
+  final viewer = focusNode?.context
+      ?.findAncestorStateOfType<_SimpleTextViewerState>();
+  return viewer != null && !viewer.widget.isMainText;
+}
+
+/// היסט הגלילה של מקש בחלונית מפרש: שורה = 50px, עמוד = 80% מהחלונית
+/// (כמו `ScrollAction` של Flutter). null — המקש אינו מקש גלילה.
+@visibleForTesting
+double? commentaryKeyScrollOffset(
+  LogicalKeyboardKey key,
+  double viewportHeight,
+) {
+  if (key == LogicalKeyboardKey.arrowDown) return 50;
+  if (key == LogicalKeyboardKey.arrowUp) return -50;
+  if (key == LogicalKeyboardKey.pageDown) return viewportHeight * 0.8;
+  if (key == LogicalKeyboardKey.pageUp) return -viewportHeight * 0.8;
+  return null;
 }
 
 bool _hasQuillEditorAncestor(BuildContext context) {
@@ -628,7 +651,11 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
 
   /// ריחוף על סמן-מספר: ההתאמה בין הסמן להערה נעשית לפי תוכן ההערה, ולכן היא
   /// אסינכרונית. אם אין הערה תואמת — לא נפתחת חלונית.
-  void _handleNumberedNoteMarkerHover(String url, Offset globalPosition) {
+  void _handleNumberedNoteMarkerHover(
+    String url,
+    Offset globalPosition, {
+    bool hoverMode = true,
+  }) {
     LinkPreviewOverlay.cancelScheduledHide();
     _cancelPendingPreview();
     final line = noteMarkerLineFromUrl(url);
@@ -636,7 +663,8 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
     if (line == null || state is! TextBookLoaded) return;
     final links = state.linksByLine[line + 1] ?? const <Link>[];
     final generation = _previewHoverGeneration;
-    _previewHoverTimer = Timer(const Duration(milliseconds: 280), () async {
+    final delay = Duration(milliseconds: hoverMode ? 280 : 0);
+    _previewHoverTimer = Timer(delay, () async {
       final link = await numberedNoteLinkFromUrl(url, links);
       if (!mounted || link == null) return;
       if (generation != _previewHoverGeneration) return;
@@ -644,9 +672,10 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         context,
         link: link,
         globalPosition: globalPosition,
-        hoverMode: true,
+        hoverMode: hoverMode,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
         onOpen: () => _openAnchorTarget(link),
       );
     });
@@ -686,63 +715,82 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       if (previewLink != null) prefetchLinkPreview(previewLink);
     }
     _previewHoverTimer = Timer(const Duration(milliseconds: 280), () {
-      if (!mounted) return;
-      final state = context.read<TextBookBloc>().state;
-      if (state is! TextBookLoaded) return;
-
-      if (url.startsWith('otzaria://book-note')) {
-        final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
-        if (note == null) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) => InlineBookNotePreviewContent(
-            content: note,
-            removeNikud: state.removeNikud,
-            removePunctuation: state.removePunctuation,
-          ),
-        );
-        return;
-      }
-
-      if (url.startsWith('otzaria://note')) {
-        final line = int.tryParse(
-          Uri.tryParse(url)?.queryParameters['line'] ?? '',
-        );
-        if (line == null) return;
-        final notes = context
-            .read<PersonalNotesBloc>()
-            .state
-            .locatedNotes
-            .where((note) => note.lineNumber == line + 1)
-            .toList();
-        if (notes.isEmpty) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) =>
-              PersonalNotesListView(notes: notes, maxHeight: 220),
-        );
-        return;
-      }
-
-      final anchor = _anchorLinkFromUrl(url, state);
-      final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
-      if (link == null) return;
-      LinkPreviewOverlay.show(
-        context,
-        link: link,
-        globalPosition: globalPosition,
-        hoverMode: true,
-        removeNikud: state.commentaryRemoveNikud,
-        removePunctuation: state.commentaryRemovePunctuation,
-        onOpen: () => _openAnchorTarget(link),
-        onDismissed: anchor == null ? null : () => _setActiveAnchor(null, null),
-      );
-      if (anchor != null) _setActiveAnchor(anchor.line, anchor.index);
+      if (mounted) _showUrlPreview(url, globalPosition, hoverMode: true);
     });
+  }
+
+  /// הקשת מגע על קישור שבמחשב נפתח בריחוף — אותה חלונית, מקובעת מיד.
+  void _handleTouchPreview(String url, Offset globalPosition) {
+    if (url.startsWith('otzaria://note-marker')) {
+      _handleNumberedNoteMarkerHover(url, globalPosition, hoverMode: false);
+      return;
+    }
+    _cancelPendingPreview();
+    _showUrlPreview(url, globalPosition, hoverMode: false);
+  }
+
+  void _showUrlPreview(
+    String url,
+    Offset globalPosition, {
+    required bool hoverMode,
+  }) {
+    final state = context.read<TextBookBloc>().state;
+    if (state is! TextBookLoaded) return;
+
+    if (url.startsWith('otzaria://book-note')) {
+      final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
+      if (note == null) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) => InlineBookNotePreviewContent(
+          content: note,
+          removeNikud: state.removeNikud,
+          removePunctuation: state.removePunctuation,
+          maxFontSize: widget.fontSize,
+        ),
+      );
+      return;
+    }
+
+    if (url.startsWith('otzaria://note')) {
+      final line = int.tryParse(
+        Uri.tryParse(url)?.queryParameters['line'] ?? '',
+      );
+      if (line == null) return;
+      final notes = context
+          .read<PersonalNotesBloc>()
+          .state
+          .locatedNotes
+          .where((note) => note.lineNumber == line + 1)
+          .toList();
+      if (notes.isEmpty) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) =>
+            PersonalNotesListView(notes: notes, maxHeight: 220),
+      );
+      return;
+    }
+
+    final anchor = _anchorLinkFromUrl(url, state);
+    final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
+    if (link == null) return;
+    LinkPreviewOverlay.show(
+      context,
+      link: link,
+      globalPosition: globalPosition,
+      hoverMode: hoverMode,
+      removeNikud: state.commentaryRemoveNikud,
+      removePunctuation: state.commentaryRemovePunctuation,
+      maxFontSize: widget.fontSize,
+      onOpen: () => _openAnchorTarget(link),
+      onDismissed: anchor == null ? null : () => _setActiveAnchor(null, null),
+    );
+    if (anchor != null) _setActiveAnchor(anchor.line, anchor.index);
   }
 
   void _handlePreviewHoverExit(String url) {
@@ -869,8 +917,39 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       return;
     }
 
+    // המשתמש לחץ בחלונית מפרש — החיצים שייכים לה עד שילחץ שוב בטקסט הראשי.
+    if (isCommentaryFocusNode(FocusManager.instance.primaryFocus)) {
+      return;
+    }
+
     _shouldPreserveKeyboardFocus = true;
     focusNode.requestFocus();
+  }
+
+  /// גלילת חלונית מפרש במקלדת, בצעדי ברירת המחדל של `ScrollAction` ב-Flutter.
+  bool _scrollCommentaryByKey(LogicalKeyboardKey key) {
+    final controller = widget.scrollOffsetController;
+    final viewportHeight = context.size?.height;
+    if (controller == null || viewportHeight == null) return false;
+    final offset = commentaryKeyScrollOffset(key, viewportHeight);
+    if (offset == null) return false;
+    controller.animateScroll(
+      offset: offset,
+      duration: const Duration(milliseconds: 100),
+    );
+    return true;
+  }
+
+  /// לחיצה מעבירה את מקשי הגלילה לחלונית שנלחצה. אחרי הפריים — כי
+  /// ה-SelectableRegion לוקח את הפוקוס לעצמו באותה לחיצה.
+  void _focusKeyboardAfterPointerDown() {
+    if (widget.isMainText) {
+      _requestKeyboardFocusAfterFrame('pointer-down');
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolvedKeyboardFocusNode.requestFocus();
+    });
   }
 
   void _requestKeyboardFocusAfterFrame(String reason) {
@@ -914,9 +993,11 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
           return bloc.repository.getSiblingCommentaries(
             sourceBookTitle: utils.getTitleFromPath(sourceLink.path2),
             sourceCategoryId: sourceLink.targetCategoryId,
+            sourceIsUserBook: sourceLink.targetIsUserBook,
             sourceLineIndex: sourceLink.index2 - 1,
             currentBookTitle: state.book.title,
             currentCategoryId: state.book.categoryId,
+            currentIsUserBook: state.book.isUserBook,
           );
         },
       );
@@ -1751,6 +1832,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
             link: link,
             removeNikud: state.commentaryRemoveNikud,
             removePunctuation: state.commentaryRemovePunctuation,
+            maxFontSize: widget.fontSize,
             onTap: () async {
               final tab = await buildLinkTargetTab(link);
               if (!mounted) return;
@@ -1884,6 +1966,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         sourceLink: sourceLink,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
         onNavigate: (link) async {
           final tab = await buildLinkTargetTab(link);
           if (!mounted) return;
@@ -2160,12 +2243,14 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         onNavigate: navigate,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
       ),
       service.buildLinksEntry(
         link: targetLink,
         onNavigate: navigate,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
       ),
     ];
   }
@@ -2719,7 +2804,6 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                             focusNode: _resolvedKeyboardFocusNode,
                             autofocus:
                                 widget.isMainText && _isTabInForeground(),
-                            canRequestFocus: widget.isMainText,
                             onFocusChange: (hasFocus) {
                               if (!hasFocus) {
                                 _ensureKeyboardFocusAfterLoss(
@@ -2736,14 +2820,18 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                                 return KeyEventResult.ignored;
                               }
 
-                              final handled = _handleNavigationLogicalKey(
-                                event.logicalKey,
-                                isControlPressed:
-                                    HardwareKeyboard.instance.isControlPressed,
-                                isShiftPressed:
-                                    HardwareKeyboard.instance.isShiftPressed,
-                                source: 'content-focus',
-                              );
+                              final handled = widget.isMainText
+                                  ? _handleNavigationLogicalKey(
+                                      event.logicalKey,
+                                      isControlPressed: HardwareKeyboard
+                                          .instance
+                                          .isControlPressed,
+                                      isShiftPressed: HardwareKeyboard
+                                          .instance
+                                          .isShiftPressed,
+                                      source: 'content-focus',
+                                    )
+                                  : _scrollCommentaryByKey(event.logicalKey);
                               return handled
                                   ? KeyEventResult.handled
                                   : KeyEventResult.ignored;
@@ -2758,25 +2846,30 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                                     itemCount: itemCount,
                                     labelForIndex: widget.labelForIndex,
                                     child: SmoothWheelScroll(
-                                      child: ScrollablePositionedList.builder(
-                                        itemScrollController: _scrollController,
-                                        itemPositionsListener:
-                                            _positionsListener,
-                                        scrollOffsetController:
-                                            widget.isMainText
-                                            ? state.scrollOffsetController
-                                            : widget.scrollOffsetController,
-                                        itemCount: itemCount,
-                                        padding: const EdgeInsets.all(4),
-                                        itemBuilder: (context, index) =>
-                                            _buildLineItem(
-                                              context,
-                                              index,
-                                              state,
-                                              noteMap,
-                                              segments,
-                                              continuous,
-                                            ),
+                                      child: ScrollPositionReanchor(
+                                        scrollController: _scrollController,
+                                        positionsListener: _positionsListener,
+                                        child: ScrollablePositionedList.builder(
+                                          itemScrollController:
+                                              _scrollController,
+                                          itemPositionsListener:
+                                              _positionsListener,
+                                          scrollOffsetController:
+                                              widget.isMainText
+                                              ? state.scrollOffsetController
+                                              : widget.scrollOffsetController,
+                                          itemCount: itemCount,
+                                          padding: const EdgeInsets.all(4),
+                                          itemBuilder: (context, index) =>
+                                              _buildLineItem(
+                                                context,
+                                                index,
+                                                state,
+                                                noteMap,
+                                                segments,
+                                                continuous,
+                                              ),
+                                        ),
                                       ),
                                     ),
                                   )
@@ -2962,6 +3055,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       child: Listener(
         onPointerDown: (event) {
           if (event.buttons != kPrimaryMouseButton) return;
+          _focusKeyboardAfterPointerDown();
           final root = context.findRenderObject();
           if (root != null) {
             _selectionPointerLineIndex = primaryLineIndex;
@@ -3181,6 +3275,9 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
                   onAnchorHoverExit: widget.isMainText || hasOwnAnchors
                       ? _handlePreviewHoverExit
                       : null,
+                  onTouchPreview: widget.isMainText || hasOwnAnchors
+                      ? _handleTouchPreview
+                      : null,
                 );
 
                 // בטור מפרש רש"י: לעזי רש"י מתחת לשורה (מסתתר לבד אם אין).
@@ -3252,6 +3349,13 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
           onMiddleClickUrl: (url) =>
               HtmlLinkHandler.openLinkInBackground(context, url),
           onTapUrl: (url) async {
+            final touchPosition = touchLinkTapPosition();
+            if (widget.isMainText &&
+                touchPosition != null &&
+                isTouchPreviewUrl(url)) {
+              _handleTouchPreview(url, touchPosition);
+              return true;
+            }
             if (url.startsWith('otzaria://anchor')) {
               return _handlePreviewTap(url);
             }

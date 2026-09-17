@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/widgets/lists/scroll_position_reanchor.dart';
 import 'package:otzaria/widgets/text/rtl_selection_shortcuts.dart';
 import 'package:otzaria/widgets/text/selection_copy_shortcuts.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
@@ -79,6 +80,7 @@ import 'package:otzaria/text_book/utils/inline_notes_utils.dart'
     as inline_notes;
 import 'package:otzaria/text_book/utils/link_anchor_markers.dart';
 import 'package:otzaria/text_book/utils/link_preview_utils.dart';
+import 'package:otzaria/widgets/misc/inline_link_targets.dart';
 import 'package:otzaria/text_book/utils/numbered_note_markers.dart';
 import 'package:otzaria/widgets/misc/link_preview_overlay.dart';
 import 'package:otzaria/text_book/utils/note_inline_render.dart';
@@ -519,6 +521,7 @@ class _CombinedViewState extends State<CombinedView> {
       hoverMode: hoverMode,
       removeNikud: loaded?.commentaryRemoveNikud,
       removePunctuation: loaded?.commentaryRemovePunctuation,
+      maxFontSize: widget.textSize,
       onOpen: () => _openLinkTarget(link),
       onDismissed: activeAnchor == null
           ? null
@@ -573,65 +576,89 @@ class _CombinedViewState extends State<CombinedView> {
     final previewLink = anchor?.link ?? inlineLinkFromPreviewUrl(url);
     if (previewLink != null) prefetchLinkPreview(previewLink);
     _anchorHoverTimer = Timer(const Duration(milliseconds: 280), () {
-      if (_disposed || !mounted) return;
-      final state = _textBookBloc.state;
-      if (state is! TextBookLoaded) return;
-
-      if (url.startsWith('otzaria://book-note')) {
-        final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
-        if (note == null) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) => InlineBookNotePreviewContent(
-            content: note,
-            removeNikud: state.removeNikud,
-            removePunctuation: state.removePunctuation,
-          ),
-        );
-        return;
+      if (!_disposed && mounted) {
+        _showUrlPreview(url, globalPosition, hoverMode: true);
       }
-
-      if (url.startsWith('otzaria://note')) {
-        final line = int.tryParse(
-          Uri.tryParse(url)?.queryParameters['line'] ?? '',
-        );
-        if (line == null) return;
-        final notes = context
-            .read<PersonalNotesBloc>()
-            .state
-            .locatedNotes
-            .where((note) => note.lineNumber == line + 1)
-            .toList();
-        if (notes.isEmpty) return;
-        LinkPreviewOverlay.showContent(
-          context,
-          globalPosition: globalPosition,
-          hoverMode: true,
-          contentBuilder: (_) =>
-              PersonalNotesListView(notes: notes, maxHeight: 220),
-        );
-        return;
-      }
-
-      final anchor = _anchorLinkFromUrl(url);
-      final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
-      if (link == null) return;
-      _showLinkPreview(
-        link,
-        globalPosition,
-        hoverMode: true,
-        activeAnchor: anchor == null
-            ? null
-            : (line: anchor.line, index: anchor.index),
-      );
     });
+  }
+
+  /// הקשת מגע על קישור שבמחשב נפתח בריחוף — אותה חלונית, מקובעת מיד.
+  void _handleTouchPreview(String url, Offset globalPosition) {
+    if (url.startsWith('otzaria://note-marker')) {
+      _handleNumberedNoteMarkerHover(url, globalPosition, hoverMode: false);
+      return;
+    }
+    _cancelPendingAnchorHover();
+    _showUrlPreview(url, globalPosition, hoverMode: false);
+  }
+
+  void _showUrlPreview(
+    String url,
+    Offset globalPosition, {
+    required bool hoverMode,
+  }) {
+    final state = _textBookBloc.state;
+    if (state is! TextBookLoaded) return;
+
+    if (url.startsWith('otzaria://book-note')) {
+      final note = inline_notes.inlineNoteFromPreviewUrl(state.content, url);
+      if (note == null) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) => InlineBookNotePreviewContent(
+          content: note,
+          removeNikud: state.removeNikud,
+          removePunctuation: state.removePunctuation,
+          maxFontSize: widget.textSize,
+        ),
+      );
+      return;
+    }
+
+    if (url.startsWith('otzaria://note')) {
+      final line = int.tryParse(
+        Uri.tryParse(url)?.queryParameters['line'] ?? '',
+      );
+      if (line == null) return;
+      final notes = context
+          .read<PersonalNotesBloc>()
+          .state
+          .locatedNotes
+          .where((note) => note.lineNumber == line + 1)
+          .toList();
+      if (notes.isEmpty) return;
+      LinkPreviewOverlay.showContent(
+        context,
+        globalPosition: globalPosition,
+        hoverMode: hoverMode,
+        contentBuilder: (_) =>
+            PersonalNotesListView(notes: notes, maxHeight: 220),
+      );
+      return;
+    }
+
+    final anchor = _anchorLinkFromUrl(url);
+    final link = anchor?.link ?? inlineLinkFromPreviewUrl(url);
+    if (link == null) return;
+    _showLinkPreview(
+      link,
+      globalPosition,
+      hoverMode: hoverMode,
+      activeAnchor: anchor == null
+          ? null
+          : (line: anchor.line, index: anchor.index),
+    );
   }
 
   /// ריחוף על סמן-מספר: ההתאמה בין הסמן להערה נעשית לפי תוכן ההערה, ולכן היא
   /// אסינכרונית. אם אין הערה תואמת — לא נפתחת חלונית.
-  void _handleNumberedNoteMarkerHover(String url, Offset globalPosition) {
+  void _handleNumberedNoteMarkerHover(
+    String url,
+    Offset globalPosition, {
+    bool hoverMode = true,
+  }) {
     LinkPreviewOverlay.cancelScheduledHide();
     _cancelPendingAnchorHover();
     final line = noteMarkerLineFromUrl(url);
@@ -639,11 +666,12 @@ class _CombinedViewState extends State<CombinedView> {
     if (line == null || state is! TextBookLoaded) return;
     final links = state.linksByLine[line + 1] ?? const <Link>[];
     final generation = _anchorHoverGeneration;
-    _anchorHoverTimer = Timer(const Duration(milliseconds: 280), () async {
+    final delay = Duration(milliseconds: hoverMode ? 280 : 0);
+    _anchorHoverTimer = Timer(delay, () async {
       final link = await numberedNoteLinkFromUrl(url, links);
       if (_disposed || !mounted || link == null) return;
       if (generation != _anchorHoverGeneration) return;
-      _showLinkPreview(link, globalPosition, hoverMode: true);
+      _showLinkPreview(link, globalPosition, hoverMode: hoverMode);
     });
   }
 
@@ -662,6 +690,9 @@ class _CombinedViewState extends State<CombinedView> {
 
   /// סמני חלוקה לפי lineIndex — אותיות פסקה במדרש רבה, סעיפים בנושאי-כלים.
   Map<int, String> _sectionMarkersByLine = const {};
+
+  /// כותרות נושא (מבנה `Topic`) לפי lineIndex, שאינן כתובות בגוף הספר.
+  Map<int, List<String>> _sectionHeadingsByLine = const {};
 
   // מנהל בחירת טקסט משופר
   late final TextSelectionManager _selectionManager;
@@ -746,9 +777,11 @@ class _CombinedViewState extends State<CombinedView> {
         return _textBookBloc.repository.getSiblingCommentaries(
           sourceBookTitle: utils.getTitleFromPath(sourceLink.path2),
           sourceCategoryId: sourceLink.targetCategoryId,
+          sourceIsUserBook: sourceLink.targetIsUserBook,
           sourceLineIndex: sourceLink.index2 - 1,
           currentBookTitle: state.book.title,
           currentCategoryId: state.book.categoryId,
+          currentIsUserBook: state.book.isUserBook,
         );
       },
     );
@@ -895,25 +928,49 @@ class _CombinedViewState extends State<CombinedView> {
     }
   }
 
+  String? _loadedLineAt(int lineIndex) {
+    final state = _textBookBloc.state;
+    if (state is! TextBookLoaded) return null;
+    final content = state.content;
+    return lineIndex >= 0 && lineIndex < content.length
+        ? content[lineIndex]
+        : null;
+  }
+
   Future<void> _loadSectionMarkers() async {
     final book = widget.tab.book;
-    // הסימנים ממופים ל-lineIndex של הטקסט הממוזג במסד. ספר אישי בשם זהה,
-    // מהדורה חלופית (version_line) או ספר שתוכנו מוגש מקבצים — ממוספרים
-    // אחרת, ואין להזריק בהם.
-    if (book.isUserBook || book.versionTitle != null) return;
-    final provider = LibraryProviderManager.instance.getProviderForBook(
-      book.title,
-      categoryId: book.categoryId,
-      fileType: book.fileType,
-    );
-    if (provider is! DatabaseLibraryProvider) return;
-    final markers = await DatabaseLibraryProvider.instance
-        .getInlineSectionMarkersByLineIndex(book.title);
+    // הסימנים ממופים ל-lineIndex של הטקסט הממוזג במסד — מהדורה חלופית
+    // (version_line) או ספר שתוכנו מוגש מקבצים ממוספרים אחרת.
+    if (book.versionTitle != null) return;
+    final InlineSectionMarks marks;
+    if (book.isUserBook) {
+      marks = await DatabaseLibraryProvider.instance.getUserInlineSectionMarks(
+        book,
+        _loadedLineAt,
+      );
+    } else {
+      final provider = LibraryProviderManager.instance.getProviderForBook(
+        book.title,
+        categoryId: book.categoryId,
+        fileType: book.fileType,
+      );
+      if (provider is! DatabaseLibraryProvider) return;
+      marks = await DatabaseLibraryProvider.instance
+          .getInlineSectionMarksByLineIndex(book.title);
+    }
     // כמו ב-_loadSourceBanner: מעבר מהיר בין ספרים עלול לסיים await זה
     // אחרי החלפת הספר.
     if (!mounted || !sameSourceIdentity(book, widget.tab.book)) return;
-    if (markers.isEmpty && _sectionMarkersByLine.isEmpty) return;
-    setState(() => _sectionMarkersByLine = markers);
+    if (marks.markers.isEmpty &&
+        marks.headings.isEmpty &&
+        _sectionMarkersByLine.isEmpty &&
+        _sectionHeadingsByLine.isEmpty) {
+      return;
+    }
+    setState(() {
+      _sectionMarkersByLine = marks.markers;
+      _sectionHeadingsByLine = marks.headings;
+    });
   }
 
   @override
@@ -1259,6 +1316,7 @@ class _CombinedViewState extends State<CombinedView> {
           link: link,
           removeNikud: state.commentaryRemoveNikud,
           removePunctuation: state.commentaryRemovePunctuation,
+          maxFontSize: widget.textSize,
           onTap: () async {
             final tab = await buildLinkTargetTab(link);
             if (_disposed || !mounted) return;
@@ -1352,6 +1410,7 @@ class _CombinedViewState extends State<CombinedView> {
           sourceLink: sourceLink,
           removeNikud: state.commentaryRemoveNikud,
           removePunctuation: state.commentaryRemovePunctuation,
+          maxFontSize: widget.textSize,
           onNavigate: (link) async {
             final tab = await buildLinkTargetTab(link);
             if (_disposed || !mounted) return;
@@ -2141,9 +2200,16 @@ class _CombinedViewState extends State<CombinedView> {
                                               }
                                             }
                                             return SmoothWheelScroll(
-                                              child: buildOuterList(
-                                                state,
-                                                noteMap,
+                                              child: ScrollPositionReanchor(
+                                                scrollController:
+                                                    widget.tab.scrollController,
+                                                positionsListener: widget
+                                                    .tab
+                                                    .positionsListener,
+                                                child: buildOuterList(
+                                                  state,
+                                                  noteMap,
+                                                ),
                                               ),
                                             );
                                           },
@@ -2576,6 +2642,12 @@ class _CombinedViewState extends State<CombinedView> {
                             data,
                             _sectionMarkersByLine[primaryLineIndex],
                           );
+                          // רק כאן ולא בקריאה רציפה — שם השורות זורמות
+                          // בפסקה אחת ובלוק כותרת היה נבלע בתוכה.
+                          data = prependSectionHeadings(
+                            data,
+                            _sectionHeadingsByLine[primaryLineIndex],
+                          );
 
                           // איסוף קישורי inline (start/end מתייחסים לטקסט המקורי)
                           List<Link> linksForLine = const [];
@@ -2661,6 +2733,7 @@ class _CombinedViewState extends State<CombinedView> {
                             onAnchorTap: _handleAnchorTap,
                             onAnchorHover: _handleAnchorHover,
                             onAnchorHoverExit: _handleAnchorHoverExit,
+                            onTouchPreview: _handleTouchPreview,
                           );
 
                           final constrainedText = textMaxWidth > 0
@@ -2782,6 +2855,11 @@ class _CombinedViewState extends State<CombinedView> {
           onMiddleClickUrl: (url) =>
               HtmlLinkHandler.openLinkInBackground(context, url),
           onTapUrl: (url) async {
+            final touchPosition = touchLinkTapPosition();
+            if (touchPosition != null && isTouchPreviewUrl(url)) {
+              _handleTouchPreview(url, touchPosition);
+              return true;
+            }
             if (url.startsWith('otzaria://anchor')) {
               return _handleAnchorTap(url);
             }

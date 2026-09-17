@@ -17,6 +17,7 @@ InstalledPlugin _plugin(
   bool allowOrderGranted = true,
   bool networkEnabled = false,
   bool networkAccessGranted = false,
+  bool headless = false,
 }) {
   return InstalledPlugin(
     pluginId: id,
@@ -39,6 +40,7 @@ InstalledPlugin _plugin(
       author: 'tester',
       homepage: '',
       entrypoint: 'index.html',
+      headless: headless,
       minAppVersion: '1.0.0',
       sdkVersion: '1.x',
       permissions: const [],
@@ -95,6 +97,19 @@ void main() {
       expect(ids, contains('p.on'));
       expect(ids, isNot(contains('p.disabled')));
       expect(ids, isNot(contains('p.hidden')));
+    });
+
+    test('תוסף ללא ממשק אינו מופיע בכלים ואינו מוצמד לסרגל', () {
+      final state = PluginSystemLoaded([
+        _plugin('p.headless', headless: true, pinnedToNavRail: true),
+      ]);
+      final entries = buildToolCatalog(
+        hiddenBuiltInToolIds: const {},
+        isOfflineMode: false,
+        pluginState: state,
+      );
+      expect(entries.map((e) => e.toolId), isNot(contains('p.headless')));
+      expect(state.pluginsPinnedToNavRail, isEmpty);
     });
 
     test('תוסף מוסתר לא מופיע בכלים גם כשהוא מוצמד לסרגל (issue #966)', () {
@@ -296,7 +311,7 @@ void main() {
       );
     });
 
-    test('תוסף מושבת / מוסתר / דורש אינטרנט', () {
+    test('תוסף מושבת / דורש אינטרנט', () {
       final state = PluginSystemLoaded([
         _plugin('p.off', title: 'כבוי', enabled: false),
         _plugin('p.hidden', title: 'מוסתר', showInTools: false),
@@ -312,10 +327,6 @@ void main() {
         ToolUnavailableReason.pluginDisabled,
       );
       expect(
-        (lookup('p.hidden', state: state) as ToolUnavailable).reason,
-        ToolUnavailableReason.pluginHiddenFromTools,
-      );
-      expect(
         (lookup('p.net', state: state, offline: true) as ToolUnavailable)
             .reason,
         ToolUnavailableReason.pluginRequiresInternet,
@@ -323,12 +334,31 @@ void main() {
       expect(lookup('p.net', state: state), isA<ToolAvailable>());
     });
 
-    // הלחיצה על פריט מוצמד בסרגל עוברת דרך lookupTool — חייבת להישאר זמינה
-    test('תוסף מוסתר אך מוצמד-לסרגל נפתח דרך lookupTool', () {
+    // הסתרה משפיעה רק על משגר הכלים: פקדי הסרגל, קיצורים וקישורים פותחים דרך כאן
+    test('תוסף מוסתר מהממשק עדיין נפתח דרך lookupTool', () {
       final state = PluginSystemLoaded([
+        _plugin('p.hidden', showInTools: false),
         _plugin('p.pinned', showInTools: false, pinnedToNavRail: true),
       ]);
+      expect(lookup('p.hidden', state: state), isA<ToolAvailable>());
       expect(lookup('p.pinned', state: state), isA<ToolAvailable>());
+    });
+
+    test('תוסף ללא ממשק אינו נפתח ככרטיסייה ומדווח סיבה ושם', () {
+      final state = PluginSystemLoaded([
+        _plugin('p.headless', title: 'רקע', headless: true),
+      ]);
+      final result = lookup('p.headless', state: state);
+      expect(
+        result,
+        isA<ToolUnavailable>()
+            .having(
+              (r) => r.reason,
+              'reason',
+              ToolUnavailableReason.pluginHeadless,
+            )
+            .having((r) => r.name, 'name', 'רקע'),
+      );
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:otzaria/core/app_paths.dart';
 import 'package:otzaria/core/directory_writability.dart';
+import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/services/plugin_webview_failure_log.dart';
 
 /// מחזיק את ה-WebViewEnvironment הסינגלטוני עם userDataFolder הניתן לכתיבה.
@@ -183,6 +184,14 @@ class WebViewEnvironmentHolder {
   ) => WebViewEnvironmentSettings(
     userDataFolder: userDataFolder,
     exclusiveUserDataFolderAccess: true,
+    // בלי רישום ה-scheme אינו נטען כלל, ועם treatAsSecure מודולים ו-fetch עובדים בו.
+    customSchemeRegistrations: [
+      CustomSchemeRegistration(
+        scheme: pluginAssetScheme,
+        treatAsSecure: true,
+        hasAuthorityComponent: true,
+      ),
+    ],
   );
 
   /// Disposes the current Windows WebView environment after the old widget

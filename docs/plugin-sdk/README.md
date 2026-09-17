@@ -156,6 +156,7 @@ my-plugin/
 | `homepage` | `""` | כתובת לדף הבית של התוסף, למשל עמוד GitHub, תיעוד, או אתר פרויקט |
 | `icon` | `null` | נתיב לאייקון (PNG, 64×64 מומלץ) |
 | `maxAppVersion` | `null` | גרסת אוצריא המקסימלית הנתמכת |
+| `headless` | `false` | תוסף ללא ממשק: `entrypoint` הוא קובץ JS שרץ רק ברקע. מגרסה 0.9.98. ראו §תוסף ללא ממשק. |
 | `network.enabled` | `false` | האם להצהיר על שימוש ברשת (חובה כדי להפעיל את מנגנון הרשת בתוסף) |
 | `network.allowlist` | `[]` | רשימת ה-URLs שהתוסף מצהיר שהוא צריך. ה-URL חייב להופיע כאן **וגם** להיות מאושר ע"י אוצריא בקובץ `plugin_network_allowlist.txt` שבשורש ריפו אוצריא ב-GitHub (ענף `dev`). הצהרה ב-manifest לבדה **אינה** מספיקה. |
 | `contributes.toolTab.title` | שם התוסף | כותרת הטאב. אם מגדירים אותה במפורש — חייבת להיות זהה ל-`name` (עד 14 תווים), אחרת התוסף יידחה |
@@ -681,6 +682,30 @@ Otzaria.on('plugin.boot', async (payload) => {
 **מה שלא מומלץ ברקע:**
 - `navigation.goTo` — יגרום לניווט בלתי צפוי ברגע שהאפליקציה נפתחת
 - קריאות כבדות שיאטו את עליית האפליקציה
+
+### תוסף ללא ממשק (`headless`)
+
+מגרסה 0.9.98 תוסף יכול להיות **ללא ממשק בכלל** — מניפסט וקובץ JS, בלי HTML:
+
+```json
+{
+  "entrypoint": "main.js",
+  "headless": true,
+  "minAppVersion": "0.9.98",
+  "permissions": ["app.startup_contributions", "app.run_on_startup", "reader.toolbar"],
+  "contributes": {
+    "startup": {
+      "toolbarItems": [{ "id": "run", "title": "הפעל", "icon": "play_24_regular" }]
+    }
+  }
+}
+```
+
+- אוצריא טוענת את `main.js` במנוע הרקע, בתוך מסמך ריק שהיא מייצרת בעצמה בשורש התוסף. נתיבים יחסיים (`fetch`, `<script>` נוספים) נפתרים מול תיקיית התוסף, ו-`window.Otzaria` זמין כרגיל.
+- בווינדוס ובמק הקובץ נטען כמודול (`type="module"`) מ-origin נפרד לתוסף (`otzaria-plugin://<id>`), ולכן `import` ו-`import()` עובדים. בלינוקס ובאנדרואיד הוא נטען מ-`file://` כסקריפט רגיל, שבו מודולים חסומים — תוסף שצריך לרוץ בכל הפלטפורמות יארוז (bundle) לקובץ אחד בלי `import`.
+- לתוסף אין כרטיסייה: הוא לא מופיע בפאנל הכלים, אי אפשר להצמיד אותו לסרגל הניווט, ו-`plugin.openSelf` / `otzaria://plugin/<id>` לא פותחים דבר. בהגדרות הוא מופיע עם אפשרות השבתה, הרשאות, עדכון ומחיקה.
+- **האימות חוסם** תוסף ללא ממשק שאין לו דרך לפעול: חובה `app.run_on_startup`, ו-`contributes.startup` עם `activationEvents` או פקד/פריט תפריט שמפעילים את התוסף. `openPlugin`, `openPluginOnSubmit`, `contributes.toolTab` ו-`contributes.background.entrypoint` אסורים.
+- שתי ההרשאות `app.startup_contributions` ו-`app.run_on_startup` כבויות כברירת מחדל. מסך ההתקנה מסביר למשתמש שבלעדיהן התוסף לא יפעל, ולחיצה על פקד בלי הרשאת רקע מציגה הודעה שמפנה להגדרות.
 
 ### קובץ כניסה ייעודי לרקע (`contributes.background.entrypoint`)
 

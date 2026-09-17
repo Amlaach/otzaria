@@ -137,6 +137,15 @@ class UpdateShowHebrewBooks extends SettingsEvent {
   List<Object?> get props => [showHebrewBooks];
 }
 
+class UpdateShowLocalHebrewBooks extends SettingsEvent {
+  final bool showLocalHebrewBooks;
+
+  const UpdateShowLocalHebrewBooks(this.showLocalHebrewBooks);
+
+  @override
+  List<Object?> get props => [showLocalHebrewBooks];
+}
+
 class UpdateShowExternalBooks extends SettingsEvent {
   final bool showExternalBooks;
 

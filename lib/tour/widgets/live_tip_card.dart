@@ -11,12 +11,14 @@ class LiveTipCard extends StatelessWidget {
   final String title;
   final String description;
   final VoidCallback onDismiss;
+  final VoidCallback onDismissAll;
 
   const LiveTipCard({
     super.key,
     required this.title,
     required this.description,
     required this.onDismiss,
+    required this.onDismissAll,
   });
 
   @override
@@ -66,13 +68,20 @@ class LiveTipCard extends StatelessWidget {
                 style: textTheme.bodyMedium,
               ),
               const SizedBox(height: 14),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: ActionButton.neutral(
-                  icon: FluentIcons.checkmark_24_regular,
-                  text: context.settingsText('הבנתי'),
-                  onPressed: onDismiss,
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ActionButton.neutral(
+                    icon: FluentIcons.checkmark_24_regular,
+                    text: context.settingsText('הבנתי'),
+                    onPressed: onDismiss,
+                  ),
+                  ActionButton.ghost(
+                    text: context.settingsText('אל תציג טיפים נוספים'),
+                    onPressed: onDismissAll,
+                  ),
+                ],
               ),
             ],
           ),

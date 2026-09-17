@@ -5,6 +5,8 @@ import FlutterMacOS
 class AppDelegate: FlutterAppDelegate {
   private let externalActivationQueueFileName = "pending_external_activations.jsonl"
 
+  // חלון שהמשתמש סוגר מוסתר (orderOut) ולא נסגר, ולכן זה חל רק על סגירה
+  // נייטיב לפני ש-Dart התקין את טיפול הסגירה — ושם יציאה היא הנכונה.
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     return true
   }
@@ -14,6 +16,16 @@ class AppDelegate: FlutterAppDelegate {
       return .terminateNow
     }
     return window.applicationShouldTerminate()
+  }
+
+  /// לחיצה על אייקון ה-Dock כשכל החלונות סגורים (מוסתרים) משחזרת את האחרון.
+  override func applicationShouldHandleReopen(
+    _ sender: NSApplication, hasVisibleWindows flag: Bool
+  ) -> Bool {
+    if !flag && OtzariaWindowManager.shared.restoreLastClosedWindow() {
+      return false
+    }
+    return true
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

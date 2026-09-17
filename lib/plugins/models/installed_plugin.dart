@@ -58,6 +58,9 @@ class InstalledPlugin {
       ? userOrderToolTabOffset + userOrder!
       : manifest.toolTabOrder;
 
+  /// האם לתוסף יש דף — כרטיסייה, כניסה בפאנל הכלים והצמדה לסרגל הניווט.
+  bool get hasToolPage => !manifest.headless;
+
   /// האם התוסף רשאי בפועל להקדים כלים מובנים במסך "כלים".
   bool get allowsOrderBeforeBuiltIns =>
       manifest.allowOrderBeforeBuiltIns && allowOrderBeforeBuiltInsGranted;

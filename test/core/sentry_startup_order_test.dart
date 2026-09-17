@@ -22,4 +22,18 @@ void main() {
       lessThan(initializer.indexOf('SentryFlutter.init(')),
     );
   });
+
+  test('במצב מנותק Sentry אינו מאותחל', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final start = source.indexOf('Future<void> _initializeSentry() async {');
+    final end = source.indexOf('Future<void> _runAppBootstrap()', start);
+    final initializer = source.substring(start, end);
+
+    const offlineCheck = 'SettingsRepository.keyOfflineMode';
+    expect(initializer, contains(offlineCheck));
+    expect(
+      initializer.indexOf(offlineCheck),
+      lessThan(initializer.indexOf('SentryFlutter.init(')),
+    );
+  });
 }

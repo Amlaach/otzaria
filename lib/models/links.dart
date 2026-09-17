@@ -163,6 +163,14 @@ class Link {
 
     final future = LibraryProviderManager.instance.getLinkContent(this);
     _contentCache[key] = future;
+    // כשל (למשל מסד שנסגר בזמן סנכרון) הוא חולף — לא ננעל עד הפעלה מחדש.
+    void evictFailure() {
+      if (identical(_contentCache[key], future)) _contentCache.remove(key);
+    }
+
+    future.then((content) {
+      if (content.startsWith('שגיאה')) evictFailure();
+    }, onError: (_) => evictFailure());
     if (_contentCache.length > _maxContentCacheEntries) {
       _contentCache.remove(_contentCache.keys.first);
     }
