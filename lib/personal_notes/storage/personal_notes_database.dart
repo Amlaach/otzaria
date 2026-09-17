@@ -48,8 +48,7 @@ class PersonalNotesDatabase {
   Future<Database> _initDatabase() async {
     final dbPath = await AppPaths.resolveNotesDbPath('personal_notes.db');
 
-    final db = sqlite3.open(dbPath);
-    enableWalBestEffort(db, 'PersonalNotesDatabase');
+    final db = openWritableDatabase(dbPath, 'PersonalNotesDatabase');
     _createSchema(db);
     _migrateSchema(db);
     return db;

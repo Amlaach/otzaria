@@ -786,11 +786,71 @@ class AppPaths {
     return p.join(libraryPath, 'files_manifest.json');
   }
 
+  /// מסדי הנתונים האישיים שעוברים יחד בנפילה לאחסון הפנימי. `cache.db`
+  /// אינו ברשימה: הוא מטמון שנבנה מחדש, ומגיע למאות MB.
+  static const List<String> _personalDatabaseFileNames = [
+    'plugins_host.db',
+    'personal_notes.db',
+    'user_books.db',
+  ];
+
   /// Resolves the notes database path - for cross-platform compatibility.
+  ///
+  /// תיקיית המסדים יושבת ליד הספרייה, ובאנדרואיד היא עלולה לשבת על כרטיס
+  /// SD או על מדיה מוגנת — שם פתיחת ה-DB נכשלת ומשביתה את התכונה כולה.
   static Future<String> resolveNotesDbPath(String fileName) async {
-    final dbDir = Directory(await getDatabasesPath());
-    if (!await dbDir.exists()) await dbDir.create(recursive: true);
-    return p.join(dbDir.path, fileName);
+    return p.join(await _writableDatabasesDirectory(), fileName);
+  }
+
+  /// תיקיית המסדים הפעילה: המועדפת כשהיא כתיבה, ואחרת זו שבאחסון הפנימי.
+  ///
+  /// הנפילה דביקה מעצמה — מרגע ש-`<dataRoot>/databases` נוצרה,
+  /// [getDatabasesPath] מעדיף אותה, וכל המסדים נשארים יחד.
+  static Future<String> _writableDatabasesDirectory() async {
+    final preferred = await getDatabasesPath();
+    if (await _isDirectoryWritable(preferred)) return preferred;
+
+    final internal = p.join(await getDataRootPath(), 'databases');
+    if (p.equals(internal, preferred)) return preferred;
+
+    debugPrint('[AppPaths] תיקיית המסדים $preferred אינה כתיבה — $internal');
+    await _copyPersonalDatabases(preferred, internal);
+    return internal;
+  }
+
+  /// האם ניתן ליצור קבצים ב-[dirPath]. יוצר את התיקייה אם אינה קיימת.
+  static Future<bool> _isDirectoryWritable(String dirPath) async {
+    try {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final probe = File(p.join(dirPath, '.otzaria_write_probe'));
+      await probe.writeAsString('', flush: true);
+      await probe.delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// מעתיק את המסדים האישיים שעוד קריאים, כדי שהערות, ספרים אישיים
+  /// ותוספים לא ילכו לאיבוד במעבר לאחסון הפנימי.
+  static Future<void> _copyPersonalDatabases(String from, String to) async {
+    try {
+      await Directory(to).create(recursive: true);
+    } catch (e) {
+      debugPrint('[AppPaths] יצירת $to נכשלה: $e');
+      return;
+    }
+    for (final fileName in _personalDatabaseFileNames) {
+      try {
+        final source = File(p.join(from, fileName));
+        if (await File(p.join(to, fileName)).exists()) continue;
+        if (!await source.exists()) continue;
+        await source.copy(p.join(to, fileName));
+      } catch (e) {
+        debugPrint('[AppPaths] העתקת $fileName נכשלה: $e');
+      }
+    }
   }
 
   /// מחזיר את הנתיב של ה-DB של ספרי המשתמש (תיקיות מותאמות אישית).

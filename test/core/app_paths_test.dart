@@ -1348,6 +1348,73 @@ void main() {
       expect(await AppPaths.getIndexPath(), p.join(sdRoot.path, 'index'));
     });
   });
+
+  group('תיקיית מסדים מוגנת מכתיבה', () {
+    late Directory dataRoot;
+    late Directory libraryRoot;
+    late Directory databases;
+
+    setUp(() async {
+      dataRoot = await Directory.systemTemp.createTemp('otzaria_ro_data_');
+      libraryRoot = await Directory.systemTemp.createTemp('otzaria_ro_lib_');
+      databases = Directory(p.join(libraryRoot.path, 'databases'));
+      await databases.create(recursive: true);
+
+      AppPaths.debugOverrideDataRootPath(dataRoot.path);
+      await Settings.setValue(
+        SettingsRepository.keyLibraryPath,
+        p.join(libraryRoot.path, 'books'),
+      );
+    });
+
+    tearDown(() async {
+      // מחזירים הרשאות לפני המחיקה, אחרת התיקייה נשארת מאחור.
+      await Process.run('chmod', ['-R', 'u+w', libraryRoot.path]);
+      if (await dataRoot.exists()) await dataRoot.delete(recursive: true);
+      if (await libraryRoot.exists()) await libraryRoot.delete(recursive: true);
+    });
+
+    test('תיקייה כתיבה — המסדים נשארים ליד הספרייה', () async {
+      expect(
+        await AppPaths.resolveNotesDbPath('personal_notes.db'),
+        p.join(databases.path, 'personal_notes.db'),
+      );
+    });
+
+    test('תיקייה מוגנת — המסדים נופלים לאחסון הפנימי עם הנתונים', () async {
+      if (Platform.isWindows) return;
+      final notes = File(p.join(databases.path, 'personal_notes.db'));
+      await notes.writeAsString('notes-payload');
+      final cache = File(p.join(databases.path, 'cache.db'));
+      await cache.writeAsString('cache-payload');
+      await Process.run('chmod', ['555', databases.path]);
+
+      final internal = p.join(dataRoot.path, 'databases');
+      expect(
+        await AppPaths.resolveNotesDbPath('personal_notes.db'),
+        p.join(internal, 'personal_notes.db'),
+      );
+      expect(
+        await File(p.join(internal, 'personal_notes.db')).readAsString(),
+        'notes-payload',
+      );
+      // cache.db הוא מטמון שנבנה מחדש — לא נגרר לאחסון הפנימי.
+      expect(await File(p.join(internal, 'cache.db')).exists(), isFalse);
+    });
+
+    test('כל המסדים נופלים יחד לאותה תיקייה', () async {
+      if (Platform.isWindows) return;
+      await Process.run('chmod', ['555', databases.path]);
+
+      final plugins = await AppPaths.resolvePluginsDbPath();
+      final books = await AppPaths.resolveUserBooksDbPath();
+      final cacheDb = await AppPaths.resolveCacheDbPath();
+
+      expect(p.dirname(plugins), p.join(dataRoot.path, 'databases'));
+      expect(p.dirname(books), p.dirname(plugins));
+      expect(p.dirname(cacheDb), p.dirname(plugins));
+    });
+  });
 }
 
 class _MemoryCacheProvider extends CacheProvider {

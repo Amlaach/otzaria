@@ -23,8 +23,7 @@ class PluginSystemDatabase {
 
   Future<Database> _initDatabase() async {
     final dbPath = await AppPaths.resolvePluginsDbPath();
-    final db = sqlite3.open(dbPath);
-    enableWalBestEffort(db, 'PluginSystemDatabase');
+    final db = openWritableDatabase(dbPath, 'PluginSystemDatabase');
     _createSchema(db);
     ensureSchemaUpgrades(db);
     return db;

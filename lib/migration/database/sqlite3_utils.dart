@@ -37,6 +37,25 @@ void closeWithCheckpoint(Database db) {
   db.close();
 }
 
+/// פותח DB כתיב עם הכוונון האחיד לכל מסדי הנתונים של האפליקציה.
+Database openWritableDatabase(String path, String label) {
+  final db = sqlite3.open(path);
+  tuneWritableDatabase(db, label);
+  return db;
+}
+
+/// כוונון אחיד לחיבור כתיב: המתנה לנעילה, ו-WAL כשהאחסון תומך בו.
+void tuneWritableDatabase(Database db, String label) {
+  try {
+    // המתנה במקום כישלון מיידי ב-SQLITE_BUSY: מופע שני של התוכנה או נעילה
+    // שנשארה מסגירה כפויה היו מפילים את ה-DDL הראשון.
+    db.execute('PRAGMA busy_timeout=5000');
+  } catch (e) {
+    debugPrint('[$label] busy_timeout failed: $e');
+  }
+  enableWalBestEffort(db, label);
+}
+
 /// מפעיל WAL כשאפשר, ולא מפיל את פתיחת ה-DB כשלא.
 ///
 /// המעבר ל-WAL קוטם את קובץ ה-journal, וקטימה חסומה (נעילה שנשארה מסגירה
@@ -45,7 +64,27 @@ void closeWithCheckpoint(Database db) {
 void enableWalBestEffort(Database db, String label) {
   try {
     db.execute('PRAGMA journal_mode=WAL');
+    // ה-PRAGMA מצליח גם כשהמצב אינו שמיש: קובץ ה-shared-memory של WAL נפתח
+    // רק בטרנזקציה הראשונה, וכרטיס SD ב-Android נכשל שם (IOERR_SHMOPEN).
+    db.execute('BEGIN IMMEDIATE');
+    db.execute('COMMIT');
   } catch (e) {
     debugPrint('[$label] journal_mode=WAL failed: $e');
+    _revertToRollbackJournal(db, label);
+  }
+}
+
+/// מחזיר את ה-DB ל-journal רגיל אחרי ש-WAL התגלה כלא שמיש.
+/// locking_mode=EXCLUSIVE הוא התנאי שבו SQLite עוזב WAL בלי קובץ shm.
+void _revertToRollbackJournal(Database db, String label) {
+  try {
+    db.execute('ROLLBACK');
+  } catch (_) {}
+  try {
+    db.execute('PRAGMA locking_mode=EXCLUSIVE');
+    db.execute('PRAGMA journal_mode=DELETE');
+    db.execute('PRAGMA locking_mode=NORMAL');
+  } catch (e) {
+    debugPrint('[$label] fallback to rollback journal failed: $e');
   }
 }

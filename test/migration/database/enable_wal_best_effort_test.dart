@@ -5,19 +5,24 @@ import 'package:path/path.dart' as p;
 import 'package:otzaria/migration/database/sqlite3_utils.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-/// DB שכל `execute` בו נכשל בשגיאת ה-IO שדווחה בשטח (קוד 1546,
-/// `SQLITE_IOERR_TRUNCATE`) — קטימת קובץ ה-journal חסומה.
-class _TruncateBlockedDatabase implements Database {
-  int executeCalls = 0;
+/// DB שמתעד כל `execute` ונכשל בשגיאת IO על המשפטים ש-[failOn] מזהה.
+class _FakeDatabase implements Database {
+  _FakeDatabase({required this.failOn, required this.extendedResultCode});
+
+  final bool Function(String sql) failOn;
+  final int extendedResultCode;
+  final List<String> statements = [];
 
   @override
   void execute(String sql, [List<Object?> parameters = const []]) {
-    executeCalls++;
-    throw SqliteException(
-      extendedResultCode: 1546,
-      message: 'disk I/O error',
-      causingStatement: sql,
-    );
+    statements.add(sql);
+    if (failOn(sql)) {
+      throw SqliteException(
+        extendedResultCode: extendedResultCode,
+        message: 'disk I/O error',
+        causingStatement: sql,
+      );
+    }
   }
 
   @override
@@ -55,9 +60,25 @@ void main() {
   });
 
   test('כשל בקטימת ה-journal אינו מפיל את פתיחת ה-DB', () {
-    final db = _TruncateBlockedDatabase();
+    // SQLITE_IOERR_TRUNCATE (1546) — נעילה שנשארה על קובץ ה-journal.
+    final db = _FakeDatabase(
+      failOn: (sql) => sql.contains('journal_mode=WAL'),
+      extendedResultCode: 1546,
+    );
 
     expect(() => enableWalBestEffort(db, 'test'), returnsNormally);
-    expect(db.executeCalls, 1);
+  });
+
+  test('WAL שאינו שמיש במערכת הקבצים מוחזר ל-journal רגיל', () {
+    // SQLITE_IOERR_SHMOPEN (4618) — כרטיס SD ב-Android: ה-PRAGMA עובר,
+    // ופתיחת ה-shared-memory נכשלת רק בטרנזקציה הראשונה.
+    final db = _FakeDatabase(
+      failOn: (sql) => sql.startsWith('BEGIN'),
+      extendedResultCode: 4618,
+    );
+
+    expect(() => enableWalBestEffort(db, 'test'), returnsNormally);
+    expect(db.statements, contains('PRAGMA journal_mode=DELETE'));
+    expect(db.statements, contains('PRAGMA locking_mode=NORMAL'));
   });
 }
