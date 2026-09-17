@@ -270,29 +270,21 @@ class _OutlineViewState extends State<OutlineView>
       onClear: () => setState(() {}),
     );
 
-    return NavPanelSearchPublisher(
+    return NavPanelCollapsibleSearch(
       delegate: delegate,
-      child: Column(
-        children: [
-          if (!NavPanelSearch.isHoisted(context))
-            NavPanelLocalSearchField(delegate: delegate),
-          Expanded(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                if (notification is ScrollStartNotification &&
-                    notification.dragDetails != null) {
-                  _isManuallyScrolling = true;
-                } else if (notification is ScrollEndNotification) {
-                  _isManuallyScrolling = false;
-                }
-                return false;
-              },
-              child: searchController.text.isEmpty
-                  ? _buildOutlineList(outline)
-                  : _buildFilteredOutlineList(outline),
-            ),
-          ),
-        ],
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollStartNotification &&
+              notification.dragDetails != null) {
+            _isManuallyScrolling = true;
+          } else if (notification is ScrollEndNotification) {
+            _isManuallyScrolling = false;
+          }
+          return false;
+        },
+        child: searchController.text.isEmpty
+            ? _buildOutlineList(outline)
+            : _buildFilteredOutlineList(outline),
       ),
     );
   }
@@ -304,7 +296,10 @@ class _OutlineViewState extends State<OutlineView>
         padding: kNavTreeListPadding,
         child: Column(
           children: [
-            if (widget.title != null) NavTreeHeader(title: widget.title!),
+            NavTreeHeader(
+              title: widget.title ?? '',
+              trailing: const NavPanelSearchToggle(),
+            ),
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -350,7 +345,10 @@ class _OutlineViewState extends State<OutlineView>
         padding: kNavTreeListPadding,
         child: Column(
           children: [
-            if (widget.title != null) NavTreeHeader(title: widget.title!),
+            NavTreeHeader(
+              title: widget.title ?? '',
+              trailing: const NavPanelSearchToggle(),
+            ),
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),

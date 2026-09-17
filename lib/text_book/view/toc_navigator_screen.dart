@@ -456,7 +456,12 @@ class _TocViewerState extends State<TocViewer>
       // +1 עבור הכותרת הראשית, שנגללת עם הרשימה (פריט 0).
       itemCount: flat.length + 1,
       itemBuilder: (context, index) {
-        if (index == 0) return NavTreeHeader(title: title);
+        if (index == 0) {
+          return NavTreeHeader(
+            title: title,
+            trailing: const NavPanelSearchToggle(),
+          );
+        }
         final item = flat[index - 1];
         return _buildTocRow(
           item.entry,
@@ -586,8 +591,6 @@ class _TocViewerState extends State<TocViewer>
           );
           final bool useFlat = display.totalCount > _kTocFlattenThreshold;
 
-          // שדה החיפוש עצמו מצויר בסרגל שמעל החלונית; כאן רק מפרסמים את
-          // הפעולה שלו, והפוקוס מנוהל ב-focusNode של המסך האב.
           final delegate = NavPanelSearchDelegate(
             controller: searchController,
             hintText: 'איתור כותרת...',
@@ -601,78 +604,70 @@ class _TocViewerState extends State<TocViewer>
             onArrowDown: display.isSearching ? () => _moveHighlight(1) : null,
             onArrowUp: display.isSearching ? () => _moveHighlight(-1) : null,
           );
-          final hoisted = NavPanelSearch.isHoisted(context);
-
-          return NavPanelSearchPublisher(
+          return NavPanelCollapsibleSearch(
             delegate: delegate,
-            child: Column(
-              children: [
-                if (!hoisted) NavPanelLocalSearchField(delegate: delegate),
-                Expanded(
-                  child: display.isSearching && display.entries.isEmpty
-                      ? const OtzariaEmptyState(
-                          isCompact: true,
-                          icon: OtzariaIcons.search_in_titles_24_regular,
-                          title: 'לא נמצאו תוצאות',
-                        )
-                      : NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification is ScrollStartNotification &&
-                                notification.dragDetails != null) {
-                              _isManuallyScrolling = true;
-                            } else if (notification is ScrollEndNotification) {
-                              _isManuallyScrolling = false;
-                            }
-                            return false;
-                          },
-                          child: NavTreeFocusGroup(
-                            child: useFlat
-                                ? _buildVirtualizedTocList(
-                                    _flatItemsFor(display),
-                                    activeIndex,
-                                    isSearching: display.isSearching,
+            child: display.isSearching && display.entries.isEmpty
+                ? const OtzariaEmptyState(
+                    isCompact: true,
+                    icon: OtzariaIcons.search_in_titles_24_regular,
+                    title: 'לא נמצאו תוצאות',
+                  )
+                : NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification is ScrollStartNotification &&
+                          notification.dragDetails != null) {
+                        _isManuallyScrolling = true;
+                      } else if (notification is ScrollEndNotification) {
+                        _isManuallyScrolling = false;
+                      }
+                      return false;
+                    },
+                    child: NavTreeFocusGroup(
+                      child: useFlat
+                          ? _buildVirtualizedTocList(
+                              _flatItemsFor(display),
+                              activeIndex,
+                              isSearching: display.isSearching,
+                              title: state.book.title,
+                            )
+                          : SingleChildScrollView(
+                              controller: _tocScrollController,
+                              padding: kNavTreeListPadding,
+                              child: Column(
+                                children: [
+                                  NavTreeHeader(
                                     title: state.book.title,
-                                  )
-                                : SingleChildScrollView(
-                                    controller: _tocScrollController,
-                                    padding: kNavTreeListPadding,
-                                    child: Column(
-                                      children: [
-                                        NavTreeHeader(title: state.book.title),
-                                        ListView.builder(
-                                          shrinkWrap: true,
-                                          physics:
-                                              const NeverScrollableScrollPhysics(),
-                                          itemCount: display.entries.length,
-                                          itemBuilder: (context, index) =>
-                                              _buildTocItem(
-                                                display.entries[index],
-                                                isFirstChild: index == 0,
-                                                isGroupStart: index == 0,
-                                                isGroupEnd:
-                                                    index ==
-                                                    display.entries.length - 1,
-                                                showFullText:
-                                                    display.isSearching,
-                                                defaultExpanded:
-                                                    display.isSearching
-                                                    ? shouldExpandInSearch(
-                                                        _expanded[display
-                                                            .entries[index]
-                                                            .index],
-                                                      )
-                                                    : null,
-                                                activeIndex: activeIndex,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
+                                    trailing: const NavPanelSearchToggle(),
                                   ),
-                          ),
-                        ),
-                ),
-              ],
-            ),
+                                  ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: display.entries.length,
+                                    itemBuilder: (context, index) =>
+                                        _buildTocItem(
+                                          display.entries[index],
+                                          isFirstChild: index == 0,
+                                          isGroupStart: index == 0,
+                                          isGroupEnd:
+                                              index ==
+                                              display.entries.length - 1,
+                                          showFullText: display.isSearching,
+                                          defaultExpanded: display.isSearching
+                                              ? shouldExpandInSearch(
+                                                  _expanded[display
+                                                      .entries[index]
+                                                      .index],
+                                                )
+                                              : null,
+                                          activeIndex: activeIndex,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                  ),
           );
         },
       ),

@@ -406,7 +406,7 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
                   _buildSearchTopBar(
                     state,
                     collapseMenus: collapseMenus,
-                    showPaneSearchBar: true,
+                    isWideLayout: true,
                   ),
                   if (_shouldShowFacetFilterBanner(state))
                     _buildFacetFilterBanner(context, state),
@@ -691,37 +691,16 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
 
   /// הסרגל העליון של מסך החיפוש — זהה בכל רוחבי המסך.
   /// [collapseMenus] מכווץ את בוררי המיון והאיחוד לכפתורי אייקון.
-  /// [showPaneSearchBar] — רק בפריסה הרחבה, שבה חלונית הסינון היא
-  /// [NavSidePanel] ושדה "איתור ספר" עולה לסרגל. בפריסה הצרה החלונית מציירת
-  /// אותו בעצמה.
+  /// [isWideLayout] — הפריסה הרחבה, שבה חלונית הסינון היא [NavSidePanel].
   Widget _buildSearchTopBar(
     SearchState state, {
     required bool collapseMenus,
-    bool showPaneSearchBar = false,
+    bool isWideLayout = false,
   }) {
     final hasQuery = state.searchQuery.isNotEmpty;
     return AppTopBar(
       minCenterWidth: ReaderNavCenter.minTitleWidth,
       leadingItems: [
-        if (showPaneSearchBar)
-          AppTopBarItem(
-            widget: ValueListenableBuilder<bool>(
-              valueListenable: widget.tab.isLeftPaneOpen,
-              builder: (context, isOpen, _) =>
-                  BlocBuilder<SettingsBloc, SettingsState>(
-                    buildWhen: (p, c) =>
-                        p.facetFilteringWidth != c.facetFilteringWidth,
-                    builder: (context, settingsState) => NavPanelSearchBar(
-                      host: _searchHost,
-                      isOpen: isOpen,
-                      paneWidth:
-                          (_facetPaneWidthOverride ??
-                                  settingsState.facetFilteringWidth)
-                              .clamp(220.0, 600.0),
-                    ),
-                  ),
-            ),
-          ),
         AppTopBarItem(
           widget: ValueListenableBuilder<bool>(
             valueListenable: widget.tab.isLeftPaneOpen,
@@ -733,7 +712,7 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
         ),
       ],
       center: hasQuery
-          ? _buildQueryDisplay(context, showLabel: showPaneSearchBar)
+          ? _buildQueryDisplay(context, showLabel: isWideLayout)
           : const SizedBox.shrink(),
       trailingItems: hasQuery
           ? [
@@ -748,7 +727,7 @@ class _TantivyFullTextSearchState extends State<TantivyFullTextSearch>
                 ),
               ),
               // לחצן העין קיים רק בפריסה הרחבה — שם יש חלונית תצוגה מקדימה.
-              if (showPaneSearchBar)
+              if (isWideLayout)
                 AppTopBarItem(
                   dividerBefore: true,
                   widget: _buildPreviewToggleButton(),

@@ -7,7 +7,7 @@ import 'package:otzaria/widgets/layout/floating_panel.dart';
 import 'package:otzaria/widgets/layout/resizable_drag_handle.dart';
 
 class _CounterPane extends StatefulWidget {
-  const _CounterPane();
+  const _CounterPane({super.key});
 
   @override
   State<_CounterPane> createState() => _CounterPaneState();
@@ -880,5 +880,74 @@ void main() {
     expect(paneRect.width, closeTo(230, 0.5));
     expect(paneRect.left - containerRect.left, closeTo(10, 0.5));
     expect(containerRect.right - paneRect.right, closeTo(10, 0.5));
+  });
+
+  group('חלונית מרחפת (floatOverContent)', () {
+    Widget pane({
+      required bool float,
+      bool isOpen = true,
+      VoidCallback? onClose,
+    }) => MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          body: SizedBox(
+            width: 1200,
+            height: 700,
+            child: AdaptiveSidePane(
+              isOpen: isOpen,
+              alignment: AlignmentDirectional.centerEnd,
+              paneWidth: 300,
+              minMainContentWidth: 420,
+              onClose: onClose ?? () {},
+              floatOverContent: float,
+              attachToTopEdge: true,
+              mainContent: const Align(
+                alignment: Alignment.centerLeft,
+                child: _CounterPane(key: ValueKey('main')),
+              ),
+              paneContent: const _CounterPane(key: ValueKey('pane')),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Finder inPane(String key, Finder f) =>
+        find.descendant(of: find.byKey(ValueKey(key)), matching: f);
+
+    testWidgets('מרחפת מעל התוכן בלי לצמצם אותו, ולחיצה על ההצללה סוגרת', (
+      tester,
+    ) async {
+      var closed = 0;
+      await tester.pumpWidget(pane(float: true, onClose: () => closed++));
+      await tester.pumpAndSettle();
+
+      final main = tester.getRect(find.byKey(const ValueKey('main')));
+      final paneRect = tester.getRect(find.byKey(const ValueKey('pane')));
+      expect(main.left, 0, reason: 'התוכן תופס את כל הרוחב');
+      expect(paneRect.right, closeTo(800, 0.5));
+
+      await tester.tapAt(const Offset(200, 300));
+      expect(closed, 1);
+    });
+
+    testWidgets('נעיצה וביטולה אינם בונים מחדש את החלונית ואת התוכן', (
+      tester,
+    ) async {
+      await tester.pumpWidget(pane(float: false));
+      await tester.pumpAndSettle();
+
+      await tester.tap(inPane('pane', find.text('increment')));
+      await tester.tap(inPane('main', find.text('increment')));
+      await tester.pump();
+
+      for (final float in [true, false]) {
+        await tester.pumpWidget(pane(float: float));
+        await tester.pumpAndSettle();
+        expect(inPane('pane', find.text('count: 1')), findsOneWidget);
+        expect(inPane('main', find.text('count: 1')), findsOneWidget);
+      }
+    });
   });
 }

@@ -1,17 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:otzaria/settings/engine/settings_bloc.dart';
+import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/widgets/lists/nav_tree_tile.dart';
-import 'package:otzaria/widgets/navigation/app_top_bar.dart';
-import 'package:otzaria/widgets/navigation/nav_side_panel.dart';
 import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 
-/// פעולת החיפוש של לשונית אחת בחלונית הניווט.
-///
-/// הלשונית אינה מציירת שדה חיפוש בעצמה — היא מפרסמת את הפעולה שלה
-/// ([NavPanelSearchPublisher]), ו-[NavPanelSearchBar] שבסרגל העליון מצייר אותה.
+/// הגדרת שדה החיפוש של לשונית אחת בחלונית הניווט.
 class NavPanelSearchDelegate {
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -35,14 +29,9 @@ class NavPanelSearchDelegate {
     this.onSubmitted,
     this.onClear,
     this.trailingActions = const [],
-    this.actionsKey,
     this.onArrowDown,
     this.onArrowUp,
   });
-
-  /// מזהה המצב החזותי של [trailingActions]. פעולה שמחליפה אייקון או צבע
-  /// שומרת על אורך הרשימה, ולכן בלעדיו הסרגל המורם נשאר על התצוגה הישנה.
-  final Object? actionsKey;
 
   /// מטפל בחיצי מעלה/מטה עבור שדה חיפוש שמחובר לפעולה זו. מוחזר
   /// [KeyEventResult.ignored] כשאין callback מתאים — ואז חל המנגנון הרגיל.
@@ -61,29 +50,14 @@ class NavPanelSearchDelegate {
     }
     return KeyEventResult.ignored;
   }
-
-  /// האם שתי הפעולות מכוונות לאותו שדה (אותו controller/focus/תווית). ה-callbacks
-  /// נבנים מחדש בכל build אך קוראים את ה-state העדכני בזמן ההפעלה, ולכן שינוי
-  /// שלהם אינו מחייב בנייה מחדש של הסרגל.
-  bool sameTargetAs(NavPanelSearchDelegate other) =>
-      controller == other.controller &&
-      focusNode == other.focusNode &&
-      hintText == other.hintText &&
-      actionsKey == other.actionsKey &&
-      trailingActions.length == other.trailingActions.length;
 }
 
-/// מרכז את פעולות החיפוש של לשוניות החלונית ומזין את הסרגל שבסרגל העליון.
-///
-/// המסך מחזיק מופע אחד, מעדכן [activeTab] לפי הלשונית הנבחרת, ומעביר אותו
-/// גם ל-[NavPanelSearchBar] וגם ל-[NavPanelSearchScope] שעוטף את החלונית.
-class NavPanelSearchHost extends ChangeNotifier {
-  final Map<int, NavPanelSearchDelegate> _delegates = {};
-  int _activeTab = 0;
-  bool _disposed = false;
-  bool _notifyScheduled = false;
+/// מצב משותף לחלונית הניווט: הלשונית הפעילה וה-scope של שורות התוכן.
+class NavPanelSearchHost {
+  /// הלשונית הנבחרת — רק שדה החיפוש שלה רשאי למקד את עצמו בבנייה.
+  int activeTab = 0;
 
-  /// ה-scope של תוכן החלונית. חץ למטה/למעלה בסרגל החיפוש מעביר אליו את
+  /// ה-scope של תוכן החלונית. חץ למטה/למעלה בשדה החיפוש מעביר אליו את
   /// הפוקוס, ומשם החצים מנווטים בין שורות הרשימה (traversal רגיל של Flutter).
   final FocusScopeNode paneFocusScope = FocusScopeNode(
     debugLabel: 'navPanelContent',
@@ -92,9 +66,10 @@ class NavPanelSearchHost extends ChangeNotifier {
   /// מעביר את הפוקוס אל תוכן החלונית: אל השורה שהפוקוס היה עליה, ואם אין —
   /// אל הראשונה לפי מדיניות המעבר (השורה המסומנת, ראה [NavTreeTile]).
   bool focusPaneContent() {
-    if (_disposed) return false;
+    // השדה עצמו יושב בתוך ה-scope, ולכן הוא לעולם אינו יעד.
+    final current = FocusManager.instance.primaryFocus;
     final focusedChild = paneFocusScope.focusedChild;
-    if (focusedChild != null) {
+    if (focusedChild != null && focusedChild != current) {
       focusedChild.requestFocus();
       return true;
     }
@@ -106,59 +81,16 @@ class NavPanelSearchHost extends ChangeNotifier {
       paneFocusScope,
       ignoreCurrentFocus: true,
     );
-    if (first == null) return false;
+    if (first == null || first == current) return false;
     first.requestFocus();
     return true;
   }
 
-  int get activeTab => _activeTab;
-
-  set activeTab(int value) {
-    if (_activeTab == value) return;
-    _activeTab = value;
-    _scheduleNotify();
-  }
-
-  /// פעולת החיפוש של הלשונית הפעילה, או null כשאין לה חיפוש.
-  NavPanelSearchDelegate? get active => _delegates[_activeTab];
-
-  void publish(int tab, NavPanelSearchDelegate delegate) {
-    if (_disposed) return;
-    final previous = _delegates[tab];
-    _delegates[tab] = delegate;
-    if (tab != _activeTab) return;
-    if (previous != null && previous.sameTargetAs(delegate)) return;
-    _scheduleNotify();
-  }
-
-  void withdraw(int tab) {
-    if (_disposed) return;
-    if (_delegates.remove(tab) != null && tab == _activeTab) {
-      _scheduleNotify();
-    }
-  }
-
-  /// הפרסום מתרחש בתוך build של הלשונית, ולכן ההודעה נדחית לסוף ה-frame —
-  /// אחרת ה-setState של הסרגל נופל על "markNeedsBuild during build".
-  void _scheduleNotify() {
-    if (_notifyScheduled || _disposed) return;
-    _notifyScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _notifyScheduled = false;
-      if (!_disposed) notifyListeners();
-    });
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    paneFocusScope.dispose();
-    super.dispose();
-  }
+  void dispose() => paneFocusScope.dispose();
 }
 
 /// עוטף את תוכן החלונית ב-scope הפוקוס שלה ובמדיניות מעבר ממוינת, כדי
-/// שכניסת הפוקוס מסרגל החיפוש תגיע לשורות הרשימה ולא ללשוניות.
+/// שכניסת הפוקוס משדה החיפוש תגיע לשורות הרשימה ולא ללשוניות.
 class _NavPanelContentFocus extends StatelessWidget {
   final NavPanelSearchHost host;
   final Widget child;
@@ -189,37 +121,57 @@ class NavPanelSearchScope extends InheritedWidget {
   static NavPanelSearchHost? hostOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<NavPanelSearchScope>()?.host;
 
+  /// כמו [hostOf] בלי תלות — לשימוש מחוץ ל-build (מקשים, לחיצות).
+  static NavPanelSearchHost? readHost(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<NavPanelSearchScope>()?.host;
+
   @override
   bool updateShouldNotify(NavPanelSearchScope oldWidget) =>
       oldWidget.host != host;
 }
 
-/// רוחב המסך המזערי להרמת שדה החיפוש לסרגל העליון. מתחתיו הסרגל מחלק את
-/// רוחבו עם הכותרת והפעולות, והשדה נותר צר מכדי להראות את הטקסט שהוקלד.
-const double kNavPanelSearchHoistMinWidth = 600.0;
+/// רוחב החלונית המזערי שבו מותר למקד שדה חיפוש ביוזמת התוכנה. מתחתיו
+/// (טלפון) מיקוד כזה פותח את מקלדת המערכת על ספר שהמשתמש רק רצה לקרוא.
+const double kNavPanelWideMinWidth = 600.0;
 
-/// עזר לזיהוי המצב: בתוך חלונית ניווט שדה החיפוש עולה לסרגל שמעליה, ולכן
-/// הלשונית אינה מציירת שדה מקומי. מחוץ לחלונית (דיאלוג, מסך אחר) היא כן.
 abstract final class NavPanelSearch {
-  /// האם החלונית רחבה דיה כדי ששדה החיפוש יעלה לסרגל העליון. בחלונית צרה הוא
-  /// נשאר בתוכה, ששם יש לו את מלוא רוחבה. בתצוגה מפוצלת החלון רחב אך החלונית
-  /// צרה — ולכן נמדדת החלונית ([NavPanelPaneWidthScope]), לא החלון (issue #1268).
-  static bool canHoist(BuildContext context) =>
+  /// האם החלונית רחבה. בתצוגה מפוצלת החלון רחב אך החלונית צרה — ולכן
+  /// נמדדת החלונית ([NavPanelPaneWidthScope]), לא החלון (issue #1268).
+  static bool isWide(BuildContext context) =>
       (NavPanelPaneWidthScope.maybeOf(context) ??
           MediaQuery.sizeOf(context).width) >=
-      kNavPanelSearchHoistMinWidth;
-
-  static bool isHoisted(BuildContext context) =>
-      canHoist(context) &&
-      NavPanelSearchScope.hostOf(context) != null &&
-      NavPanelSearchSlot.indexOf(context) != null;
+      kNavPanelWideMinWidth;
 
   /// האם לסמן ב-host לשונית שנבחרה כפעילה. לשונית שנבחרה אוטומטית (ספר שנפתח
-  /// מחיפוש) מסומנת רק כשהשדה מורם לסרגל — בחלונית הוא ממקד את עצמו.
+  /// מחיפוש) מסומנת רק במסך רחב — אחרת השדה שלה ממקד את עצמו ופותח מקלדת.
   static bool shouldMarkActiveTab(
     BuildContext context, {
     required bool autoSelected,
-  }) => !autoSelected || canHoist(context);
+  }) => !autoSelected || isWide(context);
+
+  /// מקשי שדה חיפוש בחלונית: דפדוף של הלשונית אם יש, ואחרת חץ למטה/למעלה
+  /// מעביר את הפוקוס אל שורות החלונית. ימין ושמאל נשארים לעריכת הטקסט.
+  static KeyEventResult handleFieldKey(
+    BuildContext context,
+    NavPanelSearchDelegate delegate,
+    KeyEvent event,
+  ) {
+    if (delegate.handleArrowKey(event) == KeyEventResult.handled) {
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.arrowDown &&
+        key != LogicalKeyboardKey.arrowUp) {
+      return KeyEventResult.ignored;
+    }
+    final host = NavPanelSearchScope.readHost(context);
+    return host != null && host.focusPaneContent()
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored;
+  }
 }
 
 /// רוחב החלונית (הטאב) שבה מוצג הספר — מסופק ע"י מארח החלוניות, כדי שהחלטות
@@ -239,12 +191,12 @@ class NavPanelPaneWidthScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(NavPanelPaneWidthScope oldWidget) =>
-      (oldWidget.width >= kNavPanelSearchHoistMinWidth) !=
-      (width >= kNavPanelSearchHoistMinWidth);
+      (oldWidget.width >= kNavPanelWideMinWidth) !=
+      (width >= kNavPanelWideMinWidth);
 }
 
-/// מסמן את אינדקס הלשונית שבתוכה יושב התוכן — כדי שהפרסום יגיע לסרגל רק
-/// כשהלשונית הזו נבחרת. עוטף כל child של ה-TabBarView בחלונית.
+/// מסמן את אינדקס הלשונית שבתוכה יושב התוכן. עוטף כל child של ה-TabBarView
+/// בחלונית.
 class NavPanelSearchSlot extends InheritedWidget {
   final int index;
 
@@ -262,273 +214,187 @@ class NavPanelSearchSlot extends InheritedWidget {
       oldWidget.index != index;
 }
 
-/// מפרסם את פעולת החיפוש של הלשונית שבתוכה הוא יושב, כל עוד הוא בעץ.
-/// מחוץ ל-[NavPanelSearchScope] (למשל בדיאלוג) הוא שקוף לחלוטין.
-class NavPanelSearchPublisher extends StatefulWidget {
+/// חיפוש משני של לשונית: השדה מוסתר עד שלוחצים על [NavPanelSearchToggle]
+/// (שיושב בכותרת הרשימה), ונפתח מעל התוכן עם כפתור סגירה שגם מנקה אותו.
+class NavPanelCollapsibleSearch extends StatefulWidget {
   final NavPanelSearchDelegate delegate;
   final Widget child;
 
-  const NavPanelSearchPublisher({
+  const NavPanelCollapsibleSearch({
     super.key,
     required this.delegate,
     required this.child,
   });
 
   @override
-  State<NavPanelSearchPublisher> createState() =>
-      _NavPanelSearchPublisherState();
+  State<NavPanelCollapsibleSearch> createState() =>
+      _NavPanelCollapsibleSearchState();
 }
 
-class _NavPanelSearchPublisherState extends State<NavPanelSearchPublisher> {
-  NavPanelSearchHost? _host;
-  int? _slot;
+class _NavPanelCollapsibleSearchState extends State<NavPanelCollapsibleSearch> {
+  late bool _isOpen = widget.delegate.controller.text.isNotEmpty;
+  bool _focusOnOpen = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final host = NavPanelSearchScope.hostOf(context);
-    final slot = NavPanelSearchSlot.indexOf(context);
-    if (host != _host || slot != _slot) {
-      if (_host != null && _slot != null) _host!.withdraw(_slot!);
-      _host = host;
-      _slot = slot;
-    }
-    _republish();
+  void initState() {
+    super.initState();
+    widget.delegate.controller.addListener(_onTextChanged);
   }
 
   @override
-  void didUpdateWidget(NavPanelSearchPublisher oldWidget) {
+  void didUpdateWidget(NavPanelCollapsibleSearch oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _republish();
-  }
-
-  void _republish() {
-    final host = _host;
-    final slot = _slot;
-    if (host == null || slot == null) return;
-    host.publish(slot, widget.delegate);
+    if (oldWidget.delegate.controller != widget.delegate.controller) {
+      oldWidget.delegate.controller.removeListener(_onTextChanged);
+      widget.delegate.controller.addListener(_onTextChanged);
+      _onTextChanged();
+    }
   }
 
   @override
   void dispose() {
-    if (_host != null && _slot != null) _host!.withdraw(_slot!);
+    widget.delegate.controller.removeListener(_onTextChanged);
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
+  // סינון שהוחל מבחוץ (שחזור טאב) חייב שדה גלוי — אחרת הרשימה מסוננת בלי הסבר.
+  void _onTextChanged() {
+    if (!_isOpen && widget.delegate.controller.text.isNotEmpty) {
+      setState(() {
+        _isOpen = true;
+        _focusOnOpen = false;
+      });
+    }
+  }
 
-/// שדה החיפוש המקומי של לשונית — לשימוש כשהיא אינה בתוך חלונית ניווט
-/// (ואז אין סרגל שמעליה שיצייר אותו).
-class NavPanelLocalSearchField extends StatelessWidget {
-  final NavPanelSearchDelegate delegate;
+  void _open() {
+    setState(() {
+      _isOpen = true;
+      _focusOnOpen = true;
+    });
+  }
 
-  const NavPanelLocalSearchField({super.key, required this.delegate});
+  void _close() {
+    final delegate = widget.delegate;
+    final hadFocus = delegate.focusNode?.hasFocus ?? false;
+    if (delegate.controller.text.isNotEmpty) {
+      delegate.controller.clear();
+      delegate.onClear?.call();
+    }
+    setState(() => _isOpen = false);
+    if (hadFocus) NavPanelSearchScope.readHost(context)?.focusPaneContent();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      _close();
+      return KeyEventResult.handled;
+    }
+    return NavPanelSearch.handleFieldKey(context, widget.delegate, event);
+  }
+
+  Widget _buildFieldRow(BuildContext context) {
+    final delegate = widget.delegate;
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        kNavTreeSideInset,
+        AppTokens.spaceSM,
+        AppTokens.spaceXS,
+        AppTokens.spaceXS,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Focus(
+              canRequestFocus: false,
+              onKeyEvent: _handleKey,
+              child: OtzariaSearchField(
+                controller: delegate.controller,
+                focusNode: delegate.focusNode,
+                // autofocus נקרא רק בהרכבת השדה — שדה ששוחזר פתוח אינו חוטף פוקוס.
+                autofocus: _focusOnOpen,
+                hintText: delegate.hintText,
+                onChanged: delegate.onChanged,
+                onSubmitted: delegate.onSubmitted,
+                trailingActions: delegate.trailingActions.isEmpty
+                    ? null
+                    : delegate.trailingActions,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'סגור חיפוש',
+            onPressed: _close,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(FluentIcons.dismiss_24_regular, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Focus(
-        canRequestFocus: false,
-        onKeyEvent: (node, event) => delegate.handleArrowKey(event),
-        child: OtzariaSearchField(
-          controller: delegate.controller,
-          focusNode: delegate.focusNode,
-          hintText: delegate.hintText,
-          onChanged: delegate.onChanged,
-          onSubmitted: delegate.onSubmitted,
-          onClear: delegate.onClear,
-          trailingActions: delegate.trailingActions.isEmpty
-              ? null
-              : delegate.trailingActions,
-        ),
+    return _NavPanelSearchToggleScope(
+      isOpen: _isOpen,
+      onOpen: _open,
+      hintText: widget.delegate.hintText,
+      child: Column(
+        children: [
+          ClipRect(
+            child: AnimatedSize(
+              duration: AppTokens.animFast,
+              curve: Curves.easeOut,
+              alignment: AlignmentDirectional.topCenter,
+              child: _isOpen
+                  ? _buildFieldRow(context)
+                  : const SizedBox(width: double.infinity),
+            ),
+          ),
+          Expanded(child: widget.child),
+        ],
       ),
     );
   }
 }
 
-/// סרגל החלונית שבתוך הסרגל העליון: שדה החיפוש של הלשונית הפעילה וכפתור
-/// הנעיצה. הוא תופס בדיוק את רוחב החלונית שמתחתיו, עם אותם שוליים אופקיים של
-/// תוכן החלונית ([kNavTreeSideInset]) — כדי שלא ייראה כמרחף מעל תוכן הקריאה.
-/// אייקון הפתיחה/סגירה נשאר מחוץ לרוחב הזה, כפריט הבא בסרגל.
-///
-/// נפתח באנימציה מרוחב 0 (מקום אייקון הפתיחה) לרוחב החלונית, ולכן הוא דוחק
-/// את האייקון פנימה ו"נמשך" ממנו. הפעולה שבתוכו מתחלפת לפי הלשונית הנבחרת,
-/// והסרגל נשאר מוצג ומורכב כל עוד החלונית פתוחה.
-class NavPanelSearchBar extends StatefulWidget {
-  final NavPanelSearchHost host;
-
-  /// האם החלונית פתוחה — הסרגל נפתח ונסגר יחד איתה.
+class _NavPanelSearchToggleScope extends InheritedWidget {
   final bool isOpen;
+  final VoidCallback onOpen;
+  final String hintText;
 
-  /// רוחב החלונית שמעליה הסרגל יושב.
-  final double paneWidth;
-
-  /// מצב נעיצת החלונית. [onTogglePin] null = הכפתור מוסתר (למשל במסך צר, או
-  /// בחלונית שאין בה נעיצה).
-  final bool isPinned;
-  final VoidCallback? onTogglePin;
-
-  const NavPanelSearchBar({
-    super.key,
-    required this.host,
+  const _NavPanelSearchToggleScope({
     required this.isOpen,
-    required this.paneWidth,
-    this.isPinned = false,
-    this.onTogglePin,
+    required this.onOpen,
+    required this.hintText,
+    required super.child,
   });
 
   @override
-  State<NavPanelSearchBar> createState() => _NavPanelSearchBarState();
+  bool updateShouldNotify(_NavPanelSearchToggleScope oldWidget) =>
+      oldWidget.isOpen != isOpen || oldWidget.hintText != hintText;
 }
 
-class _NavPanelSearchBarState extends State<NavPanelSearchBar> {
-  /// controller קבוע ללשונית שאין בה חיפוש — כדי שהשדה עצמו יישאר אותו
-  /// ווידג'ט ולא ייבנה מחדש במעבר בין לשוניות.
-  final TextEditingController _idleController = TextEditingController();
-
-  @override
-  void dispose() {
-    _idleController.dispose();
-    super.dispose();
-  }
-
-  KeyEventResult _handleFieldKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    final delegate = widget.host.active;
-    if (delegate != null &&
-        delegate.handleArrowKey(event) == KeyEventResult.handled) {
-      return KeyEventResult.handled;
-    }
-    final key = event.logicalKey;
-    if (key != LogicalKeyboardKey.arrowDown &&
-        key != LogicalKeyboardKey.arrowUp) {
-      return KeyEventResult.ignored;
-    }
-    return widget.host.focusPaneContent()
-        ? KeyEventResult.handled
-        : KeyEventResult.ignored;
-  }
+/// אייקון שפותח את השדה של [NavPanelCollapsibleSearch] שמעליו. מיועד ל-trailing
+/// של הכותרת הראשית ברשימה; נעלם כשהשדה פתוח או כשאין חיפוש מעליו.
+class NavPanelSearchToggle extends StatelessWidget {
+  const NavPanelSearchToggle({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // במסך צר השדה נשאר בתוך החלונית (ראה [NavPanelSearch.isHoisted]), ולכן
-    // הסרגל כאן ריק — אחרת היו שני שדות, והעליון צר מכדי להקליד בו.
-    if (!NavPanelSearch.canHoist(context)) return const SizedBox.shrink();
-    // כמו ב-OtzariaSearchField: קריאה סובלנית, כדי שהסרגל יעבוד גם בהקשר
-    // שאין בו SettingsBloc.
-    final isCompact =
-        context.read<SettingsBloc?>()?.state.compactMenuMode ?? false;
-    // הסרגל העליון מרווח את פריטיו מהדופן, והחלונית צמודה אליה — לכן הרוחב
-    // והשוליים מפצים על אותו ריווח, ושפת הסרגל מתיישרת לשפת החלונית.
-    final barInset = AppTopBar.horizontalPadding(isCompact);
-    final width = (widget.paneWidth - barInset).clamp(0.0, double.infinity);
-    final hasPin = widget.onTogglePin != null;
-    // בלי נעיצה השדה מתיישר לשוליים של תוכן החלונית משני הצדדים. עם נעיצה
-    // השוליים נשמרים לשדה בלבד: הוא מוותר על השוליים החיצוניים (שם הסרגל
-    // העליון עמוס בכל מקרה), וכפתור הנעיצה גולש אל השוליים הפנימיים — כך
-    // הוא לא נצמד לשדה ולא מתרחק מאייקון הסגירה.
-    final fieldStartInset = hasPin
-        ? 0.0
-        : (kNavTreeSideInset - barInset).clamp(0.0, double.infinity);
-    final fieldEndInset = hasPin ? AppTokens.spaceXS : kNavTreeSideInset;
-
-    // בסרגל צפוף (פריט flexible) השדה מקבל פחות מרוחב החלונית — מתכווצים
-    // אליו, אחרת ה-ClipRect חותך את כפתורי הקצה (נעיצה, ניקוי) מהשדה.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final effectiveWidth = constraints.hasBoundedWidth
-            ? width.clamp(0.0, constraints.maxWidth)
-            : width;
-        // IntrinsicHeight: ה-OverflowBox דורש גובה חסום, וסרגל עליון עשוי לתת
-        // גובה חופשי (Row בתוך Column).
-        return IntrinsicHeight(
-          // מונפש שיעור הפתיחה ולא הרוחב עצמו: כך שינוי רוחב החלונית (גרירת
-          // המפריד, מעבר תפריט צפוף) עובר מיד, בלי פריימי חיתוך על סרגל פתוח.
-          child: TweenAnimationBuilder<double>(
-            duration: AppTokens.animPanelSlide,
-            curve: Curves.easeInOut,
-            tween: Tween<double>(end: widget.isOpen ? 1.0 : 0.0),
-            builder: (context, openFraction, child) {
-              // ה-ClipRect מסתיר את הציור אך לא את ה-Semantics ואת ה-hit
-              // testing, ולכן בפריימי הפתיחה/הסגירה כפתור שגולש ממנו נכנס
-              // לעץ הנגישות במלבן הפוך וזורק "Invisible SemanticsNodes".
-              final isFull = widget.isOpen && openFraction >= 1.0;
-              return SizedBox(
-                width: effectiveWidth * openFraction,
-                child: ClipRect(
-                  child: OverflowBox(
-                    maxWidth: effectiveWidth,
-                    minWidth: 0,
-                    alignment: AlignmentDirectional.centerStart,
-                    child: ExcludeSemantics(
-                      excluding: !isFull,
-                      child: IgnorePointer(ignoring: !isFull, child: child),
-                    ),
-                  ),
-                ),
-              );
-            },
-            // התוכן עובר דרך child ולכן ה-builder רק עוטף אותו: השדה נשאר
-            // אותו ווידג'ט מורכב ואינו נבנה מחדש בכל פריים של האנימציה.
-            child: SizedBox(
-              width: effectiveWidth,
-              child: Row(
-                children: [
-                  // רק תוכן השדה מתחלף לפי הלשונית — הסרגל עצמו נשאר מוצג
-                  // ומורכב כל עוד החלונית פתוחה, ואינו נבנה מחדש.
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsetsDirectional.only(
-                        start: fieldStartInset,
-                        end: fieldEndInset,
-                      ),
-                      // חץ למטה/למעלה מעביר את הפוקוס אל שורות החלונית; ימין
-                      // ושמאל נשארים לעריכת הטקסט. ה-handler יושב מעל השדה
-                      // ולכן הוא מקבל את המקש לפני קיצורי עריכת הטקסט.
-                      child: Focus(
-                        canRequestFocus: false,
-                        onKeyEvent: _handleFieldKey,
-                        child: ListenableBuilder(
-                          listenable: widget.host,
-                          builder: (context, _) {
-                            final delegate = widget.host.active;
-                            return OtzariaSearchField(
-                              controller:
-                                  delegate?.controller ?? _idleController,
-                              focusNode: delegate?.focusNode,
-                              enabled: delegate != null,
-                              hintText:
-                                  delegate?.hintText ?? 'אין חיפוש בלשונית זו',
-                              onChanged: delegate?.onChanged,
-                              onSubmitted: delegate?.onSubmitted,
-                              onClear: delegate?.onClear,
-                              trailingActions:
-                                  delegate == null ||
-                                      delegate.trailingActions.isEmpty
-                                  ? null
-                                  : delegate.trailingActions,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (hasPin)
-                    NavPanelPinButton(
-                      isPinned: widget.isPinned,
-                      onToggle: widget.onTogglePin,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_NavPanelSearchToggleScope>();
+    if (scope == null || scope.isOpen) return const SizedBox.shrink();
+    return SizedBox.square(
+      dimension: 28,
+      child: IconButton(
+        tooltip: scope.hintText,
+        onPressed: scope.onOpen,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(FluentIcons.search_24_regular, size: 18),
+      ),
     );
   }
 }

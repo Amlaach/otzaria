@@ -297,7 +297,6 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   // מהדורות מקבילות ללחצן המובנה: המובנית ראשונה, אחריה היברובוקס מקומיות.
   List<ParallelEdition> _parallelEditions = const [];
   bool _hasBookVersions = false;
-  bool _leftPaneAutoCloseQueuedByScroll = false;
   // מצב חלונית הצד שזוהה לאחרונה, לעיגון-מחדש של הטקסט בעת פתיחה/סגירה.
   bool _lastShowLeftPaneForReanchor = false;
   // האם החלונית דוחקת את התוכן (wide). ב-overlay הרוחב לא משתנה ולכן ה-reanchor
@@ -1015,21 +1014,14 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
     _focusActiveTabSearchField();
   }
 
-  /// מבקש פוקוס לשדה החיפוש של הלשונית הפעילה בפאנל הצדדי
-  /// ('ניווט' / 'כותרות' / 'חיפוש'). לא עושה דבר כשהפאנל סגור.
+  /// מבקש פוקוס לשדה של לשונית 'חיפוש' כשהיא הפעילה. בשאר הלשוניות השדה
+  /// סגור עד שהמשתמש פותח אותו. לא עושה דבר כשהפאנל סגור.
   void _focusActiveTabSearchField() {
-    // במסך צר השדה יושב בתוך החלונית ולא בסרגל שמעליה, ומיקוד יזום שלו פותח
-    // את מקלדת המערכת על ספר שהמשתמש רק רצה לקרוא.
-    if (!NavPanelSearch.canHoist(context)) return;
+    // במסך צר מיקוד יזום פותח את מקלדת המערכת על ספר שרק רצו לקרוא.
+    if (!NavPanelSearch.isWide(context)) return;
     final state = context.read<TextBookBloc>().state;
     if (state is! TextBookLoaded || !state.showLeftPane) return;
-
-    final int searchTabIndex = _hasAltTitles ? 2 : 1;
-    if (tabController.index == 0) {
-      navigationSearchFocusNode.requestFocus();
-    } else if (_hasAltTitles && tabController.index == 1) {
-      altTitlesSearchFocusNode.requestFocus();
-    } else if (tabController.index == searchTabIndex) {
+    if (tabController.index == (_hasAltTitles ? 2 : 1)) {
       textSearchFocusNode.requestFocus();
     }
   }
@@ -1309,9 +1301,6 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
                   // איתור ה-PDF המלווה נדחה עד שהתוכן נטען, כדי שלא יחנוק את
                   // שאילתת התוכן בעלייה (ראו _resolveCompanionPdf).
                   _resolveCompanionPdf();
-                  if (!state.showLeftPane) {
-                    _leftPaneAutoCloseQueuedByScroll = false;
-                  }
                   // פתיחת/סגירת חלונית הצד משנה את רוחב הטקסט; מעגנים מחדש
                   // לפריט העליון הנראה כדי שהתצוגה לא תקפוץ בזרימה-מחדש.
                   if (state.showLeftPane != _lastShowLeftPaneForReanchor) {
@@ -1514,11 +1503,16 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
     return AppTopBar(
       minCenterWidth: ReaderNavCenter.minTitleWidth,
       leadingItems: [
-        AppTopBarItem(
-          flexible: true,
-          widget: _buildPaneSearchBar(state),
-        ),
         AppTopBarItem(widget: _buildMenuButton(context, state)),
+        if (state.showLeftPane && NavPanelSearch.isWide(context))
+          AppTopBarItem(
+            widget: NavPanelPinButton(
+              isPinned: state.pinLeftPane,
+              onToggle: () => context.read<TextBookBloc>().add(
+                TogglePinLeftPane(!state.pinLeftPane),
+              ),
+            ),
+          ),
         if (state.showPageShapeView)
           AppTopBarItem(widget: _buildPageShapeSettingsButton(context, state)),
       ],
@@ -1679,25 +1673,6 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
       isOpen: state.showLeftPane,
       onToggle: () =>
           context.read<TextBookBloc>().add(ToggleLeftPane(!state.showLeftPane)),
-    );
-  }
-
-  /// סרגל החיפוש שמעל החלונית — פריט ראשון בסרגל העליון, ולכן הוא נפתח
-  /// מכיוון הדופן ודוחק את אייקון הפתיחה פנימה.
-  Widget _buildPaneSearchBar(TextBookLoaded state) {
-    return ValueListenableBuilder<double>(
-      valueListenable: _sidebarWidth,
-      builder: (context, paneWidth, _) => NavPanelSearchBar(
-        host: _searchHost,
-        isOpen: state.showLeftPane,
-        paneWidth: paneWidth,
-        isPinned: state.pinLeftPane,
-        onTogglePin: NavPanelSearch.canHoist(context)
-            ? () => context.read<TextBookBloc>().add(
-                TogglePinLeftPane(!state.pinLeftPane),
-              )
-            : null,
-      ),
     );
   }
 
@@ -2820,6 +2795,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
   Widget _buildBody(BuildContext context, TextBookLoaded state) {
     return NavSidePanel(
       isOpen: state.showLeftPane,
+      isPinned: state.pinLeftPane,
       alignment: AlignmentDirectional.centerEnd,
       paneWidth: _sidebarWidth.value,
       minMainContentWidth: 520,
@@ -2883,65 +2859,36 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
             );
           }
         },
-        child: NotificationListener<UserScrollNotification>(
-          onNotification: (scrollNotification) {
-            final isSidebarPinned =
-                state.pinLeftPane ||
-                (Settings.getValue<bool>('key-pin-sidebar') ?? false);
-            final shouldAutoCloseLeftPane =
-                scrollNotification.direction != ScrollDirection.idle &&
-                state.showLeftPane &&
-                !isSidebarPinned &&
-                !_leftPaneAutoCloseQueuedByScroll;
-            if (shouldAutoCloseLeftPane) {
-              _leftPaneAutoCloseQueuedByScroll = true;
-              Future.microtask(() {
-                if (!mounted || !context.mounted) {
-                  _leftPaneAutoCloseQueuedByScroll = false;
-                  return;
-                }
-                final currentState = context.read<TextBookBloc>().state;
-                if (currentState is! TextBookLoaded ||
-                    !currentState.showLeftPane) {
-                  _leftPaneAutoCloseQueuedByScroll = false;
-                  return;
-                }
-                context.read<TextBookBloc>().add(const ToggleLeftPane(false));
-              });
-            }
-            return false;
+        child: CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            LogicalKeySet(
+              LogicalKeyboardKey.control,
+              LogicalKeyboardKey.keyF,
+            ): _openSearchFromToolbar,
+            // Mac: Cmd+F
+            LogicalKeySet(LogicalKeyboardKey.meta, LogicalKeyboardKey.keyF):
+                _openSearchFromToolbar,
           },
-          child: CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              LogicalKeySet(
-                LogicalKeyboardKey.control,
-                LogicalKeyboardKey.keyF,
-              ): _openSearchFromToolbar,
-              // Mac: Cmd+F
-              LogicalKeySet(LogicalKeyboardKey.meta, LogicalKeyboardKey.keyF):
-                  _openSearchFromToolbar,
+          child: TextBookScaffold(
+            content: state.content,
+            openBookCallback: widget.openBookCallback,
+            openLeftPaneTab: _openLeftPaneTab,
+            onSelectedTextChanged: _onSelectedTextChanged,
+            searchTextController: TextEditingValue(text: state.searchText),
+            tab: widget.tab,
+            initialSidebarTabIndex: _sidebarTabIndex,
+            onSidebarTabChanged: (index) {
+              if (_sidebarTabIndex != index) {
+                setState(() {
+                  _sidebarTabIndex = index;
+                });
+              }
             },
-            child: TextBookScaffold(
-              content: state.content,
-              openBookCallback: widget.openBookCallback,
-              openLeftPaneTab: _openLeftPaneTab,
-              onSelectedTextChanged: _onSelectedTextChanged,
-              searchTextController: TextEditingValue(text: state.searchText),
-              tab: widget.tab,
-              initialSidebarTabIndex: _sidebarTabIndex,
-              onSidebarTabChanged: (index) {
-                if (_sidebarTabIndex != index) {
-                  setState(() {
-                    _sidebarTabIndex = index;
-                  });
-                }
-              },
-              pageShapeKey: _pageShapeKey,
-              pageShapePrintBoundaryKey: _pageShapePrintBoundaryKey,
-              pageShapeSidebarTabNotifier: _pageShapeSidebarTabNotifier,
-              pageShapeOpenSettingsNotifier: _pageShapeOpenSettingsNotifier,
-              openSearch: _openSearchWithText,
-            ),
+            pageShapeKey: _pageShapeKey,
+            pageShapePrintBoundaryKey: _pageShapePrintBoundaryKey,
+            pageShapeSidebarTabNotifier: _pageShapeSidebarTabNotifier,
+            pageShapeOpenSettingsNotifier: _pageShapeOpenSettingsNotifier,
+            openSearch: _openSearchWithText,
           ),
         ),
       ),
@@ -2959,8 +2906,12 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
     );
     _wasLeftPaneShown = focusDecision.wasShownNext;
     if (focusDecision.shouldFocus) {
+      // microtask: אזור הקריאה מבקש פוקוס ראשוני ב-post-frame של אותו פריים,
+      // ובקשה שקודמת לו נדרסת.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _focusActiveTabSearchField();
+        scheduleMicrotask(() {
+          if (mounted) _focusActiveTabSearchField();
+        });
       });
     }
     return Column(

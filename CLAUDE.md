@@ -563,14 +563,20 @@ import 'package:otzaria/widgets/navigation/nav_side_panel.dart';
 
 NavSidePanel(                      // wraps AdaptiveSidePane; never pass
   isOpen: _isNavVisible,           // attachToTopEdge / paneColor / scrollbarTopMargin yourself
+  isPinned: _isPinned,             // omit on screens without a pin (defaults to docked)
   onClose: () => setState(() => _isNavVisible = false),
   paneContent: _buildTree(),
   mainContent: _buildContent(),
 )
 
-NavPanelToggleButton(              // the ONE icon that opens/closes it
+NavPanelToggleButton(              // the ONE icon that opens/closes it — first leadingItems entry
   isOpen: _isNavVisible,
   onToggle: () => setState(() => _isNavVisible = !_isNavVisible),
+)
+
+NavPanelPinButton(                 // next leadingItems entry, only while the panel is open
+  isPinned: _isPinned,
+  onToggle: () => setState(() => _isPinned = !_isPinned),
 )
 
 NavPanelTabHeader(                 // tabs only — the pin is NOT here
@@ -579,12 +585,13 @@ NavPanelTabHeader(                 // tabs only — the pin is NOT here
 )
 ```
 
-**Search inside a panel** lives in ONE bar above the panel, not in the tabs (`lib/widgets/navigation/nav_panel_search.dart`):
-- the screen owns a `NavPanelSearchHost`, keeps `activeTab` in sync with its `TabController`, renders `NavPanelSearchBar` as the **first** `leadingItems` entry of `AppTopBar` (so it opens from the toggle icon and pushes it inward), and wraps `paneContent` in `NavPanelSearchScope`
-- each `TabBarView` child is wrapped in `NavPanelSearchSlot(index: i, …)`
-- a tab publishes its own action with `NavPanelSearchPublisher(delegate: NavPanelSearchDelegate(...))` and draws a local field only when `!NavPanelSearch.isHoisted(context)` (i.e. outside a panel — dialog, other screen), via `NavPanelLocalSearchField`
-- the bar stays mounted for as long as the panel is open: only the field's *content* swaps per tab. A tab with no search action leaves it visible but disabled — do NOT key or rebuild the bar per tab
-- the **pin** lives in this bar (`isPinned` / `onTogglePin`), not in the tab row — it is a panel-level action. The bar spans exactly the panel's width (minus `AppTopBar.horizontalPadding`) with `kNavTreeSideInset` insets, so it sits over the panel only; the open/close icon stays outside it as the next `leadingItems` entry
+**Pinned vs. unpinned** (issues #1350, #1361): a pinned panel pushes the content; an unpinned one floats over it with a scrim and closes on a click on the content. Nothing closes a panel on scroll — never add a scroll listener that hides it. A panel that opens by itself with the book (default-open setting, opened from search) starts pinned, so the scrim never hides a book the user just opened. Switching pin state moves both contents between layouts by `GlobalKey` — never rebuild them.
+
+**Search inside a panel** lives in the tab, under the tab row (`lib/widgets/navigation/nav_panel_search.dart`) — never in `AppTopBar`:
+- the screen owns a `NavPanelSearchHost`, keeps `activeTab` in sync with its `TabController`, and wraps `paneContent` in `NavPanelSearchScope`; each `TabBarView` child is wrapped in `NavPanelSearchSlot(index: i, …)`
+- a tab whose whole purpose is search (in-book search) draws its field permanently — `SearchPaneBase`
+- any other tab with a search wraps its list in `NavPanelCollapsibleSearch(delegate: NavPanelSearchDelegate(...))` and puts `const NavPanelSearchToggle()` in the `trailing` of its main `NavTreeHeader`. The field opens from that icon, and its X (or Escape) closes it and clears the filter. A filter that is already set keeps it open
+- a tab with no search shows nothing — no disabled field
 - never build a bare `OtzariaSearchField` inside a nav-panel tab
 - keyboard: Left/Right stay in the text; Up/Down move focus into the panel's rows (`NavPanelSearchHost.paneFocusScope`), and from there Flutter's directional traversal walks the rows and Enter activates — same behavior as the bookmarks/history dialogs. A tab whose delegate supplies `onArrowDown`/`onArrowUp` overrides this: the arrows browse a highlight through its results while focus stays in the field (find_ref model — the user keeps typing mid-browse), and Enter opens the highlighted result via `onSubmitted`
 
@@ -592,7 +599,7 @@ NavPanelTabHeader(                 // tabs only — the pin is NOT here
 - `NavTreeHeader` — the main title above the list (primary color, bold) and any sub-tree root
 - `NavTreeTile.category` / `NavTreeTile.book` — tree rows; `NavTreeContentRow` for free-form rows (search snippets)
 - `NavTreeGroupCard` — a continuous run of rows shares one card (`isGroupStart` / `isGroupEnd` at its edges); a heading that owns sub-rows is its own standalone card
-- `NavTreeFocusGroup` — wrap the list so Tab lands on the **selected** row, not the first; it also sorts before the tab row, so Arrow-Down from the search bar enters the rows
+- `NavTreeFocusGroup` — wrap the list so Tab lands on the **selected** row, not the first; it also sorts before the tab row, so Arrow-Down from the search field enters the rows
 - Horizontal inset comes from `kNavTreeSideInset` inside the card/header; lists pass only `kNavTreeListPadding`
 
 **Never:**
@@ -932,6 +939,8 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Work/indexing status overlays | `test/widgets/work_status_overlay_test.dart`, `…indexing_status_overlay_test.dart` |
 | App dropdown/search menu | `test/widgets/app_dropdown_field_test.dart`, `…app_search_menu_test.dart` |
 | Search pane base | `test/widgets/search_pane_base_test.dart` |
+| חיפוש בלשונית חלונית הניווט (אייקון בכותרת, X סוגר ומנקה, חיצים לשורות) | `test/widgets/nav_panel_search_test.dart` |
+| חלונית לא נעוצה מרחפת מעל התוכן; נעיצה אינה בונה מחדש את התוכן | `test/widgets/adaptive_side_pane_test.dart` |
 | נתוני פופאפ "אוצריא מתגייסת" (`assets/support_organizations.json`) | `test/services/support_organizations_test.dart` |
 | פופאפ "אוצריא מתגייסת" (תצוגה, שגיאת טעינה, פענוח לוגואים ומטמון) | `test/widgets/dialogs/ad_popup_dialog_test.dart` |
 

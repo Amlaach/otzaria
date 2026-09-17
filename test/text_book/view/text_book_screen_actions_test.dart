@@ -771,6 +771,7 @@ void main() {
     Future<int> pumpAndToggleLeftPane(
       WidgetTester tester, {
       required Size size,
+      bool pinned = true,
     }) async {
       final book = TextBook(title: 'ספר בדיקה');
       final loaded = _loadedState(book);
@@ -809,7 +810,13 @@ void main() {
       await tester.pump();
 
       // פתיחת החלונית (false→true) מפעילה את בדיקת ה-reanchor
-      bloc.emitStateForTest(loaded.copyWith(showLeftPane: true));
+      // הנעיצה נקבעת לפני הפתיחה, כמו אצל משתמש: מצב הפריסה מדווח ב-post-frame.
+      bloc.emitStateForTest(loaded.copyWith(pinLeftPane: pinned));
+      await tester.pump();
+      await tester.pump();
+      bloc.emitStateForTest(
+        loaded.copyWith(showLeftPane: true, pinLeftPane: pinned),
+      );
       await tester.pump();
 
       final dynamic state = tester.state(find.byType(TextBookViewerBloc));
@@ -822,6 +829,17 @@ void main() {
         size: const Size(1600, 900),
       );
       expect(count, greaterThan(0));
+    });
+
+    testWidgets('חלונית לא נעוצה מרחפת מעל הטקסט — ה-reanchor מדוכא', (
+      tester,
+    ) async {
+      final count = await pumpAndToggleLeftPane(
+        tester,
+        size: const Size(1600, 900),
+        pinned: false,
+      );
+      expect(count, 0);
     });
 
     testWidgets('במסך צר (overlay) ה-reanchor מדוכא בפתיחת החלונית', (

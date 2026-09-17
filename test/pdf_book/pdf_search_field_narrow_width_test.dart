@@ -9,9 +9,8 @@ import 'package:otzaria/widgets/navigation/search_pane_base.dart';
 import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 
 /// חלונית החיפוש בתוך PDF (`PdfBookSearchView`) בנויה מ-[SearchPaneBase] בתוך
-/// חלונית הניווט של מסך ה-PDF, ושדה החיפוש שלה עולה לסרגל העליון. הבדיקה
-/// מרכיבה בדיוק את הצירוף הזה — כולל שני הפריטים שחולקים איתו את הסרגל
-/// (הכותרת והפעולות) — כי רק הוא מייצר את הצרות שדחסה את השדה בטלפון.
+/// חלונית הניווט של מסך ה-PDF, מתחת לסרגל העליון. השדה יושב בחלונית בכל רוחב,
+/// ולא בסרגל — שם הוא חלק את הרוחב עם הכותרת והפעולות ונדחס בטלפון.
 class _TestSettingsBloc extends Bloc<SettingsEvent, SettingsState>
     implements SettingsBloc {
   _TestSettingsBloc(super.initialState) {
@@ -53,14 +52,6 @@ Future<void> _pumpPdfSearchPane(WidgetTester tester, Size screen) async {
                 AppTopBar(
                   minCenterWidth: ReaderNavCenter.minTitleWidth,
                   leadingItems: [
-                    AppTopBarItem(
-                      flexible: true,
-                      widget: NavPanelSearchBar(
-                        host: host,
-                        isOpen: true,
-                        paneWidth: paneWidth,
-                      ),
-                    ),
                     AppTopBarItem(
                       widget: const SizedBox(width: 40, height: 40),
                     ),
@@ -119,18 +110,13 @@ void main() {
     ) async {
       await _pumpPdfSearchPane(tester, const Size(412, 915));
 
-      expect(
-        find.byType(OtzariaSearchField),
-        findsOneWidget,
-        reason: 'שדה בסרגל העליון ושדה בחלונית — כפילות',
-      );
+      expect(find.byType(OtzariaSearchField), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(NavPanelSearchBar),
+          of: find.byType(AppTopBar),
           matching: find.byType(OtzariaSearchField),
         ),
         findsNothing,
-        reason: 'בסרגל העליון של טלפון אין מקום לשדה — הוא נשאר בחלונית',
       );
       expect(
         _editableWidth(tester),
@@ -139,13 +125,13 @@ void main() {
       );
     });
 
-    testWidgets('ברוחב שולחני השדה נשאר מורם לסרגל העליון', (tester) async {
+    testWidgets('ברוחב שולחני השדה בחלונית, לא בסרגל העליון', (tester) async {
       await _pumpPdfSearchPane(tester, const Size(1400, 900));
 
       expect(find.byType(OtzariaSearchField), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(NavPanelSearchBar),
+          of: find.byType(NavPanelSearchScope),
           matching: find.byType(OtzariaSearchField),
         ),
         findsOneWidget,

@@ -978,6 +978,12 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
 
       _setAwaitingInitialPageShapeVisibleSync(initialShowPageShapeView);
 
+      final initialShowLeftPane = event.forceCloseLeftPane
+          ? false
+          : resolveInitialReadingLeftPaneVisibility(
+              explicitOpen: showLeftPane,
+              hasSearchText: searchText.isNotEmpty,
+            );
       TextBookLoaded loadedState = TextBookLoaded(
         book: book,
         content: contentLines,
@@ -987,12 +993,7 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         availableCommentators: existingAvailableCommentators,
         tableOfContents: tableOfContents,
         fontSize: _pendingFontSize ?? event.fontSize,
-        showLeftPane: event.forceCloseLeftPane
-            ? false
-            : resolveInitialReadingLeftPaneVisibility(
-                explicitOpen: showLeftPane,
-                hasSearchText: searchText.isNotEmpty,
-              ),
+        showLeftPane: initialShowLeftPane,
         showSplitView: event.showSplitView,
         showPageShapeView: initialShowPageShapeView,
         activeCommentators: commentators,
@@ -1008,9 +1009,11 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         // והחלונית מציגה "טוען" עד אז ולא "לא נמצאו" (issue #1130).
         linksLoading: event.loadCommentators && commentators.isEmpty,
         visibleIndices: visibleIndices,
+        // חלונית שנפתחת עם הספר נעוצה: לא נעוצה הייתה מכסה את הטקסט בהצללה.
         pinLeftPane:
             preservedPinLeftPane ??
-            (Settings.getValue<bool>('key-pin-sidebar') ?? false),
+            ((Settings.getValue<bool>('key-pin-sidebar') ?? false) ||
+                initialShowLeftPane),
         searchText: searchText,
         searchOptions: searchOptions,
         alternativeWords: alternativeWords,

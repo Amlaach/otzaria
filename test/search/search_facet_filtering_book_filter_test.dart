@@ -155,13 +155,17 @@ void main() {
     await tester.pump();
   }
 
-  /// הקלדה בשדה "איתור ספר". העץ מתרענן דרך ה-BlocBuilder, לכן מדמים גם את
-  /// ה-state שה-bloc פולט בתגובה ל-UpdateFilterQuery.
+  /// הקלדה בשדה "איתור ספר" (נפתח מהאייקון שבכותרת). העץ מתרענן דרך
+  /// ה-BlocBuilder, לכן מדמים גם את ה-state שה-bloc פולט בתגובה ל-UpdateFilterQuery.
   Future<void> typeFilter(
     WidgetTester tester,
     String text,
     SearchState echo,
   ) async {
+    if (find.byType(RtlTextField).evaluate().isEmpty) {
+      await tester.tap(find.byType(NavPanelSearchToggle));
+      await tester.pumpAndSettle();
+    }
     await tester.enterText(find.byType(RtlTextField).first, text);
     searchStates.add(echo);
     await tester.pump();
@@ -247,65 +251,28 @@ void main() {
     expect(find.text('כתובים'), findsNothing);
   });
 
-  testWidgets('בתוך חלונית ניווט: שדה "איתור ספר" עולה לסרגל שמעליה', (
+  testWidgets('שדה "איתור ספר" סגור עד הלחיצה על האייקון, ו-X סוגר ומנקה', (
     tester,
   ) async {
     setUpBlocs(stateWith());
-    final host = NavPanelSearchHost();
-    addTearDown(host.dispose);
+    await pumpPanel(tester);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: MultiBlocProvider(
-            providers: [
-              BlocProvider<SearchBloc>.value(value: searchBloc),
-              BlocProvider<LibraryBloc>.value(value: libraryBloc),
-              BlocProvider<SettingsBloc>.value(value: settingsBloc),
-            ],
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 56,
-                  child: Row(
-                    children: [
-                      NavPanelSearchBar(
-                        host: host,
-                        isOpen: true,
-                        paneWidth: 320,
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: SizedBox(
-                    width: 320,
-                    child: NavPanelSearchScope(
-                      host: host,
-                      child: NavPanelSearchSlot(
-                        index: 0,
-                        child: SearchFacetFiltering(tab: tab),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    expect(find.byType(OtzariaSearchField), findsNothing);
+    expect(find.byType(NavPanelSearchToggle), findsOneWidget);
+
+    await typeFilter(tester, 'תהילים', stateWith());
+    expect(find.byType(OtzariaSearchField), findsOneWidget);
+
+    await tester.tap(find.byIcon(FluentIcons.dismiss_24_regular));
+    searchStates.add(stateWith());
     await tester.pumpAndSettle();
 
-    // שדה אחד בלבד — זה שבסרגל; החלונית עצמה אינה מציירת שדה משלה.
-    expect(find.byType(OtzariaSearchField), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byType(NavPanelSearchBar),
-        matching: find.byType(OtzariaSearchField),
-      ),
-      findsOneWidget,
-      reason: 'שדה "איתור ספר" חייב להתרנדר בסרגל שמעל החלונית',
-    );
+    expect(find.byType(OtzariaSearchField), findsNothing);
+    expect(find.text('ספריית אוצריא'), findsOneWidget);
+
+    await tester.tap(find.byType(NavPanelSearchToggle));
+    await tester.pumpAndSettle();
+    final field = tester.widget<RtlTextField>(find.byType(RtlTextField));
+    expect(field.controller!.text, isEmpty, reason: 'X מנקה את הסינון');
   });
 }

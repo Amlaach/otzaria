@@ -30,6 +30,10 @@ class NavSidePanel extends StatelessWidget {
   final ValueChanged<bool>? onLayoutModeChanged;
   final bool autoHandleResponsiveVisibility;
 
+  /// חלונית לא נעוצה מרחפת מעל התוכן ונסגרת בלחיצה עליו; נעוצה דוחקת אותו.
+  /// נעיצה גלובלית בהגדרות גוברת.
+  final bool isPinned;
+
   const NavSidePanel({
     super.key,
     required this.isOpen,
@@ -47,6 +51,7 @@ class NavSidePanel extends StatelessWidget {
     this.onPaneResizeEnd,
     this.onLayoutModeChanged,
     this.autoHandleResponsiveVisibility = true,
+    this.isPinned = true,
   });
 
   /// רקע חלונית הניווט — צבע הסרגל העליון, כדי שהחלונית תיראה כהמשך שלו.
@@ -60,6 +65,8 @@ class NavSidePanel extends StatelessWidget {
       alignment: alignment,
       // ההצמדה, הצבע ומרווח פס הגלילה הם העיצוב האחיד — לא פרמטרים של המסך.
       attachToTopEdge: true,
+      floatOverContent:
+          !isPinned && !(Settings.getValue<bool>('key-pin-sidebar') ?? false),
       paneColor: background(context),
       scrollbarTopMargin: 0,
       mainContent: mainContent,
@@ -82,8 +89,8 @@ class NavSidePanel extends StatelessWidget {
 /// שורת הלשוניות של חלונית הניווט.
 ///
 /// אייקון הלשונית הנבחרת מתחלף ל-filled כשסופק [NavPanelTab.iconFilled].
-/// כפתור הנעיצה אינו כאן — הוא פעולה של החלונית כולה ולכן יושב בסרגל שמעליה
-/// ([NavPanelSearchBar]).
+/// כפתור הנעיצה אינו כאן — הוא פעולה של החלונית כולה ולכן יושב בסרגל העליון,
+/// ליד [NavPanelToggleButton].
 class NavPanelTabHeader extends StatefulWidget {
   final TabController controller;
   final List<NavPanelTab> tabs;
