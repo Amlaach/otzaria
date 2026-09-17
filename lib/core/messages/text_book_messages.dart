@@ -69,8 +69,8 @@ abstract class TextBookMessages {
       'הטור הוסתר בספר זה. ניתן לשנות בהגדרות צורת הדף.';
   static const String columnHiddenInWorkspace =
       'הטור הוסתר בשולחן העבודה הזה. ניתן לשנות בהגדרות צורת הדף.';
-  static const String columnHiddenGlobally =
-      'הטור הוסתר בכל הספרים. ניתן לשנות בהגדרות צורת הדף.';
+  static String columnHiddenInCategory(String category) =>
+      'הטור הוסתר בכל ספרי "$category". ניתן לשנות בהגדרות צורת הדף.';
 
   // ── מפרשים קבועים לקטגוריה ──────────────────────────────────────────────
 

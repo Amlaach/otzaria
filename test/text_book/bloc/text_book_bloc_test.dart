@@ -679,15 +679,11 @@ void main() {
           'bottom': 'אברבנאל על תורה',
           'bottomRight': 'בעל הטורים על בראשית',
         },
-      );
-      await PageShapeSettingsManager.saveColumnVisibility(
-        'בראשית',
-        {
+        columnVisibility: const {
           'left': true,
           'right': true,
           'bottom': true,
         },
-        saveAsGlobal: false,
       );
 
       final bloc = _createBloc(
@@ -810,36 +806,37 @@ void main() {
 
     test('בצורת הדף רענון קישורים מכבד הגדרות טורים לפי שולחן עבודה', () async {
       final repository = _FakeTextBookRepository();
+      const pageShapeConfig = {
+        'left': 'אבן עזרא על בראשית',
+        'right': 'תרגום אונקלוס על בראשית',
+        'bottom': 'אברבנאל על תורה',
+        'bottomRight': 'בעל הטורים על בראשית',
+      };
       await PageShapeSettingsManager.saveConfiguration(
         'בראשית',
-        {
-          'left': 'אבן עזרא על בראשית',
-          'right': 'תרגום אונקלוס על בראשית',
-          'bottom': 'אברבנאל על תורה',
-          'bottomRight': 'בעל הטורים על בראשית',
-        },
+        pageShapeConfig,
       );
-      await PageShapeSettingsManager.saveColumnVisibility(
+      await PageShapeSettingsManager.saveConfiguration(
         'בראשית',
-        {
+        pageShapeConfig,
+        saveToWorkspaceId: 'workspace-1',
+        columnVisibility: const {
           'left': true,
           'right': false,
           'bottom': false,
           'bottomRight': false,
         },
-        scope: PageShapeDisplaySettingsScope.workspace,
-        workspaceId: 'workspace-1',
       );
-      await PageShapeSettingsManager.saveColumnVisibility(
+      await PageShapeSettingsManager.saveConfiguration(
         'בראשית',
-        {
+        pageShapeConfig,
+        saveToWorkspaceId: 'workspace-2',
+        columnVisibility: const {
           'left': false,
           'right': true,
           'bottom': false,
           'bottomRight': false,
         },
-        scope: PageShapeDisplaySettingsScope.workspace,
-        workspaceId: 'workspace-2',
       );
 
       final bloc = _createBloc(

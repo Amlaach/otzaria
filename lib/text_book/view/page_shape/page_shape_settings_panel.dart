@@ -159,6 +159,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
           );
       _columnVisibility = PageShapeSettingsManager.getColumnVisibility(
         widget.bookTitle,
+        heCategories: widget.heCategories,
         workspaceId: widget.currentWorkspaceId,
       );
     });
@@ -193,6 +194,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
         widget.bookTitle,
         config,
         saveToWorkspaceId: widget.currentWorkspaceId,
+        columnVisibility: _columnVisibility,
       );
     } else if (_commentatorSaveScope == CommentatorSaveScope.category &&
         _selectedCategory != null) {
@@ -201,6 +203,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
         widget.bookTitle,
         config,
         saveToCategory: _selectedCategory,
+        columnVisibility: _columnVisibility,
       );
       // מחיקת הגדרות מפרשים ספציפיות לספר אם יש
       await PageShapeSettingsManager.resetBookCommentatorConfig(
@@ -211,6 +214,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
       await PageShapeSettingsManager.saveConfiguration(
         widget.bookTitle,
         config,
+        columnVisibility: _columnVisibility,
       );
     }
 
@@ -224,14 +228,6 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
     await PageShapeSettingsManager.saveHighlightSetting(
       widget.bookTitle,
       _highlightRelatedCommentators,
-      scope: _displaySettingsScope,
-      workspaceId: widget.currentWorkspaceId,
-    );
-
-    // שמירת הגדרות visibility - גלובלי או פר-ספר לפי הבחירה
-    await PageShapeSettingsManager.saveColumnVisibility(
-      widget.bookTitle,
-      _columnVisibility,
       scope: _displaySettingsScope,
       workspaceId: widget.currentWorkspaceId,
     );
@@ -327,18 +323,13 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
     await PageShapeSettingsManager.resetWorkspaceDisplaySettings(
       widget.currentWorkspaceId,
     );
-    // טעינה מחדש של הגדרות התצוגה הגלובליות (לא מפרשים!)
     final highlight = PageShapeSettingsManager.getHighlightSetting(
-      widget.bookTitle,
-    );
-    final visibility = PageShapeSettingsManager.getColumnVisibility(
       widget.bookTitle,
     );
     if (!mounted) return;
     setState(() {
       _displaySettingsScope = PageShapeDisplaySettingsScope.global;
       _highlightRelatedCommentators = highlight;
-      _columnVisibility = visibility;
     });
     widget.onSettingsChanged?.call();
   }
@@ -357,11 +348,11 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
   String get _displaySettingsSubtitle {
     switch (_displaySettingsScope) {
       case PageShapeDisplaySettingsScope.book:
-        return 'הדגשה והצגת טורים יחולו רק על "${widget.bookTitle}"';
+        return 'הדגשת פרשנים קשורים תחול רק על "${widget.bookTitle}"';
       case PageShapeDisplaySettingsScope.workspace:
-        return 'הדגשה והצגת טורים יחולו רק בשולחן העבודה הנוכחי';
+        return 'הדגשת פרשנים קשורים תחול רק בשולחן העבודה הנוכחי';
       case PageShapeDisplaySettingsScope.global:
-        return 'הדגשה והצגת טורים יחולו על כל הספרים';
+        return 'הדגשת פרשנים קשורים תחול על כל הספרים';
     }
   }
 
@@ -414,13 +405,13 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
 
   String get _commentatorSaveScopeSubtitle {
     if (_commentatorSaveScope == CommentatorSaveScope.workspace) {
-      return 'המפרשים יחולו על "${widget.bookTitle}" בשולחן העבודה הנוכחי בלבד';
+      return 'המפרשים והטורים המוסתרים יחולו על "${widget.bookTitle}" בשולחן העבודה הנוכחי בלבד';
     }
     if (_commentatorSaveScope == CommentatorSaveScope.category &&
         _selectedCategory != null) {
-      return 'המפרשים יחולו על כל ספרי "$_selectedCategory"';
+      return 'המפרשים והטורים המוסתרים יחולו על כל ספרי "$_selectedCategory"';
     }
-    return 'המפרשים יחולו על "${widget.bookTitle}" בכל שולחנות העבודה';
+    return 'המפרשים והטורים המוסתרים יחולו על "${widget.bookTitle}" בכל שולחנות העבודה';
   }
 
   Future<void> _onCommentatorScopeChanged(CommentatorSaveScope scope) async {

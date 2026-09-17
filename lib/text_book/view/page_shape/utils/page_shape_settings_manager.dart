@@ -40,6 +40,15 @@ class PageShapeSettingsManager {
   // מפתחות פר-קטגוריה (חדש!)
   static const String _categoryConfigPrefix = 'page_shape_category_';
 
+  // הטורים המוסתרים נשמרים לצד בחירת המפרשים, תחת מפתחה + סיומת זו
+  static const String _hiddenColumnsSuffix = '_hidden_columns';
+  static const List<String> _columns = [
+    'left',
+    'right',
+    'bottom',
+    'bottomRight',
+  ];
+
   static const double defaultCommentaryFontSize = 16.0;
 
   // ==================== עזר לקטגוריות ====================
@@ -160,36 +169,34 @@ class PageShapeSettingsManager {
     String? heCategories,
     String? workspaceId,
   }) {
-    // 0. הגדרה לספר בשולחן העבודה הזה גוברת - היא הספציפית ביותר
-    final workspaceConfig = loadWorkspaceConfiguration(workspaceId, bookTitle);
-    if (workspaceConfig != null) {
-      return workspaceConfig;
-    }
-
-    // 1. קודם בודקים אם יש הגדרות לספר הספציפי
-    final bookConfig = _loadBookConfiguration(bookTitle);
-    if (bookConfig != null) {
-      return bookConfig;
-    }
-
-    // 2. אם אין, בודקים אם יש הגדרות לקטגוריה
-    if (heCategories != null) {
-      final categoryConfig = _loadCategoryConfiguration(heCategories);
-      if (categoryConfig != null) {
-        return categoryConfig;
-      }
-    }
-
-    // 3. אם אין - מחזירים null (יטען מ-JSON)
-    return null;
+    final key = _activeConfigurationKey(
+      bookTitle,
+      heCategories: heCategories,
+      workspaceId: workspaceId,
+    );
+    if (key == null) return null;
+    return _parseConfiguration(Settings.getValue<String>(key));
   }
 
-  /// טעינת הגדרות פר-ספר
-  static Map<String, String?>? _loadBookConfiguration(String bookTitle) {
-    final savedConfig = Settings.getValue<String>(
+  /// מפתח ההגדרה השמורה שחלה על הספר, או null אם אין (ייטען מ-JSON).
+  static String? _activeConfigurationKey(
+    String bookTitle, {
+    String? heCategories,
+    String? workspaceId,
+  }) {
+    final candidates = [
+      if (workspaceId != null && workspaceId.isNotEmpty)
+        _workspaceConfigKey(workspaceId, bookTitle),
       '$_bookConfigPrefix$bookTitle',
-    );
-    return _parseConfiguration(savedConfig);
+      // מהקטגוריה הספציפית ביותר לכללית ביותר
+      ...parseCategories(
+        heCategories,
+      ).reversed.map((category) => '$_categoryConfigPrefix$category'),
+    ];
+    for (final key in candidates) {
+      if (Settings.getValue<String>(key) != null) return key;
+    }
+    return null;
   }
 
   /// טעינת בחירת המפרשים של ספר בשולחן עבודה מסוים (null אם אין).
@@ -220,26 +227,6 @@ class PageShapeSettingsManager {
     return hasWorkspaceCommentatorConfig(workspaceId, bookTitle)
         ? workspaceId
         : null;
-  }
-
-  /// טעינת הגדרות פר-קטגוריה
-  static Map<String, String?>? _loadCategoryConfiguration(String heCategories) {
-    final categories = parseCategories(heCategories);
-
-    // מחפשים מהקטגוריה הספציפית ביותר לכללית ביותר
-    // למשל: "ספר מדע" → "משנה תורה" → "הלכה"
-    for (int i = categories.length - 1; i >= 0; i--) {
-      final category = categories[i];
-      final savedConfig = Settings.getValue<String>(
-        '$_categoryConfigPrefix$category',
-      );
-      final config = _parseConfiguration(savedConfig);
-      if (config != null) {
-        return config;
-      }
-    }
-
-    return null;
   }
 
   /// בדיקה אם יש הגדרות לקטגוריה מסוימת
@@ -275,19 +262,21 @@ class PageShapeSettingsManager {
     return config;
   }
 
-  /// שמירת הגדרות מפרשים - לספר, לשולחן עבודה או לקטגוריה
+  /// שמירת הגדרות מפרשים - לספר, לשולחן עבודה או לקטגוריה.
+  /// [columnVisibility] נשמר לאותו יעד; null משאיר את הטורים המוסתרים כמות שהם.
   static Future<void> saveConfiguration(
     String bookTitle,
     Map<String, String?> config, {
     String? saveToCategory, // אם מוגדר - שומר לקטגוריה במקום לספר
     String? saveToWorkspaceId, // אם מוגדר - שומר לספר בשולחן עבודה זה
+    Map<String, bool>? columnVisibility,
   }) async {
+    final String key;
     if (saveToWorkspaceId != null && saveToWorkspaceId.isNotEmpty) {
-      await Settings.setValue<String>(
-        _workspaceConfigKey(saveToWorkspaceId, bookTitle),
-        _serializeConfiguration(config),
-      );
+      key = _workspaceConfigKey(saveToWorkspaceId, bookTitle);
+      await Settings.setValue<String>(key, _serializeConfiguration(config));
     } else if (saveToCategory != null) {
+      key = '$_categoryConfigPrefix$saveToCategory';
       // שמירה לקטגוריה - שומרים רק את השמות הבסיסיים של המפרשים
       final baseConfig = config.map((key, value) {
         if (isPageShapeRemainingCommentatorsValue(value) ||
@@ -310,17 +299,17 @@ class PageShapeSettingsManager {
           ),
         );
       });
-      final configString = _serializeConfiguration(baseConfig);
-      await Settings.setValue<String>(
-        '$_categoryConfigPrefix$saveToCategory',
-        configString,
-      );
+      await Settings.setValue<String>(key, _serializeConfiguration(baseConfig));
     } else {
       // שמירה לספר ספציפי - שומרים את השמות המלאים
-      final configString = _serializeConfiguration(config);
+      key = '$_bookConfigPrefix$bookTitle';
+      await Settings.setValue<String>(key, _serializeConfiguration(config));
+    }
+
+    if (columnVisibility != null) {
       await Settings.setValue<String>(
-        '$_bookConfigPrefix$bookTitle',
-        configString,
+        '$key$_hiddenColumnsSuffix',
+        _columns.where((c) => columnVisibility[c] == false).join(','),
       );
     }
   }
@@ -395,11 +384,26 @@ class PageShapeSettingsManager {
 
   // ==================== הגדרות הצגת טורים ====================
 
-  /// טעינת הגדרות הצגת טורים - קודם ספר, אחר כך שולחן עבודה, ואז גלובלי.
+  /// טעינת הצגת הטורים מאותה הגדרה שממנה נטענו המפרשים (שולחן עבודה ← ספר
+  /// ← קטגוריה). אם שם לא נשמרו טורים - ההגדרה הישנה: ספר ← שולחן עבודה ← גלובלי.
   static Map<String, bool> getColumnVisibility(
     String bookTitle, {
+    String? heCategories,
     String? workspaceId,
   }) {
+    final configKey = _activeConfigurationKey(
+      bookTitle,
+      heCategories: heCategories,
+      workspaceId: workspaceId,
+    );
+    final hidden = configKey == null
+        ? null
+        : Settings.getValue<String>('$configKey$_hiddenColumnsSuffix');
+    if (hidden != null) {
+      final hiddenColumns = hidden.split(',').toSet();
+      return {for (final c in _columns) c: !hiddenColumns.contains(c)};
+    }
+
     if (hasBookSpecificSettings(bookTitle)) {
       final bookVisibility = _getBookColumnVisibility(bookTitle);
       if (bookVisibility != null) {
@@ -487,85 +491,6 @@ class PageShapeSettingsManager {
     };
   }
 
-  /// שמירת הגדרות הצגת טורים
-  static Future<void> saveColumnVisibility(
-    String bookTitle,
-    Map<String, bool> visibility, {
-    bool saveAsGlobal = true,
-    PageShapeDisplaySettingsScope? scope,
-    String? workspaceId,
-  }) async {
-    final targetScope =
-        scope ??
-        (saveAsGlobal
-            ? PageShapeDisplaySettingsScope.global
-            : PageShapeDisplaySettingsScope.book);
-
-    switch (targetScope) {
-      case PageShapeDisplaySettingsScope.book:
-        await Settings.setValue<bool>(
-          '${_bookVisibilityPrefix}left_$bookTitle',
-          visibility['left'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_bookVisibilityPrefix}right_$bookTitle',
-          visibility['right'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_bookVisibilityPrefix}bottom_$bookTitle',
-          visibility['bottom'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_bookVisibilityPrefix}bottomRight_$bookTitle',
-          visibility['bottomRight'] ?? true,
-        );
-        await setUseBookSpecificSettings(bookTitle, true);
-      case PageShapeDisplaySettingsScope.workspace:
-        if (workspaceId == null || workspaceId.isEmpty) {
-          await saveColumnVisibility(
-            bookTitle,
-            visibility,
-            scope: PageShapeDisplaySettingsScope.global,
-          );
-          return;
-        }
-        await Settings.setValue<bool>(
-          '${_workspaceVisibilityPrefix}left_$workspaceId',
-          visibility['left'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_workspaceVisibilityPrefix}right_$workspaceId',
-          visibility['right'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_workspaceVisibilityPrefix}bottom_$workspaceId',
-          visibility['bottom'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_workspaceVisibilityPrefix}bottomRight_$workspaceId',
-          visibility['bottomRight'] ?? true,
-        );
-        await setUseWorkspaceSpecificSettings(workspaceId, true);
-      case PageShapeDisplaySettingsScope.global:
-        await Settings.setValue<bool>(
-          '${_globalVisibilityPrefix}left',
-          visibility['left'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_globalVisibilityPrefix}right',
-          visibility['right'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_globalVisibilityPrefix}bottom',
-          visibility['bottom'] ?? true,
-        );
-        await Settings.setValue<bool>(
-          '${_globalVisibilityPrefix}bottomRight',
-          visibility['bottomRight'] ?? true,
-        );
-    }
-  }
-
   // ==================== העדפת תצוגה (page shape view) ====================
 
   /// שמירת העדפת תצוגה לספר - האם לפתוח בתצוגת צורת הדף
@@ -594,7 +519,7 @@ class PageShapeSettingsManager {
 
   /// איפוס הגדרות מפרשים פר-ספר בלבד
   static Future<void> resetBookCommentatorConfig(String bookTitle) async {
-    await Settings.setValue<String?>('$_bookConfigPrefix$bookTitle', null);
+    await _removeConfiguration('$_bookConfigPrefix$bookTitle');
   }
 
   /// איפוס בחירת המפרשים של ספר בשולחן עבודה מסוים.
@@ -603,10 +528,13 @@ class PageShapeSettingsManager {
     String bookTitle,
   ) async {
     if (workspaceId == null || workspaceId.isEmpty) return;
-    await Settings.setValue<String?>(
-      _workspaceConfigKey(workspaceId, bookTitle),
-      null,
-    );
+    await _removeConfiguration(_workspaceConfigKey(workspaceId, bookTitle));
+  }
+
+  /// מחיקת בחירת מפרשים יחד עם הטורים המוסתרים שנשמרו לצידה.
+  static Future<void> _removeConfiguration(String key) async {
+    await Settings.setValue<String?>(key, null);
+    await Settings.setValue<String?>('$key$_hiddenColumnsSuffix', null);
   }
 
   /// איפוס הגדרות תצוגה פר-ספר בלבד (הדגשה ונראות טורים)
@@ -660,6 +588,6 @@ class PageShapeSettingsManager {
 
   /// איפוס הגדרות קטגוריה
   static Future<void> resetCategorySettings(String category) async {
-    await Settings.setValue<String?>('$_categoryConfigPrefix$category', null);
+    await _removeConfiguration('$_categoryConfigPrefix$category');
   }
 }
