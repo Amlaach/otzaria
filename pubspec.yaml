@@ -129,7 +129,7 @@ dependency_overrides:
   flutter_local_notifications_windows:
     git:
       url: https://github.com/Otzaria/flutter_local_notifications
-      ref: c4ccd5fe60d169450cf5de8534f1d79e31573723
+      ref: 976b510e323100ad469c34fc3939e780451ef339
       path: flutter_local_notifications_windows
   matcher: ^0.12.20
   analyzer: ^14.2.0
