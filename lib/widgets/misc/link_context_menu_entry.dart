@@ -9,6 +9,7 @@ import 'package:otzaria/text_book/utils/inline_notes_utils.dart';
 import 'package:otzaria/text_display/text_display_exports.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
 import 'package:otzaria/widgets/misc/app_popup_menu.dart';
+import 'package:otzaria/widgets/misc/link_preview_overlay.dart';
 import 'package:otzaria/widgets/smart_text/exact_line_height.dart';
 import 'package:otzaria/widgets/smart_text/smart_text.dart';
 
@@ -58,6 +59,10 @@ AppContextMenuEntry buildLinkContextMenuEntry({
     onTap: onTap,
     hoverPreviewBuilder: (context) => LinkHoverPreviewContent(
       link: link,
+      onOpen: () {
+        LinkPreviewOverlay.dismiss();
+        onTap();
+      },
       displayProfile: displayProfile,
       removeNikud: removeNikud,
       removePunctuation: removePunctuation,
