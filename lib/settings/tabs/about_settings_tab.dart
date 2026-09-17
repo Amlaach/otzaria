@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:otzaria/app_report/view/app_report_dialog.dart';
 import 'package:otzaria/core/connectivity_status_service.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -212,6 +213,13 @@ class AboutSettingsTab extends StatelessWidget {
                     'מוזמנים לבקר בפורום התמיכה והמשוב של אוצריא',
                   ),
                   actions: [
+                    ActionButton.neutral(
+                      text: context.settingsText('דווח על תקלה בתוכנה'),
+                      onPressed: () => showAppReportDialog(
+                        context,
+                        dialogBuilder: settingsDialogBuilder,
+                      ),
+                    ),
                     ActionButton.recommended(
                       text: context.settingsText('כניסה לפורום'),
                       onPressed: () => _openUrl('https://otzaria.org/forum'),

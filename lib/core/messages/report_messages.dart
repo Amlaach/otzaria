@@ -128,6 +128,39 @@ abstract class ReportMessages {
 
   static String scriptSaveError(Object error) => 'שגיאה בשמירת הסקריפט: $error';
 
+  // ── דיווח על התוכנה (app_report) ───────────────────────────────────────
+
+  static String appReportSent(int? issueNumber) => issueNumber == null
+      ? 'הדיווח נקלט אצל צוות אוצריא. תודה!'
+      : 'הדיווח נקלט ונפתח עבורו דיווח מספר $issueNumber. תודה!';
+
+  static String appReportMerged(int? issueNumber) => issueNumber == null
+      ? 'הדיווח צורף לדיווח קיים על אותה תקלה. תודה!'
+      : 'הדיווח צורף לדיווח קיים מספר $issueNumber על אותה תקלה. תודה!';
+
+  static const String appReportIssuePending =
+      'הדיווח נקלט אצל צוות אוצריא. הדיווח הציבורי ייפתח בהמשך.';
+  static const String appReportQueued =
+      'לא ניתן לשלוח כעת. הדיווח נשמר ויישלח אוטומטית בהמשך. '
+      'ניתן לנהל את הדיווחים השמורים בהגדרות.';
+
+  static String appReportRejected(String? field) => field == null
+      ? 'השרת דחה את הדיווח, ולכן הוא לא נשמר לשליחה חוזרת.'
+      : 'השרת דחה את הדיווח בגלל השדה "$field", ולכן הוא לא נשמר '
+            'לשליחה חוזרת.';
+
+  static const String appReportTitleRequired = 'יש למלא כותרת לדיווח.';
+  static const String appReportDescriptionRequired =
+      'יש לתאר את התקלה כדי שנוכל לטפל בה.';
+  static const String appReportEmailRequired =
+      'יש למלא כתובת דואר אלקטרוני תקינה — בלעדיה לא נוכל לחזור אליכם.';
+  static const String appReportInvalidEmail =
+      'כתובת הדואר האלקטרוני אינה תקינה.';
+  static const String appReportCrashDismissed =
+      'הדיווח על הקריסה לא נשלח. ניתן לדווח בכל עת דרך ההגדרות.';
+  static const String appReportCannotOpenIssue =
+      'לא ניתן לפתוח את הדיווח בדפדפן.';
+
   // ── דיווח טלפוני (PhoneReportService) ──────────────────────────────────
 
   static const String phoneSent = 'הדיווח נשלח בהצלחה';

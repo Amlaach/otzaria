@@ -1014,6 +1014,17 @@ dart format lib/file.dart    # Format ONLY files you modified
 | Core (activation queue/channel, error log) | `test/core/` |
 | תעודות ה-CA של נטפרי שנטענות בהפעלה (שלושת הבאנדלים ב-`assets/ca/`) | `test/core/netfree_ca_assets_test.dart` |
 | Error logging | `test/core/main_error_logging_test.dart`, `test/services/direct_error_report_service_test.dart` |
+| דיווח על התוכנה — מודל (חוזה, גבולות, חיתוך גוף, JSON) | `test/app_report/app_report_model_test.dart` |
+| דיווח על התוכנה — חתימת קריסה (נרמול פריימים, hash) | `test/app_report/crash_signature_test.dart` |
+| דיווח על התוכנה — הסתרת מידע אישי (פרופיל, שם משתמש, מייל) | `test/app_report/app_report_redactor_test.dart` |
+| דיווח על התוכנה — איסוף אבחון ולוג (מקטע שנכשל, חלון 7 ימים, ארכיטקטורה) | `test/app_report/app_report_collector_test.dart` |
+| דיווח על התוכנה — שירות השליחה (תור, 409/422/429, היסטוריה, סקריפט אופליין) | `test/app_report/app_report_service_test.dart` |
+| זיהוי יציאה לא נקייה (נעילת הפעלה, ראיות, מגבלת דיווח אוטומטי) | `test/app_report/unclean_exit_detector_test.dart` |
+| טופס הדיווח (BLoC: איסוף, ולידציה לפי מקור, החרגת צרופות, שמירת מייל) | `test/app_report/bloc/app_report_bloc_test.dart` |
+| דיאלוג הדיווח הידני (מייל חובה, תצוגה מקדימה, הודעות סיום) | `test/app_report/view/app_report_dialog_test.dart` |
+| הצעת דיווח אחרי קריסה (בלי מייל, בחירת "תמיד"/"אל תשאל") | `test/app_report/view/crash_prompt_dialog_test.dart` |
+| הכרעת הדיווח אחרי קריסה (מצב × מועמד × מגבלה, כותרת, מפתח מגבלה) | `test/app_report/crash_report_decision_test.dart` |
+| זרימת הקריסה בעלייה (never/ask/always, auto_crash, רישום במגבלה) | `test/app_report/crash_report_flow_test.dart` |
 | תיקוני טקסט — חוזה A (מודל schema 2, round-trip מדויק, null מול "", לקוח ישן, 409/413/429, `correction_supported`) | `test/models/direct_error_report_text_correction_test.dart`, `test/services/direct_error_report_service_test.dart` |
 | digest קנוני OCJ-1 מול ה-fixtures המשותפים לאתר | `test/utils/canonical_json_test.dart` |
 | סקריפט שליחה אופליין (bat/sh) — ה-payload מגיע לשרת כלשונו (הרצה אמיתית ב-bash/PowerShell) | `test/services/offline_report_script_payload_test.dart` |

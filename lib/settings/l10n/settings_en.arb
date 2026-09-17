@@ -1130,5 +1130,23 @@
   "לחנות התוספים המלאה": "Open the full plugin store",
   "שחזר את כל החלונות בהפעלה": "Reopen all windows on startup",
   "כל החלונות שהיו פתוחים בסגירה ייפתחו שוב, במקומם": "Every window that was open at exit reopens where it was",
-  "ייפתח חלון אחד, עם הכרטיסיות של כל החלונות": "A single window opens, with the tabs of all windows"
+  "ייפתח חלון אחד, עם הכרטיסיות של כל החלונות": "A single window opens, with the tabs of all windows",
+
+  "דיווחים על התוכנה": "App Reports",
+  "דיווח על תקלות בתוכנה עצמה. הדיווח נפתח כדיווח ציבורי ב-GitHub, וקובצי האבחון גלויים למפתחי אוצריא בלבד.": "Report problems with Otzaria itself. A public GitHub issue is opened; the diagnostic files are visible to Otzaria developers only.",
+  "דווח על תקלה בתוכנה": "Report an App Problem",
+  "תקלה, קריסה, בעיית ביצועים או הצעה לשיפור": "A bug, a crash, a performance problem or a suggestion",
+  "פתח טופס דיווח": "Open Report Form",
+  "דיווח אחרי סגירה לא צפויה": "Report after an unexpected exit",
+  "מה לעשות כשהתוכנה מזהה שנסגרה בלי סגירה מסודרת": "What to do when Otzaria detects it did not exit cleanly",
+  "שאל אותי": "Ask me",
+  "שלח אוטומטית": "Always send",
+  "לעולם לא": "Never",
+  "פתח ב-GitHub": "Open on GitHub",
+  "פתח דיווח #{number}": "Open issue #{number}",
+  "צורף לדיווח קיים": "merged into an existing issue",
+  "ביצועים": "Performance",
+  "הצעה": "Suggestion",
+  "שלבים לשחזור:": "Steps to reproduce:",
+  "הפעולה לא מוחקת דיווחים שכבר נשלחו לצוות אוצריא.": "This does not delete reports already sent to the Otzaria team."
 }

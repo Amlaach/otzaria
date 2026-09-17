@@ -5,6 +5,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:logging/logging.dart';
+import 'package:otzaria/app_report/services/app_report_service.dart';
 import 'package:otzaria/settings/services/custom_folders/custom_folder.dart';
 import 'package:otzaria/shortcuts/shortcut_validator.dart';
 import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
@@ -575,8 +576,8 @@ class BackupService {
   static Future<Map<String, dynamic>?> _backupOpenTabs() =>
       TabsRepository().exportRaw();
 
-  /// תורי הדיווחים השמורים. לשני השירותים מבנה זהה — ממתינים ונשלחים —
-  /// ולכן אותו גיבוי ושחזור משרת את שניהם. שם הסעיף בקובץ הוא שם ה-box
+  /// תורי הדיווחים השמורים. לכל השירותים מבנה זהה — ממתינים ונשלחים —
+  /// ולכן אותו גיבוי ושחזור משרת את כולם. שם הסעיף בקובץ הוא שם ה-box
   /// ההיסטורי, כדי שגיבויים ישנים ימשיכו להיקרא.
   static const List<
     ({String section, String pendingKind, String sentKind, int maxSent})
@@ -593,6 +594,12 @@ class BackupService {
       pendingKind: PluginReportService.pendingKind,
       sentKind: PluginReportService.sentKind,
       maxSent: PluginReportService.maxSentReportsToKeep,
+    ),
+    (
+      section: AppReportService.queueBoxName,
+      pendingKind: AppReportService.pendingKind,
+      sentKind: AppReportService.sentKind,
+      maxSent: AppReportService.maxSentReportsToKeep,
     ),
   ];
 
@@ -627,7 +634,7 @@ class BackupService {
 
   static int _sentTotal(Object? raw) => raw is int ? raw : 0;
 
-  /// מזהה הדיווח, שנקרא `id` בדיווחי הטעות ו-`reportId` בדיווחי התוספים.
+  /// מזהה הדיווח: `id` בדיווחי הטעות, `reportId` בדיווחי התוספים והתוכנה.
   static String? _reportId(Map<String, dynamic> report) =>
       (report['id'] ?? report['reportId'])?.toString();
 
@@ -876,6 +883,7 @@ class BackupService {
     // הכתיבה כאן עלולה לדרוס את רשומת הנשלחים ולהחזיר דיווח שכבר נמסר.
     await DirectErrorReportService.suspendAutomaticFlush();
     await PluginReportService.suspendAutomaticFlush();
+    await AppReportService.suspendAutomaticFlush();
 
     final store = PendingReportStore.instance;
     for (final queue in _reportQueues) {

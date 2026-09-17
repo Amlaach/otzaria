@@ -26,6 +26,9 @@ import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
 import 'package:otzaria/settings/dialogs/settings_dialogs_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/offline_send_target.dart';
+import 'package:otzaria/settings/panels/app_reports_panel.dart';
+import 'package:otzaria/app_report/services/crash_report_decision.dart';
 import 'package:otzaria/settings/services/backup_service.dart';
 import 'package:otzaria/settings/services/backup/backup_import_merge.dart';
 import 'package:otzaria/settings/services/backup/backup_maintenance.dart';
@@ -146,6 +149,22 @@ class SystemSettingsTab extends StatefulWidget {
       tab: SettingsTab.system,
       cardId: 'system.reports',
       keywords: ['דיווח', 'היסטוריה'],
+    ),
+    SettingsSearchEntry(
+      id: 'system.appReports.open',
+      title: 'דווח על תקלה בתוכנה',
+      subtitle: 'תקלה, קריסה, בעיית ביצועים או הצעה לשיפור',
+      tab: SettingsTab.system,
+      cardId: 'system.appReports',
+      keywords: ['דיווח', 'באג', 'תקלה', 'קריסה', 'github'],
+    ),
+    SettingsSearchEntry(
+      id: 'system.appReports.crash_mode',
+      title: 'דיווח אחרי סגירה לא צפויה',
+      subtitle: 'מה לעשות כשהתוכנה מזהה שנסגרה בלי סגירה מסודרת',
+      tab: SettingsTab.system,
+      cardId: 'system.appReports',
+      keywords: ['קריסה', 'דיווח', 'אוטומטי', 'שאל'],
     ),
     SettingsSearchEntry(
       id: 'system.advanced.restoreAllWindows',
@@ -761,44 +780,8 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// קובע לאיזו מערכת הפעלה יותאם סקריפט השליחה. בוינדוס מחזיר מיד Windows;
   /// ב-Linux/macOS שואל את המשתמש; בשאר (נייד) מחזיר Windows אחרי הבהרה
   /// שהקובץ מיועד למחשב Windows מחובר. מחזיר null אם המשתמש ביטל.
-  Future<OfflineSendScriptTarget?> _resolveOfflineSendTarget() async {
-    if (Platform.isWindows) {
-      return OfflineSendScriptTarget.windows;
-    }
-
-    if (Platform.isMacOS || Platform.isLinux) {
-      return showSelectionDialog<OfflineSendScriptTarget>(
-        context: context,
-        title: context.settingsText('מערכת ההפעלה של המחשב המחובר'),
-        searchHint: context.settingsText('חיפוש מערכת הפעלה...'),
-        items: const [
-          SelectionItem(
-            label: 'Windows',
-            value: OfflineSendScriptTarget.windows,
-          ),
-          SelectionItem(
-            label: 'Linux / macOS',
-            value: OfflineSendScriptTarget.unix,
-          ),
-        ],
-      );
-    }
-
-    final proceed = await showTwoActionsDialog(
-      context: context,
-      title: context.settingsText('הקובץ מיועד למחשב Windows'),
-      content: context.settingsText(
-        'במכשיר זה אי אפשר להריץ את סקריפט השליחה. יורד קובץ עבור '
-        'מחשב Windows מחובר — העבירו אליו את הקובץ והפעילו אותו שם.',
-      ),
-      cancelText: context.settingsText('ביטול'),
-      confirmText: context.settingsText('המשך'),
-    );
-    if (proceed != true) {
-      return null;
-    }
-    return OfflineSendScriptTarget.windows;
-  }
+  Future<OfflineSendScriptTarget?> _resolveOfflineSendTarget() =>
+      resolveOfflineSendTarget(context);
 
   Future<void> _exportPendingReportsScript() async {
     final verified = await verifySaferModePassword(context);
@@ -866,6 +849,18 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
         });
       }
     }
+  }
+
+  AppCrashReportMode get _crashReportMode => AppCrashReportMode.parse(
+    Settings.getValue<String>(SettingsRepository.keyAppCrashReportMode),
+  );
+
+  Future<void> _setCrashReportMode(AppCrashReportMode mode) async {
+    await Settings.setValue(
+      SettingsRepository.keyAppCrashReportMode,
+      mode.wireName,
+    );
+    if (mounted) setState(() {});
   }
 
   Widget _buildManagedActionButton({
@@ -942,6 +937,13 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
 
                     // 3ב. דיווחים על תוספים
                     _buildPluginReportsSection(context, state),
+
+                    // 3ג. דיווחים על התוכנה
+                    AppReportsPanel(
+                      isOfflineMode: state.isOfflineMode,
+                      crashReportMode: _crashReportMode,
+                      onCrashReportModeChanged: _setCrashReportMode,
+                    ),
 
                     // 4. מתקדם (גיבוי + מצב סייפר)
                     _buildAdvancedSection(context, state),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:otzaria/app_report/services/app_crash_session.dart';
 import 'package:otzaria/core/http_client_registry.dart';
 import 'package:otzaria/core/pre_close_registry.dart';
 import 'package:otzaria/core/window_persistence.dart';
@@ -62,6 +63,7 @@ class AppWindowListener extends WindowListener {
         // הכיבוי בוטל (`shutdown /a`) — כתיבות חדשות שיצטברו מכאן ואילך
         // חייבות להישטף בפעם הבאה.
         _sessionEndFlushStarted = false;
+        unawaited(AppCrashSession.restoreSessionLockIfReleased());
         return null;
       default:
         return null;
@@ -77,6 +79,7 @@ class AppWindowListener extends WindowListener {
     try {
       if (!_sessionEndFlushStarted) {
         _sessionEndFlushStarted = true;
+        AppCrashSession.markCleanExitSync();
         final flushFailure = await _closeWindowScoped();
         if (flushFailure != null) {
           // אותו טיפול כמו במסלול הסגירה הרגיל: הכשל הוא האות היחיד
@@ -301,6 +304,8 @@ class AppWindowListener extends WindowListener {
     final endsProcess = isLast && (quit || !_keepsProcessAfterLastWindow);
 
     if (endsProcess) {
+      // לפני הפירוק: כשל בהמשך הסגירה אינו קריסה שכדאי להציע לדווח עליה.
+      AppCrashSession.markCleanExitSync();
       await _shutdownProcessUpToFlush();
     }
     final flushFailure = await _closeWindowScoped();

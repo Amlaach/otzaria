@@ -83,6 +83,9 @@ class SettingsRepository {
       'key-error-report-sender-email';
   static const String keyQueueErrorReportsWhenOffline =
       'key-queue-error-reports-when-offline';
+
+  /// דיווח אחרי קריסה: `ask` (ברירת מחדל) / `always` / `never`.
+  static const String keyAppCrashReportMode = 'key-app-crash-report-mode';
   static const String keyLibraryPath = 'key-library-path';
   static const String keyIndexPath = 'key-index-path';
   static const String keyDatabasesPath = 'key-databases-path';
@@ -246,6 +249,7 @@ class SettingsRepository {
     keyLastLibraryUpdateCheck,
     keyErrorReportSenderEmail,
     keyQueueErrorReportsWhenOffline,
+    keyAppCrashReportMode,
     keyLibraryPath,
     keyIndexPath,
     keyDatabasesPath,
@@ -1201,6 +1205,7 @@ class SettingsRepository {
     await _settings.setValue(keySoftwareAndBookUpdatesEnabled, true);
     await _settings.setValue(keyErrorReportSenderEmail, '');
     await _settings.setValue(keyQueueErrorReportsWhenOffline, true);
+    await _settings.setValue(keyAppCrashReportMode, 'ask');
     await _settings.setValue(keyPersonalNotesCollapsedByDefault, true);
 
     // Calendar Notification Settings

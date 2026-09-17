@@ -17,6 +17,10 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:otzaria/app_report/services/app_crash_session.dart';
+import 'package:otzaria/app_report/services/app_report_service.dart';
+import 'package:otzaria/app_report/services/crash_report_flow.dart';
+import 'package:otzaria/app_report/view/crash_prompt_dialog.dart';
 import 'package:otzaria/app.dart';
 import 'package:otzaria/bookmarks/bloc/bookmark_bloc.dart';
 import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
@@ -861,6 +865,7 @@ Future<void> _initializeRestartableRuntime() async {
   unawaited(_runDeferredProtocolRegistration());
   unawaited(_logJobObjectContainmentFailure());
   unawaited(_runDeferredDataRootWritabilityWarning());
+  unawaited(_runDeferredCrashCheck());
 }
 
 /// כשקונטיינמנט ה-Job Object לא הוקם, תהליכי msedgewebview2.exe שורדים את
@@ -968,6 +973,7 @@ Future<void> _runDeferredErrorReportFlush() async {
     await reportService.startAutomaticFlush();
     // תור דיווחי התוספים משתמש ב-client סטטי שכבר רשום ב-HttpClientRegistry.
     await PluginReportService().startAutomaticFlush();
+    await AppReportService().startAutomaticFlush();
   } catch (error, stackTrace) {
     _logNonFatalInitializationError(
       'Direct error report queue',
@@ -1011,6 +1017,37 @@ Future<void> _runDeferredDataRootWritabilityWarning() async {
     // ממשיכים בכל זאת — אם ה-Navigator עדיין חסר, ההצגה תדולג בשקט.
   }
   await DataRootWritabilityWarning.showIfNeeded();
+}
+
+/// זיהוי קריסה של ההפעלה הקודמת ופתיחת נעילת ההפעלה הנוכחית. הנעילה נכתבת
+/// רק אחרי החשיפה, ולכן קריסה לפני החשיפה אינה מזוהה — במחיר הזה לא מוסיפים
+/// קריאת לוג ופענוח למסלול העלייה.
+Future<void> _runDeferredCrashCheck() async {
+  // פר-תהליך: הנעילה היא של התהליך, וחלון משני היה דורס אותה.
+  if (WindowRole.isSecondary || !AppCrashSession.isSupported) return;
+  try {
+    await _mainWindowRevealedCompleter.future.timeout(
+      const Duration(seconds: 20),
+    );
+  } on TimeoutException {
+    // ממשיכים בכל זאת — אחרת הנעילה לא תיכתב כלל.
+  }
+  try {
+    final candidate = await AppCrashSession.detectAndStartSession(
+      version: ErrorLogFile.appVersion,
+    );
+    if (candidate == null) return;
+    await CrashReportFlow(
+      showPrompt: (candidate) async {
+        final context = navigatorKey.currentContext;
+        if (context == null || !context.mounted) return false;
+        await showCrashPromptDialog(context, candidate: candidate);
+        return true;
+      },
+    ).handle(candidate);
+  } catch (error, stackTrace) {
+    _logNonFatalInitializationError('Crash report check', error, stackTrace);
+  }
 }
 
 Future<void> _runDeferredProtocolRegistration() async {
