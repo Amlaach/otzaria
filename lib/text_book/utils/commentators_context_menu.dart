@@ -130,7 +130,8 @@ typedef CommentatorsSelectionChanged =
 /// [paragraphCommentators]); הקבוצות מסוננות לפיהם.
 ///
 /// [onOpenPane] ו-[onSelectMultiple] אינם מוצגים כשהם `null`. כשאין מפרשים
-/// לפסקה מוצגים רק פריטי הפתיחה, ובזמן [linksLoading] גם פריט "טוען…" מושבת.
+/// לפסקה מוחזר רק פריט "טוען…" מושבת בזמן [linksLoading], ואחריו
+/// רשימה ריקה — כך הפריט האב מתאפר (issue #1413).
 List<AppContextMenuEntry> buildCommentatorsContextMenuChildren({
   required List<String> activeCommentators,
   required List<String> availableCommentators,
@@ -181,6 +182,12 @@ List<AppContextMenuEntry> buildCommentatorsContextMenuChildren({
     ];
   }
 
+  if (availableCommentators.isEmpty) {
+    return linksLoading
+        ? const [AppContextMenuEntry(label: 'טוען מפרשים…', enabled: false)]
+        : const <AppContextMenuEntry>[];
+  }
+
   final entries = <AppContextMenuEntry>[
     if (onOpenPane != null)
       AppContextMenuEntry(
@@ -198,17 +205,14 @@ List<AppContextMenuEntry> buildCommentatorsContextMenuChildren({
       ),
     if (onOpenPane != null || onSelectMultiple != null)
       const AppContextMenuEntry.divider(),
-    if (availableCommentators.isEmpty && linksLoading)
-      const AppContextMenuEntry(label: 'טוען מפרשים…', enabled: false),
-    if (availableCommentators.isNotEmpty)
-      AppContextMenuEntry(
-        label: 'הצג את כל המפרשים על פסקה זו',
-        isSelected: allActive,
-        onTap: () => onCommentatorsChanged(
-          allActive ? <String>[] : List<String>.from(availableCommentators),
-          isAdding: !allActive,
-        ),
+    AppContextMenuEntry(
+      label: 'הצג את כל המפרשים על פסקה זו',
+      isSelected: allActive,
+      onTap: () => onCommentatorsChanged(
+        allActive ? <String>[] : List<String>.from(availableCommentators),
+        isAdding: !allActive,
       ),
+    ),
   ];
 
   // הקבוצות מגיעות מה-BLoC כשהן כבר ממוינות לפי דורות; מפריד מתווסף רק לפני
