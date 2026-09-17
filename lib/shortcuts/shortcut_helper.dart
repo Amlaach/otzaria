@@ -142,8 +142,24 @@ class ShortcutHelper {
     final expectedKey = KeyMap.keyFor(mainKey);
     if (expectedKey == null) return false;
     if (event.logicalKey == expectedKey) return true;
+    if (KeyMap.equivalentKeysFor(mainKey).contains(event.logicalKey)) {
+      return true;
+    }
 
-    return KeyMap.equivalentKeysFor(mainKey).contains(event.logicalKey);
+    // פריסה לא-לטינית מדווחת על מקשי הסימנים והספרות תו מקומי (ב-macOS
+    // בפריסה עברית מקש הפסיק הוא 'ת'), שאינו ניתן להשוואה לשם המקש — כמו
+    // באותיות, המיקום הפיזי מכריע (issue #1411). תו שהוא בעצמו מקש מוכר
+    // (פריסה לטינית שמזיזה סימנים) נשאר מזוהה לפי התו בלבד.
+    return isLayoutSpecificKey(event.logicalKey) &&
+        event.physicalKey == KeyMap.physicalKeyFor(mainKey);
+  }
+
+  /// האם [key] הוא תו של פריסת מקלדת מקומית שאין לו שם ב-[KeyMap] — לא אות
+  /// לטינית ולא מקש מוכר. עבור מקש כזה רק המיקום הפיזי מזהה את הקיצור.
+  static bool isLayoutSpecificKey(LogicalKeyboardKey key) {
+    final id = key.keyId;
+    if (id >= 0x61 && id <= 0x7a) return false; // a–z
+    return KeyMap.labelFor(key) == null;
   }
 
   /// האם [shortcut] ניתן לזיהוי בפועל — כלומר המקש הראשי שבו מוכר ל-
@@ -229,6 +245,13 @@ class ShortcutHelper {
         event.physicalKey.usbHidUsage - PhysicalKeyboardKey.keyA.usbHidUsage;
     if (letterOffset >= 0 && letterOffset <= 25) {
       return LogicalKeyboardKey(LogicalKeyboardKey.keyA.keyId + letterOffset);
+    }
+    // מקש סימן/ספרה שהפריסה המקומית מדווחת עליו תו לא-מוכר (למשל 'ת' על מקש
+    // הפסיק ב-macOS בעברית) נשמר לפי מיקומו הפיזי — כפי ש-[matchesShortcut]
+    // מזהה אותו (issue #1411).
+    if (isLayoutSpecificKey(event.logicalKey)) {
+      final byPosition = KeyMap.keyForPhysical(event.physicalKey);
+      if (byPosition != null) return byPosition;
     }
     return event.logicalKey;
   }

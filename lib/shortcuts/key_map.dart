@@ -102,6 +102,52 @@ class KeyMap {
     for (final e in nameToKey.entries) e.value: e.key,
   };
 
+  // ─── מיקום פיזי של מקשי השורה הראשית (פריסת US) ─────────────────────────
+  /// המקש הפיזי שעליו יושב כל סימן/ספרה בפריסת US.
+  ///
+  /// פריסה לא-לטינית מדווחת על המקשים האלה תו מקומי כ-`logicalKey` — ב-macOS
+  /// מקש הפסיק (ליד M) בפריסה עברית הוא `'ת'`, ולכן `ctrl+comma` לא היה נתפס
+  /// שם (issue #1411). כמו במקשי האותיות, הזיהוי נופל למיקום הפיזי; רק
+  /// כשהתו המדווח אינו מקש מוכר, כדי שפריסה לטינית שמזיזה סימנים (למשל
+  /// גרמנית, שבה המקש הפיזי של `/` מפיק `-`) תישאר מזוהה לפי התו בלבד.
+  static const Map<String, PhysicalKeyboardKey> nameToPhysicalKey = {
+    '0': PhysicalKeyboardKey.digit0,
+    '1': PhysicalKeyboardKey.digit1,
+    '2': PhysicalKeyboardKey.digit2,
+    '3': PhysicalKeyboardKey.digit3,
+    '4': PhysicalKeyboardKey.digit4,
+    '5': PhysicalKeyboardKey.digit5,
+    '6': PhysicalKeyboardKey.digit6,
+    '7': PhysicalKeyboardKey.digit7,
+    '8': PhysicalKeyboardKey.digit8,
+    '9': PhysicalKeyboardKey.digit9,
+    'comma': PhysicalKeyboardKey.comma,
+    'period': PhysicalKeyboardKey.period,
+    'slash': PhysicalKeyboardKey.slash,
+    'backslash': PhysicalKeyboardKey.backslash,
+    'semicolon': PhysicalKeyboardKey.semicolon,
+    'quote': PhysicalKeyboardKey.quote,
+    'bracketleft': PhysicalKeyboardKey.bracketLeft,
+    'bracketright': PhysicalKeyboardKey.bracketRight,
+    'minus': PhysicalKeyboardKey.minus,
+    'equal': PhysicalKeyboardKey.equal,
+    'backquote': PhysicalKeyboardKey.backquote,
+  };
+
+  /// מיפוי הפוך: מקש פיזי בשורה הראשית → המקש הלוגי שלו בפריסת US.
+  static final Map<PhysicalKeyboardKey, LogicalKeyboardKey> physicalToKey = {
+    for (final e in nameToPhysicalKey.entries) e.value: nameToKey[e.key]!,
+  };
+
+  /// המקש הפיזי של [name] בפריסת US, או `null` למקש שאין לו מיקום קבוע.
+  static PhysicalKeyboardKey? physicalKeyFor(String name) =>
+      nameToPhysicalKey[name.toLowerCase()];
+
+  /// המקש הלוגי (פריסת US) של המקש הפיזי [key], או `null` אם אינו בשורה
+  /// הראשית.
+  static LogicalKeyboardKey? keyForPhysical(PhysicalKeyboardKey key) =>
+      physicalToKey[key];
+
   /// מחזיר את שם המחרוזת של [key], או `null` אם אינו ברשימה.
   static String? labelFor(LogicalKeyboardKey key) => keyToName[key];
 
