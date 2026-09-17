@@ -167,6 +167,34 @@ void main() {
 
       expect(addNumberedNoteMarkerLinks(line, lineIndex: 7), line);
     });
+
+    test('עוטף סמן-אות שבתוך <sup>, ומשאיר את ה-sup בפנים', () {
+      const line = 'ועובר על איסור בישול <sup>(א)</sup> ועוד <sup>(כא*)</sup>';
+
+      final result = addNumberedNoteMarkerLinks(line, lineIndex: 12);
+
+      expect(
+        result,
+        contains(
+          'href="otzaria://note-marker?line=12&num=%D7%90">'
+          '<sup>(א)</sup></a>',
+        ),
+      );
+      expect(result, contains('num=%D7%9B%D7%90%2A'));
+      expect(utils.stripHtmlIfNeeded(result), utils.stripHtmlIfNeeded(line));
+    });
+
+    test('אות בסוגריים מחוץ ל-sup אינה סמן', () {
+      const line = 'הסעיפים (א) ו-(ב) שבפרק';
+
+      expect(addNumberedNoteMarkerLinks(line, lineIndex: 0), line);
+    });
+
+    test('לא עוטף סמן-אות שכבר נמצא בתוך קישור', () {
+      const line = '<a href="x"><sup>(א)</sup></a>';
+
+      expect(addNumberedNoteMarkerLinks(line, lineIndex: 0), line);
+    });
   });
 
   group('numberedNoteLinks', () {
@@ -236,6 +264,36 @@ void main() {
       );
 
       expect(link?.path2, 'הערות ב');
+    });
+
+    test('מתאים סמן-אות להערה שנפתחת באותה אות', () async {
+      _seedProvider({
+        'הערות שש"כ:5': '<sup>(א)</sup> ישעיה נח יג.',
+        'הערות שש"כ:6': '<sup>(ב)</sup> עכ"ל הרמב"ם.',
+      });
+      final links = [
+        _link('הערות שש"כ', index2: 5),
+        _link('הערות שש"כ', index2: 6),
+      ];
+
+      final link = await numberedNoteLinkFromUrl(
+        'otzaria://note-marker?line=12&num=%D7%91',
+        links,
+      );
+
+      expect(link?.index2, 6);
+    });
+
+    test('סמן חוזר (כוכבית) אינו מתאים להערה בלעדיה', () async {
+      _seedProvider({'הערות ו:1': '<sup>(כא)</sup> ההערה'});
+      final links = [_link('הערות ו', index2: 1)];
+
+      final link = await numberedNoteLinkFromUrl(
+        'otzaria://note-marker?line=5&num=%D7%9B%D7%90%2A',
+        links,
+      );
+
+      expect(link, isNull);
     });
 
     test('מחזיר null כשאין הערה שנפתחת במספר המבוקש', () async {
