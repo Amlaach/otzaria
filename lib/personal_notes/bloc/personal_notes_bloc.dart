@@ -70,10 +70,6 @@ class PersonalNotesBloc extends Bloc<PersonalNotesEvent, PersonalNotesState> {
         state.copyWith(
           isLoading: false,
           bookId: event.bookId,
-          locatedNotes: const [],
-          missingNotes: const [],
-          filteredLocatedNotes: const [],
-          filteredMissingNotes: const [],
           errorMessage: e.toString(),
         ),
       );

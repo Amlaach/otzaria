@@ -31,6 +31,19 @@ class _Repository implements PersonalNotesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _RefreshFailingRepository extends _Repository {
+  bool _loaded = false;
+
+  @override
+  Future<List<PersonalNote>> loadNotes(String bookId, {int? categoryId}) async {
+    if (bookId == 'ספר תקין' && _loaded) {
+      throw Exception('Temporary load failure');
+    }
+    _loaded = true;
+    return super.loadNotes(bookId, categoryId: categoryId);
+  }
+}
+
 void main() {
   test('כשל בטעינת ספר אינו משאיר את הערות הספר הקודם (issue #1313)', () async {
     final bloc = PersonalNotesBloc(repository: _Repository());
@@ -48,5 +61,22 @@ void main() {
     expect(failed.locatedNotes, isEmpty, reason: 'הערות של ספר אחר');
     expect(failed.missingNotes, isEmpty);
     expect(failed.filteredLocatedNotes, isEmpty);
+  });
+
+  test('כשל ברענון אותו ספר משאיר את ההערות שכבר נטענו', () async {
+    final bloc = PersonalNotesBloc(repository: _RefreshFailingRepository());
+    addTearDown(bloc.close);
+
+    bloc.add(const LoadPersonalNotes('ספר תקין'));
+    await bloc.stream.firstWhere((s) => !s.isLoading && s.bookId == 'ספר תקין');
+    final previous = bloc.state.locatedNotes;
+
+    bloc.add(const LoadPersonalNotes('ספר תקין'));
+    final failed = await bloc.stream.firstWhere(
+      (s) => !s.isLoading && s.bookId == 'ספר תקין',
+    );
+    expect(failed.errorMessage, isNotNull);
+    expect(failed.locatedNotes, previous);
+    expect(failed.filteredLocatedNotes, previous);
   });
 }
