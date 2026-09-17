@@ -1,7 +1,27 @@
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+/// רק Flutter מחליט אם גרירה מזיזה את החלון: AppKit גורר משורת הכותרת השקופה
+/// גם מעל כרטיסיה, ולכן בזמן לחיצה החלון נעול עד `startDragging` → `performDrag`.
+class OtzariaWindow: NSWindow {
+  override func sendEvent(_ event: NSEvent) {
+    if event.type == .leftMouseDown {
+      isMovable = false
+    } else if !isMovable && NSEvent.pressedMouseButtons & 1 == 0 {
+      // ⚠️ לא רק ב-mouseUp: אחרי performDrag הוא עלול לא להגיע, וחלון
+      // שנשאר לא-ניתן-להזזה גם לא יוזז בחיבור או ניתוק מסך.
+      isMovable = true
+    }
+    super.sendEvent(event)
+  }
+
+  override func performDrag(with event: NSEvent) {
+    isMovable = true
+    super.performDrag(with: event)
+  }
+}
+
+class MainFlutterWindow: OtzariaWindow {
   // חלון ה-splash הנייטיב (סמל צף שקוף) וערוץ הסגירה שלו.
   private var splashWindow: NSWindow?
   private var splashChannel: FlutterMethodChannel?
@@ -398,7 +418,7 @@ final class OtzariaWindowManager {
     let size = NSSize(
       width: width > 400 ? CGFloat(width) : 1100,
       height: height > 300 ? CGFloat(height) : 760)
-    let window = NSWindow(
+    let window = OtzariaWindow(
       contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered, defer: false)
