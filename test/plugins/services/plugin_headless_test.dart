@@ -170,10 +170,17 @@ void main() {
   });
 
   group('מעטפת', () {
-    test('טוענת את קובץ הכניסה כסקריפט רגיל עם נתיב מקודד', () {
-      final html = pluginHeadlessShellHtml(r'src\my "code".js');
-      expect(html, contains('<script src="src/my%20%22code%22.js">'));
-      expect(html, isNot(contains('type="module"')));
+    test('טוענת את קובץ הכניסה עם נתיב מקודד — כמודול רק כשמבוקש', () {
+      final classic = pluginHeadlessShellHtml(
+        r'src\my "code".js',
+        module: false,
+      );
+      expect(classic, contains('<script src="src/my%20%22code%22.js">'));
+      expect(classic, isNot(contains('type="module"')));
+      expect(
+        pluginHeadlessShellHtml('main.js', module: true),
+        contains('<script type="module" src="main.js">'),
+      );
     });
 
     test('מזהה את הנתיב הווירטואלי רק בשורש התוסף', () {
@@ -207,7 +214,10 @@ void main() {
         headlessEntrypoint: 'main.js',
       );
       expect(served?.contentType, 'text/html');
-      expect(utf8.decode(served!.data), contains('<script src="main.js">'));
+      expect(
+        utf8.decode(served!.data),
+        contains('<script type="module" src="main.js">'),
+      );
 
       expect(
         await servePluginAsset(

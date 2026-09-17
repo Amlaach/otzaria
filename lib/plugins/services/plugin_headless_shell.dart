@@ -16,13 +16,14 @@ bool isPluginHeadlessShellPath(String filePath, String rootPath) =>
 
 /// המעטפת שטוענת את [entrypoint] של תוסף ללא ממשק.
 ///
-/// סקריפט רגיל ולא `type="module"`: Chromium חוסם מודולים מ-`file://`.
-String pluginHeadlessShellHtml(String entrypoint) {
+/// [module] רק כשהמעטפת מוגשת מ-`otzaria-plugin://`: Chromium חוסם מודולים מ-`file://`.
+String pluginHeadlessShellHtml(String entrypoint, {required bool module}) {
   final src = p.posix
       .split(entrypoint.replaceAll('\\', '/'))
       .map(Uri.encodeComponent)
       .join('/');
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
-      '<script src="${const HtmlEscape(HtmlEscapeMode.attribute).convert(src)}">'
+      '<script${module ? ' type="module"' : ''} '
+      'src="${const HtmlEscape(HtmlEscapeMode.attribute).convert(src)}">'
       '</script></head><body></body></html>';
 }

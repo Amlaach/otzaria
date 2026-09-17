@@ -675,11 +675,13 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
     _cachedPackageInfo ??= await PackageInfo.fromPlatform();
   }
 
+  bool get _usesAssetScheme => pluginUsesAssetScheme(headless: _isHeadless);
+
   /// ה-URI של נקודת הכניסה — `file://` ברוב הפלטפורמות, ובמק דרך
-  /// [pluginAssetScheme] (ראה [pluginAssetSchemeEnabled]).
+  /// [pluginAssetScheme] (ראה [pluginUsesAssetScheme]).
   WebUri get _entrypointUri => widget.plugin.isLocalhostDev
       ? WebUri(_localHtmlPath)
-      : pluginAssetSchemeEnabled
+      : _usesAssetScheme
       ? pluginAssetUri(
           pluginId: widget.plugin.pluginId,
           rootPath: widget.plugin.resolvedRootPath,
@@ -772,7 +774,7 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         statusBarEnabled: false,
         cacheEnabled: !widget.plugin.isDevelopment,
         isInspectable: kDebugMode,
-        resourceCustomSchemes: pluginAssetSchemeEnabled
+        resourceCustomSchemes: _usesAssetScheme
             ? const [pluginAssetScheme]
             : const [],
       ),
@@ -923,7 +925,10 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
               statusCode: 200,
               reasonPhrase: 'OK',
               data: utf8.encode(
-                pluginHeadlessShellHtml(widget.plugin.entrypointPath),
+                pluginHeadlessShellHtml(
+                  widget.plugin.entrypointPath,
+                  module: false,
+                ),
               ),
             );
           }

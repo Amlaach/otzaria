@@ -40,7 +40,8 @@
  * HEADLESS PLUGINS (manifest: headless, since 0.9.98)
  *   `"headless": true` + `"entrypoint": "main.js"` runs the script in the
  *   background engine only — no tab, no tools-panel entry, no nav-rail pin.
- *   The script loads as a classic script (no ES modules). Requires
+ *   On Windows/macOS it loads as an ES module; on Linux/Android as a classic
+ *   script (bundle to one file to run everywhere). Requires
  *   `app.run_on_startup` and a `contributes.startup` activation trigger.
  *
  * RTL SUPPORT

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
 
 void main() {
@@ -45,6 +46,17 @@ void main() {
       );
 
       expect(settings.exclusiveUserDataFolderAccess, isTrue);
+    });
+
+    test('registers the plugin asset scheme as a secure origin', () {
+      final settings = WebViewEnvironmentHolder.debugEnvironmentSettings(
+        r'C:\app-data\webview2',
+      );
+
+      final registration = settings.customSchemeRegistrations!.single;
+      expect(registration.scheme, pluginAssetScheme);
+      expect(registration.treatAsSecure, isTrue);
+      expect(registration.hasAuthorityComponent, isTrue);
     });
   });
 }

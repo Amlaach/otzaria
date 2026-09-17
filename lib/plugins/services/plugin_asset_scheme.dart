@@ -15,6 +15,11 @@ const String pluginAssetScheme = 'otzaria-plugin';
 /// `allowFileAccessFromFileURLs` היה נותן ל-JS של התוסף לקרוא כל קובץ בדיסק.
 bool get pluginAssetSchemeEnabled => !kIsWeb && Platform.isMacOS;
 
+/// האם תוסף מוגש דרך [pluginAssetScheme]. תוסף ללא ממשק מוגש כך גם בווינדוס:
+/// רק מ-origin אמיתי אפשר לטעון מודולים (Chromium חוסם אותם מ-`file://`).
+bool pluginUsesAssetScheme({required bool headless}) =>
+    pluginAssetSchemeEnabled || (headless && !kIsWeb && Platform.isWindows);
+
 /// ה-host שבו מוגש [pluginId] — origin נפרד לכל תוסף, כך שאחסון הדפדפן
 /// (localStorage/IndexedDB) מבודד ביניהם.
 String pluginAssetHost(String pluginId) =>
@@ -49,7 +54,9 @@ Future<CustomSchemeResponse?> servePluginAsset({
   if (headlessEntrypoint != null &&
       url.path == '/$pluginHeadlessShellFileName') {
     return CustomSchemeResponse(
-      data: utf8.encode(pluginHeadlessShellHtml(headlessEntrypoint)),
+      data: utf8.encode(
+        pluginHeadlessShellHtml(headlessEntrypoint, module: true),
+      ),
       contentType: 'text/html',
     );
   }
