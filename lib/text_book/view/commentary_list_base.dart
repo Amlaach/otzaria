@@ -230,7 +230,14 @@ class CommentaryListBase extends StatefulWidget {
   State<CommentaryListBase> createState() => CommentaryListBaseState();
 }
 
-class CommentaryListBaseState extends State<CommentaryListBase> {
+// AutomaticKeepAliveClientMixin: בחלונית עם לשוניות (מפרשים/קישורים/הערות)
+// TabBarView משמיד את ה-State של לשונית לא-פעילה, ומצב הכיווץ של המפרשים
+// חי כאן (issue #1326).
+class CommentaryListBaseState extends State<CommentaryListBase>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
   final ScrollOffsetController scrollController = ScrollOffsetController();
@@ -1798,6 +1805,7 @@ class CommentaryListBaseState extends State<CommentaryListBase> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return TextBookStateBuilder(
       buildWhen: (previous, current) {
         // מבטיח בניה מחדש רק כשיש שינוי בנתונים שמשפיעים על תצוגת המפרשים
