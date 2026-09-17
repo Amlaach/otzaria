@@ -205,7 +205,7 @@ class HiveToUserStateMigration {
     for (final ext in const ['.hive', '.lock']) {
       final file = File(p.join(hiveRoot, '$name$ext'));
       if (!file.existsSync()) continue;
-      final target = '${file.path}$migratedSuffix';
+      final target = '${file.path}$suffix';
       final existing = File(target);
       if (existing.existsSync()) existing.deleteSync();
       file.renameSync(target);

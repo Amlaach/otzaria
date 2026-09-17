@@ -27,6 +27,7 @@ import 'package:otzaria/services/direct_error_report_service.dart';
 import 'package:otzaria/services/sent_reports_counter.dart';
 import 'package:otzaria/core/app_paths.dart';
 import 'package:otzaria/core/user_state/pending_report_store.dart';
+import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/services/backup/backup_import_merge.dart';
@@ -688,6 +689,11 @@ class BackupService {
     String backupPath, {
     BackupImportMode mode = BackupImportMode.replace,
   }) async {
+    // שטיפת תורי הדיווחים פועלת בחלון הראשי. שחזור מחלון משני היה מוחק
+    // ומוסיף מחדש את אותן שורות במקביל לשטיפה, ולכן חייב לרוץ אצל הבעלים.
+    if (WindowRole.isSecondary) {
+      throw StateError(SettingsMessages.backupRestoreRequiresPrimaryWindow);
+    }
     final file = File(backupPath);
     if (!await file.exists()) {
       throw Exception('קובץ הגיבוי לא נמצא');
