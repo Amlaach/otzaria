@@ -521,6 +521,7 @@ class _CombinedViewState extends State<CombinedView> {
       hoverMode: hoverMode,
       removeNikud: loaded?.commentaryRemoveNikud,
       removePunctuation: loaded?.commentaryRemovePunctuation,
+      maxFontSize: widget.textSize,
       onOpen: () => _openLinkTarget(link),
       onDismissed: activeAnchor == null
           ? null
@@ -610,6 +611,7 @@ class _CombinedViewState extends State<CombinedView> {
           content: note,
           removeNikud: state.removeNikud,
           removePunctuation: state.removePunctuation,
+          maxFontSize: widget.textSize,
         ),
       );
       return;
@@ -1314,6 +1316,7 @@ class _CombinedViewState extends State<CombinedView> {
           link: link,
           removeNikud: state.commentaryRemoveNikud,
           removePunctuation: state.commentaryRemovePunctuation,
+          maxFontSize: widget.textSize,
           onTap: () async {
             final tab = await buildLinkTargetTab(link);
             if (_disposed || !mounted) return;
@@ -1407,6 +1410,7 @@ class _CombinedViewState extends State<CombinedView> {
           sourceLink: sourceLink,
           removeNikud: state.commentaryRemoveNikud,
           removePunctuation: state.commentaryRemovePunctuation,
+          maxFontSize: widget.textSize,
           onNavigate: (link) async {
             final tab = await buildLinkTargetTab(link);
             if (_disposed || !mounted) return;

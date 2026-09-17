@@ -675,6 +675,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         hoverMode: hoverMode,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
         onOpen: () => _openAnchorTarget(link),
       );
     });
@@ -747,6 +748,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
           content: note,
           removeNikud: state.removeNikud,
           removePunctuation: state.removePunctuation,
+          maxFontSize: widget.fontSize,
         ),
       );
       return;
@@ -784,6 +786,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       hoverMode: hoverMode,
       removeNikud: state.commentaryRemoveNikud,
       removePunctuation: state.commentaryRemovePunctuation,
+      maxFontSize: widget.fontSize,
       onOpen: () => _openAnchorTarget(link),
       onDismissed: anchor == null ? null : () => _setActiveAnchor(null, null),
     );
@@ -1829,6 +1832,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
             link: link,
             removeNikud: state.commentaryRemoveNikud,
             removePunctuation: state.commentaryRemovePunctuation,
+            maxFontSize: widget.fontSize,
             onTap: () async {
               final tab = await buildLinkTargetTab(link);
               if (!mounted) return;
@@ -1962,6 +1966,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         sourceLink: sourceLink,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
         onNavigate: (link) async {
           final tab = await buildLinkTargetTab(link);
           if (!mounted) return;
@@ -2238,12 +2243,14 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         onNavigate: navigate,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
       ),
       service.buildLinksEntry(
         link: targetLink,
         onNavigate: navigate,
         removeNikud: state.commentaryRemoveNikud,
         removePunctuation: state.commentaryRemovePunctuation,
+        maxFontSize: widget.fontSize,
       ),
     ];
   }

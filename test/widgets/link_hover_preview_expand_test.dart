@@ -184,6 +184,24 @@ void main() {
     expect(rendered, contains('המשך הטקסט'));
     expect(rendered, isNot(contains('גוף ההערה הנסתר')));
   });
+
+  group('previewFontSize', () {
+    final settings = SettingsState.initial().copyWith(
+      commentatorsFontSize: 30,
+    );
+
+    test('לא גדול מגודל הטקסט שעליו נפתחה החלונית', () {
+      expect(previewFontSize(settings, 22), 22);
+    });
+
+    test('מפרשים קטנים מהטקסט — נשאר גודל המפרשים', () {
+      expect(previewFontSize(settings, 40), 30);
+    });
+
+    test('בלי גודל טקסט — גודל המפרשים', () {
+      expect(previewFontSize(settings, null), 30);
+    });
+  });
 }
 
 class _TestSettingsBloc extends Bloc<SettingsEvent, SettingsState>

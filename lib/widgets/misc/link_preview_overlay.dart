@@ -43,6 +43,7 @@ class LinkPreviewOverlay {
     TextDisplayProfile? displayProfile,
     bool? removeNikud,
     bool? removePunctuation,
+    double? maxFontSize,
   }) {
     _show(
       context,
@@ -54,6 +55,7 @@ class LinkPreviewOverlay {
         displayProfile: displayProfile,
         removeNikud: removeNikud,
         removePunctuation: removePunctuation,
+        maxFontSize: maxFontSize,
       ),
       anchorPosition: globalPosition,
       onDismissed: onDismissed,
@@ -234,12 +236,16 @@ class InlineBookNotePreviewContent extends StatelessWidget {
   final bool? removeNikud;
   final bool? removePunctuation;
 
+  /// גודל הטקסט שעליו נפתחה החלונית; ראה [previewFontSize].
+  final double? maxFontSize;
+
   const InlineBookNotePreviewContent({
     super.key,
     required this.content,
     this.displayProfile,
     this.removeNikud,
     this.removePunctuation,
+    this.maxFontSize,
   });
 
   @override
@@ -257,7 +263,7 @@ class InlineBookNotePreviewContent extends StatelessWidget {
                     removeNikud: removeNikud,
                     removePunctuation: removePunctuation,
                   ),
-              fontSize: settings.commentatorsFontSize,
+              fontSize: previewFontSize(settings, maxFontSize),
               fontFamily: settings.commentatorsFontFamily,
               fontWeight: settings.commentatorsFontBold
                   ? FontWeight.bold

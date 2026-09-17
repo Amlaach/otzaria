@@ -43,6 +43,7 @@ AppContextMenuEntry buildLinkContextMenuEntry({
   TextDisplayProfile? displayProfile,
   bool? removeNikud,
   bool? removePunctuation,
+  double? maxFontSize,
 }) {
   return AppContextMenuEntry(
     label: link.fallbackDisplayReference,
@@ -60,9 +61,17 @@ AppContextMenuEntry buildLinkContextMenuEntry({
       displayProfile: displayProfile,
       removeNikud: removeNikud,
       removePunctuation: removePunctuation,
+      maxFontSize: maxFontSize,
     ),
   );
 }
+
+/// גודל הגופן של חלונית תצוגה מקדימה: גודל המפרשים, אך לא גדול מ-[maxFontSize]
+/// (גודל הטקסט שעליו נפתחה), כדי שהחלונית לא תסתיר יותר מהטקסט עצמו.
+double previewFontSize(SettingsState settingsState, double? maxFontSize) =>
+    maxFontSize == null
+    ? settingsState.commentatorsFontSize
+    : math.min(settingsState.commentatorsFontSize, maxFontSize);
 
 /// תוכן חלונית התצוגה המקדימה של קישור — כותרת (כתובת היעד) ותוכן הקטע,
 /// מעוצב לפי הגדרות תצוגת המפרשים (גופן, ניקוד, טעמים).
@@ -87,6 +96,9 @@ class LinkHoverPreviewContent extends StatefulWidget {
   final bool? removeNikud;
   final bool? removePunctuation;
 
+  /// גודל הטקסט שעליו נפתחה החלונית; ראה [previewFontSize].
+  final double? maxFontSize;
+
   const LinkHoverPreviewContent({
     super.key,
     required this.link,
@@ -96,6 +108,7 @@ class LinkHoverPreviewContent extends StatefulWidget {
     this.displayProfile,
     this.removeNikud,
     this.removePunctuation,
+    this.maxFontSize,
   });
 
   @override
@@ -155,6 +168,7 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
       builder: (context, settingsState) {
         final colorScheme = Theme.of(context).colorScheme;
         final profile = _profileFor(settingsState);
+        final fontSize = previewFontSize(settingsState, widget.maxFontSize);
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,9 +188,7 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
                   maxLines: compact ? 1 : null,
                   overflow: compact ? TextOverflow.ellipsis : null,
                   style: TextStyle(
-                    fontSize: compact
-                        ? 11
-                        : settingsState.commentatorsFontSize - 2,
+                    fontSize: compact ? 11 : fontSize - 2,
                     fontWeight: FontWeight.bold,
                     fontFamily: settingsState.commentatorsFontFamily,
                     color: colorScheme.primary,
@@ -208,15 +220,13 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
                     'שגיאה בטעינת התוכן',
                     style: TextStyle(
                       color: colorScheme.error,
-                      fontSize: settingsState.commentatorsFontSize - 2,
+                      fontSize: fontSize - 2,
                     ),
                   );
                 }
                 if (!snapshot.hasData) {
                   final placeholderHeight = maxContentLines != null
-                      ? settingsState.commentatorsFontSize *
-                            settingsState.lineHeight *
-                            maxContentLines!
+                      ? fontSize * settingsState.lineHeight * maxContentLines!
                       : 72.0;
                   return SizedBox(
                     height: placeholderHeight,
@@ -245,7 +255,7 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
                     'אין תוכן זמין',
                     style: TextStyle(
                       color: colorScheme.onSurfaceVariant,
-                      fontSize: settingsState.commentatorsFontSize - 2,
+                      fontSize: fontSize - 2,
                     ),
                   );
                 }
@@ -254,7 +264,7 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
                   text: rawContent,
                   settings: RenderSettings.fromProfile(
                     profile,
-                    fontSize: settingsState.commentatorsFontSize,
+                    fontSize: fontSize,
                     fontFamily: settingsState.commentatorsFontFamily,
                     fontWeight: settingsState.commentatorsFontBold
                         ? FontWeight.bold
@@ -272,7 +282,6 @@ class _LinkHoverPreviewContentState extends State<LinkHoverPreviewContent> {
                     child: SingleChildScrollView(child: content),
                   );
                 }
-                final fontSize = settingsState.commentatorsFontSize;
                 final lineHeight = settingsState.lineHeight;
                 final maxHeight = fontSize * lineHeight * maxContentLines!;
                 return LayoutBuilder(
