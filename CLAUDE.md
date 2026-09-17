@@ -1023,6 +1023,7 @@ dart format lib/file.dart    # Format ONLY files you modified
 | טופס הדיווח (BLoC: איסוף, ולידציה לפי מקור, החרגת צרופות, שמירת מייל) | `test/app_report/bloc/app_report_bloc_test.dart` |
 | דיאלוג הדיווח הידני (מייל חובה, תצוגה מקדימה, הודעות סיום) | `test/app_report/view/app_report_dialog_test.dart` |
 | הצעת דיווח אחרי קריסה (בלי מייל, בחירת "תמיד"/"אל תשאל") | `test/app_report/view/crash_prompt_dialog_test.dart` |
+| עריכת דיווח תוכנה שמור בתור (שדות, שימור צרופות, מייל לפי מקור) | `test/app_report/view/app_report_edit_fields_test.dart` |
 | הכרעת הדיווח אחרי קריסה (מצב × מועמד × מגבלה, כותרת, מפתח מגבלה) | `test/app_report/crash_report_decision_test.dart` |
 | זרימת הקריסה בעלייה (never/ask/always, auto_crash, רישום במגבלה) | `test/app_report/crash_report_flow_test.dart` |
 | תיקוני טקסט — חוזה A (מודל schema 2, round-trip מדויק, null מול "", לקוח ישן, 409/413/429, `correction_supported`) | `test/models/direct_error_report_text_correction_test.dart`, `test/services/direct_error_report_service_test.dart` |

@@ -1148,5 +1148,10 @@
   "ביצועים": "Performance",
   "הצעה": "Suggestion",
   "שלבים לשחזור:": "Steps to reproduce:",
-  "הפעולה לא מוחקת דיווחים שכבר נשלחו לצוות אוצריא.": "This does not delete reports already sent to the Otzaria team."
+  "הפעולה לא מוחקת דיווחים שכבר נשלחו לצוות אוצריא.": "This does not delete reports already sent to the Otzaria team.",
+  "כותרת": "Title",
+  "תיאור": "Description",
+  "שלבים לשחזור (לא חובה)": "Steps to reproduce (optional)",
+  "דואר אלקטרוני": "Email",
+  "דואר אלקטרוני (לא חובה)": "Email (optional)"
 }

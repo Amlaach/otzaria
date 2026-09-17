@@ -5,6 +5,7 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:otzaria/app_report/models/app_report.dart';
+import 'package:otzaria/app_report/repository/app_report_redactor.dart';
 import 'package:otzaria/app_report/services/app_report_service.dart';
 import 'package:otzaria/app_report/services/crash_report_decision.dart';
 import 'package:otzaria/app_report/view/app_report_dialog.dart';
@@ -17,6 +18,7 @@ import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
+import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:path_provider/path_provider.dart';
@@ -272,6 +274,11 @@ class _AppReportsPanelState extends State<AppReportsPanel> {
               onPressed: () => _showDetails(report, sent: false),
             ),
             ActionButton.neutral(
+              text: context.settingsText('ערוך'),
+              icon: FluentIcons.edit_24_regular,
+              onPressed: () => _editPending(report),
+            ),
+            ActionButton.neutral(
               text: context.settingsText('מחק'),
               icon: FluentIcons.delete_24_regular,
               onPressed: () => _deletePending(report),
@@ -466,6 +473,45 @@ class _AppReportsPanelState extends State<AppReportsPanel> {
     if (result != null) showAppReportResultSnack(result);
   }
 
+  Future<void> _editPending(AppReport report) async {
+    var edited = report;
+    final confirmed = await showTwoActionsDialog(
+      context: context,
+      title: context.settingsText('עריכת דיווח שמור'),
+      content: '',
+      cancelText: context.settingsText('ביטול'),
+      confirmText: context.settingsText('שמור'),
+      handleEnterKey: false,
+      customContent: SizedBox(
+        width: 560,
+        child: AppReportEditFields(
+          report: report,
+          typeLabel: (type) => _typeLabel(context, type),
+          onChanged: (value) => edited = value,
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+
+    // טקסט שהוקלד בעריכה עובר אותה הסתרה כמו בטופס המקורי.
+    final redacted = edited.redactedWith(AppReportRedactor.fromPlatform());
+    final invalidField = redacted.validate();
+    if (invalidField != null) {
+      UiSnack.showError(
+        appReportInvalidFieldMessage(
+          invalidField,
+          emailEmpty: redacted.reporterEmail.trim().isEmpty,
+        ),
+      );
+      return;
+    }
+
+    await _service.updatePendingReport(redacted);
+    if (!mounted) return;
+    setState(() {});
+    UiSnack.showSuccess(ReportMessages.reportUpdated);
+  }
+
   Future<void> _deletePending(AppReport report) async {
     await _service.deletePendingReport(report.reportId);
     if (!mounted) return;
@@ -560,5 +606,133 @@ class _AppReportsPanelState extends State<AppReportsPanel> {
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
+  }
+}
+
+/// שדות העריכה של דיווח תוכנה שמור בתור; מדווח על כל שינוי כדיווח מעודכן.
+@visibleForTesting
+class AppReportEditFields extends StatefulWidget {
+  const AppReportEditFields({
+    super.key,
+    required this.report,
+    required this.typeLabel,
+    required this.onChanged,
+  });
+
+  final AppReport report;
+  final String Function(AppReportType type) typeLabel;
+  final ValueChanged<AppReport> onChanged;
+
+  @override
+  State<AppReportEditFields> createState() => _AppReportEditFieldsState();
+}
+
+class _AppReportEditFieldsState extends State<AppReportEditFields> {
+  late AppReportType _type = widget.report.type;
+  late final _title = TextEditingController(text: widget.report.title);
+  late final _description = TextEditingController(
+    text: widget.report.description,
+  );
+  late final _steps = TextEditingController(
+    text: widget.report.stepsToReproduce,
+  );
+  late final _email = TextEditingController(text: widget.report.reporterEmail);
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _description.dispose();
+    _steps.dispose();
+    _email.dispose();
+    super.dispose();
+  }
+
+  void _notifyChanged() => widget.onChanged(
+    widget.report.copyWith(
+      type: _type,
+      title: _title.text,
+      description: _description.text,
+      stepsToReproduce: _steps.text,
+      reporterEmail: _email.text.trim(),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final emailRequired = widget.report.trigger.requiresEmail;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppSegmentedControl<AppReportType>(
+          expandToFillWidth: true,
+          showSelectedIcon: false,
+          options: [
+            for (final type in AppReportType.values)
+              SegmentOption(value: type, label: widget.typeLabel(type)),
+          ],
+          currentValue: _type,
+          onChanged: (type) {
+            setState(() => _type = type);
+            _notifyChanged();
+          },
+        ),
+        const SizedBox(height: 12),
+        RtlTextField(
+          key: const ValueKey('app-report-edit-title'),
+          controller: _title,
+          onChanged: (_) => _notifyChanged(),
+          decoration: InputDecoration(
+            labelText: context.settingsText('כותרת'),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        RtlTextField(
+          key: const ValueKey('app-report-edit-description'),
+          controller: _description,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          minLines: 3,
+          maxLines: 6,
+          onChanged: (_) => _notifyChanged(),
+          decoration: InputDecoration(
+            labelText: context.settingsText('תיאור'),
+            alignLabelWithHint: true,
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        RtlTextField(
+          key: const ValueKey('app-report-edit-steps'),
+          controller: _steps,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          minLines: 2,
+          maxLines: 5,
+          onChanged: (_) => _notifyChanged(),
+          decoration: InputDecoration(
+            labelText: context.settingsText('שלבים לשחזור (לא חובה)'),
+            alignLabelWithHint: true,
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: RtlTextField(
+            key: const ValueKey('app-report-edit-email'),
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            onChanged: (_) => _notifyChanged(),
+            decoration: InputDecoration(
+              labelText: emailRequired
+                  ? context.settingsText('דואר אלקטרוני')
+                  : context.settingsText('דואר אלקטרוני (לא חובה)'),
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
