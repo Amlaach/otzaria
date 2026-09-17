@@ -126,6 +126,9 @@ const aboutTopEditors = <Map<String, String>>[
   {
     'name': 'shlomlaolam.', // שלמה
   },
+  {
+    'name': 'o.t.p.',
+  },
 ];
 
 const aboutRegularEditors = <Map<String, String>>[
