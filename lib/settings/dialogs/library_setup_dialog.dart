@@ -721,7 +721,9 @@ class _LibrarySetupDialogContentState
       subtitle: _inPlaceSubtitle(),
       subtitleLtr: _inPlaceFolder != null && _inPlaceHasDatabase,
       selected: inPlaceSelected,
-      onTap: () => setState(() => _action = _LibraryAction.useInPlace),
+      onTap: _copyingPickedFile
+          ? null
+          : () => setState(() => _action = _LibraryAction.useInPlace),
       actions: [
         ActionButton.neutral(
           text: context.settingsText(
@@ -738,13 +740,17 @@ class _LibrarySetupDialogContentState
       ),
       subtitle: context.settingsText('הספרייה תורד ותחולץ אל תיקיית היעד'),
       selected: downloadSelected,
-      onTap: () => setState(() => _action = _LibraryAction.download),
+      onTap: _copyingPickedFile
+          ? null
+          : () => setState(() => _action = _LibraryAction.download),
     );
     final chooseFileOption = SettingsActionTile.radioOption(
       title: context.settingsText('בחירת תיקייה מהמחשב'),
       subtitle: _importSubtitle(),
       selected: chooseFileSelected,
-      onTap: () => setState(() => _action = _LibraryAction.chooseFile),
+      onTap: _copyingPickedFile
+          ? null
+          : () => setState(() => _action = _LibraryAction.chooseFile),
       actions: [
         ActionButton.neutral(
           text: context.settingsText('בחר תיקייה'),
@@ -767,7 +773,9 @@ class _LibrarySetupDialogContentState
       title: context.settingsText('בחירת קובץ דחוס'),
       subtitle: _archiveSubtitle(),
       selected: chooseArchiveSelected,
-      onTap: () => setState(() => _action = _LibraryAction.chooseArchive),
+      onTap: _copyingPickedFile
+          ? null
+          : () => setState(() => _action = _LibraryAction.chooseArchive),
       actions: [
         ActionButton.neutral(
           text: context.settingsText('בחר קובץ דחוס'),
@@ -799,8 +807,11 @@ class _LibrarySetupDialogContentState
                       'קבצי הספרייה הקיימת יועברו לתיקיית היעד',
                     ),
                     selected: moveSelected,
-                    onTap: () =>
-                        setState(() => _action = _LibraryAction.moveContents),
+                    onTap: _copyingPickedFile
+                        ? null
+                        : () => setState(
+                            () => _action = _LibraryAction.moveContents,
+                          ),
                   ),
                   if (_inPlaceSupported) useInPlaceOption,
                   // הורדה/בחירת קובץ מחליפות את הספרייה הקיימת — מקובצות תחת

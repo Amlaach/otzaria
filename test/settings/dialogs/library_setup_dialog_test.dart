@@ -424,5 +424,24 @@ void main() {
       // ההודעה נעלמת מעצמה — מנקים כדי שלא יישאר טיימר פתוח.
       await tester.pumpAndSettle(const Duration(seconds: 4));
     });
+
+    testWidgets('בזמן ההעתקה אי אפשר להחליף פעולה', (tester) async {
+      final picker = _CopyingFilePickerPlatform('${temp.path}/seforim.db');
+      FilePickerPlatform.instance = picker;
+      await tapPickFile(tester);
+
+      final download = find.text('הורדת הספרייה');
+      await tester.ensureVisible(download);
+      await tester.tap(download);
+      final archive = find.text('בחירת קובץ דחוס');
+      await tester.ensureVisible(archive);
+      await tester.tap(archive);
+      await tester.pump();
+
+      picker.finishCopy();
+      await tester.pumpAndSettle();
+
+      expect(_actionOnPressed(tester, 'אישור'), isNotNull);
+    });
   });
 }
