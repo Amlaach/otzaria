@@ -52,12 +52,16 @@ class CalendarWidgetState extends State<CalendarWidget> {
   bool _isSettingsPanelOpen = false;
   double _sidePanelWidth = 360;
   CalendarSidePanelView _sidePanelView = CalendarSidePanelView.times;
+  // נלכד ב-initState: ב-dispose אין גישה בטוחה ל-context.
+  CalendarCubit? _cubit;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _cubit = context.read<CalendarCubit>();
+    _cubit?.registerCalendarWidget();
     _keyboardFocusNode = FocusNode(skipTraversal: true, canRequestFocus: true);
     _keyboardFocusNode.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -107,6 +111,7 @@ class CalendarWidgetState extends State<CalendarWidget> {
     _keyboardFocusNode.removeListener(_onFocusChange);
     _stopKeyRepeat();
     _keyboardFocusNode.dispose();
+    _cubit?.unregisterCalendarWidget();
     super.dispose();
   }
 
