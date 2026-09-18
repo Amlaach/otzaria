@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
+import 'package:otzaria/search/models/search_match_policy.dart';
 
 typedef ExternalSearchEventDispatcher =
     Future<void> Function(
@@ -158,6 +159,7 @@ class PluginExternalSearchService {
     required String query,
     String mode = 'exact',
     int distance = 1,
+    SearchMatchPolicy matchPolicy = SearchMatchPolicy.standard,
     int offset = 0,
     int limit = 20,
     List<int>? ids,
@@ -194,6 +196,9 @@ class PluginExternalSearchService {
       'query': query,
       'mode': mode,
       'distance': distance,
+      // בטווח "פסקה"/"כותרת" או בהתאמה חלקית המרווח חסר משמעות — בלי המדיניות
+      // הספק היה מחפש במרווח המחמיר ביותר (issue #1427).
+      ...matchPolicy.toJson(),
       'offset': offset,
       'limit': limit,
       // עמוד לפי מזהים מפורשים: דפדוף בתוצאות מסוננות-קטגוריה שהקורא

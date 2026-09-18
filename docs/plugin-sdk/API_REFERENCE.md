@@ -1457,6 +1457,16 @@ window.addEventListener('reader.inBookSearch.requested', async (event) => {
 `wordOptions` נבנים לפי הטוקניזציה של מנוע אוצריא (מקף מפצל מילה — `בית-דין`
 נשלח כ-`'בית_0'`,`'דין_1'`), וספק שמפרק את השאילתה אחרת לא יזהה אותם.
 מארח ותיק אינו שולח את השדות.
+
+האירוע נושא גם את מדיניות ההתאמה של הטאב: `proximityScope`
+(`wordDistance` / `sameParagraph` / `sameSection`), `wordMatchMode`
+(`all` / `anyWord` / `mostWords` / `atLeast`) ו-`wordMatchCount`. מחוץ למצב
+`advanced` נשלחת תמיד ברירת המחדל (`wordDistance`, `all`). **`distance` מחייב
+רק כש-`proximityScope` הוא `wordDistance` ו-`wordMatchMode` הוא `all`** —
+אחרת אוצריא עצמה מתעלמת ממנו, והספק צריך לחפש בחלון רחב במקום במרווח.
+`distance` הוא מספר המילים שמותר שיופיעו *בין* מילות השאילתה (0 = צמודות),
+ומנוע שמודד מרחק ביחידה אחרת חייב לתרגם אותו. מארח ותיק אינו שולח את השדות.
+
 שם ספק שייך לתוסף הראשון שרשם אותו; ניסיון של תוסף אחר לרשום אותו נדחה
 עם `error.conflict`.
 

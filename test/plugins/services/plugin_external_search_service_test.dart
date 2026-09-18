@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/plugins/services/plugin_external_search_service.dart';
+import 'package:otzaria/search/models/search_match_policy.dart';
+import 'package:otzaria_search_engine/otzaria_search_engine.dart'
+    show SearchScope, WordMatchMode;
 
 void main() {
   group('sanitizeIndex', () {
@@ -121,6 +124,34 @@ void main() {
         service.removePlugin('owner');
       },
     );
+
+    test('מדיניות ההתאמה נשלחת באירוע; ברירת המחדל היא מרווח מילים', () async {
+      service.register('hebrewbooks', 'owner');
+      final withPolicy = service.search(
+        provider: 'hebrewbooks',
+        query: 'ברכת המזון',
+        matchPolicy: const SearchMatchPolicy(
+          proximityScope: SearchScope.sameParagraph,
+          wordMatchMode: WordMatchMode.atLeast,
+          wordMatchCount: 3,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(request['proximityScope'], 'sameParagraph');
+      expect(request['wordMatchMode'], 'atLeast');
+      expect(request['wordMatchCount'], 3);
+      expect(withPolicy, throwsStateError);
+
+      final standard = service.search(
+        provider: 'hebrewbooks',
+        query: 'ברכת המזון',
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(request['proximityScope'], 'wordDistance');
+      expect(request['wordMatchMode'], 'all');
+      expect(standard, throwsStateError);
+      service.removePlugin('owner');
+    });
 
     test(
       'עמוד המשך ועמוד לפי מזהים אינם מזמינים שמות — אין בהם אינדקס',
