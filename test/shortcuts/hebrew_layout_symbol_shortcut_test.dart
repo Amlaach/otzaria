@@ -58,33 +58,43 @@ void main() {
       );
     });
 
-    test(
-      'כל פלטפורמה: Ctrl + מקש הנקודה הפיזי (מדווח "ץ") תואם ctrl+period',
-      () {
-        ShortcutHelper.isMacForTesting = false;
-        final event = _event(PhysicalKeyboardKey.period, _hebrewFinalTsadi);
+    test('תו מקומי לא־מוכר אינו מפעיל התאמה פיזית מחוץ ל-macOS', () {
+      ShortcutHelper.isMacForTesting = false;
 
-        expect(
-          ShortcutHelper.matchesShortcut(
-            event,
-            'ctrl+period',
-            isControlPressed: true,
-            isMetaPressed: false,
-          ),
-          isTrue,
-        );
-        expect(
-          ShortcutHelper.matchesShortcut(
-            event,
-            'ctrl+comma',
-            isControlPressed: true,
-            isMetaPressed: false,
-          ),
-          isFalse,
-          reason: 'המיקום הפיזי מכריע — מקש אחר לא נתפס',
-        );
-      },
-    );
+      expect(
+        ShortcutHelper.matchesShortcut(
+          _event(PhysicalKeyboardKey.comma, _hebrewTav),
+          'ctrl+comma',
+          isControlPressed: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('macOS: Cmd + מקש הנקודה הפיזי (מדווח "ץ") תואם ctrl+period', () {
+      ShortcutHelper.isMacForTesting = true;
+      final event = _event(PhysicalKeyboardKey.period, _hebrewFinalTsadi);
+
+      expect(
+        ShortcutHelper.matchesShortcut(
+          event,
+          'ctrl+period',
+          isControlPressed: false,
+          isMetaPressed: true,
+        ),
+        isTrue,
+      );
+      expect(
+        ShortcutHelper.matchesShortcut(
+          event,
+          'ctrl+comma',
+          isControlPressed: false,
+          isMetaPressed: true,
+        ),
+        isFalse,
+        reason: 'המיקום הפיזי מכריע — מקש אחר לא נתפס',
+      );
+    });
 
     test('פריסה לטינית שמזיזה סימנים נשארת מזוהה לפי התו, לא לפי המיקום', () {
       // גרמנית: המקש הפיזי של '/' מפיק '-'. התו מוכר, ולכן הוא הקובע.
@@ -110,6 +120,7 @@ void main() {
     });
 
     test('הקלטת קיצור: מקש הפסיק הפיזי בפריסה עברית נשמר כ-comma', () {
+      ShortcutHelper.isMacForTesting = true;
       final stored = ShortcutHelper.logicalKeyToStore(
         _event(PhysicalKeyboardKey.comma, _hebrewTav),
       );

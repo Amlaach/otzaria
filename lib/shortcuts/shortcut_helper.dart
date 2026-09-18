@@ -154,9 +154,10 @@ class ShortcutHelper {
         event.physicalKey == KeyMap.physicalKeyFor(mainKey);
   }
 
-  /// האם [key] הוא תו של פריסת מקלדת מקומית שאין לו שם ב-[KeyMap] — לא אות
-  /// לטינית ולא מקש מוכר. עבור מקש כזה רק המיקום הפיזי מזהה את הקיצור.
+  /// האם [key] הוא תו מקומי לא-מוכר ש-macOS מדווח עבור מקש סימן או ספרה.
+  /// רק במצב החריג הזה המיקום הפיזי מזהה את הקיצור.
   static bool isLayoutSpecificKey(LogicalKeyboardKey key) {
+    if (!_treatCtrlAsMeta) return false;
     final id = key.keyId;
     if (id >= 0x61 && id <= 0x7a) return false; // a–z
     return KeyMap.labelFor(key) == null;

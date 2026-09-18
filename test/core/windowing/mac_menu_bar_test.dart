@@ -13,10 +13,15 @@ void main() {
       expect(activator.alt, isFalse);
     });
 
-    test('מקש בעל שם מהמפה המרכזית', () {
-      final activator = menuShortcutActivator('ctrl+comma');
-      expect(activator!.trigger, LogicalKeyboardKey.comma);
+    test('מקש בעל שם מהמפה המרכזית שאינו סימן תלוי־פריסה', () {
+      final activator = menuShortcutActivator('ctrl+f11');
+      expect(activator!.trigger, LogicalKeyboardKey.f11);
       expect(activator.meta, isTrue);
+    });
+
+    test('סימן תלוי־פריסה נשאר לטיפול Flutter לפי מיקום פיזי', () {
+      expect(menuShortcutActivator('ctrl+comma'), isNull);
+      expect(menuShortcutActivator('ctrl+period'), isNull);
     });
 
     test('צירוף עם shift', () {
@@ -44,7 +49,7 @@ void main() {
       expect(menuShortcutActivator('ctrl'), isNull);
     });
 
-    test('כל ברירות המחדל של האפליקציה ניתנות לייצוג או ל-null בלבד', () {
+    test('כל ברירות המחדל שאינן סימנים תלויי־פריסה ניתנות להצהרה בתפריט', () {
       // הצהרה שגויה בתפריט הייתה חוטפת את המקש מ-KeyboardShortcuts.
       for (final shortcut in const [
         'ctrl+l',
@@ -56,7 +61,6 @@ void main() {
         'ctrl+shift+a',
         'ctrl+r',
         'ctrl+shift+f',
-        'ctrl+comma',
         'ctrl+m',
         'ctrl+shift+b',
         'ctrl+y',

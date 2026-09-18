@@ -134,6 +134,22 @@ class KeyMap {
     'backquote': PhysicalKeyboardKey.backquote,
   };
 
+  /// מקשי סימנים שהמיקום שלהם אינו אחיד בין פריסות. בתפריט native של macOS
+  /// אי אפשר להצהיר עליהם לפי מיקום פיזי, ולכן הם מטופלים ב-Flutter.
+  static const Set<String> layoutSensitiveSymbols = {
+    'comma',
+    'period',
+    'slash',
+    'backslash',
+    'semicolon',
+    'quote',
+    'bracketleft',
+    'bracketright',
+    'minus',
+    'equal',
+    'backquote',
+  };
+
   /// מיפוי הפוך: מקש פיזי בשורה הראשית → המקש הלוגי שלו בפריסת US.
   static final Map<PhysicalKeyboardKey, LogicalKeyboardKey> physicalToKey = {
     for (final e in nameToPhysicalKey.entries) e.value: nameToKey[e.key]!,
@@ -142,6 +158,9 @@ class KeyMap {
   /// המקש הפיזי של [name] בפריסת US, או `null` למקש שאין לו מיקום קבוע.
   static PhysicalKeyboardKey? physicalKeyFor(String name) =>
       nameToPhysicalKey[name.toLowerCase()];
+
+  static bool isLayoutSensitiveSymbol(String name) =>
+      layoutSensitiveSymbols.contains(name.toLowerCase());
 
   /// המקש הלוגי (פריסת US) של המקש הפיזי [key], או `null` אם אינו בשורה
   /// הראשית.
