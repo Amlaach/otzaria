@@ -413,8 +413,28 @@ class _SearchScopeMenuButtonState extends State<SearchScopeMenuButton> {
     );
   }
 
+  /// שם הפריט הנבחר ל-chip, בלי לבנות את העץ: מהעץ אם כבר נבנה, אחרת
+  /// מהמקטע האחרון של ה-facet (מפתח ספר אטום כמו 'id:5' אינו שם).
+  String? _categoryFacetName(String facet) {
+    final library = _library;
+    final tree =
+        _treeCache ?? (library == null ? null : ScopeTree.cachedFor(library));
+    final node = tree?.nodesByFacet[facet];
+    if (node != null) return node.title;
+
+    // מפתח ספר מהצורה 'כותרת|קטגוריה|...' נושא את הכותרת לפני ה-'|'; מפתח
+    // מזהה ('id:5') אינו שם, ואז אין מה להציג בלי העץ.
+    final pipe = facet.indexOf('|');
+    final head = pipe < 0 ? facet : facet.substring(0, pipe);
+    final segment = head.split('/').last;
+    if (segment.isEmpty || RegExp(r'^(id|uid|ext):').hasMatch(segment)) {
+      return null;
+    }
+    return segment;
+  }
+
   /// הסינונים הפעילים ל-chips / למונה שבשדה. בחירת קטגוריות/ספרים ספציפיים
-  /// מיוצגת בפריט *אחד* ("כל הספרים") ולא שם לכל פריט. בחירת "ספרי יסוד"
+  /// מיוצגת בפריט *אחד*: שם הפריט כשהוא יחיד, אחרת מונה. בחירת "ספרי יסוד"
   /// ככלל אינה מגיעה לכאן — היא facet ממדי (`/base`) ומתויגת בלופ שמתחת.
   List<({String label, bool partial, VoidCallback onRemove})> _activeFilters() {
     final result = <({String label, bool partial, VoidCallback onRemove})>[];
@@ -424,8 +444,18 @@ class _SearchScopeMenuButtonState extends State<SearchScopeMenuButton> {
     final dimensions = FacetHelper.dimensionFacetsOf(widget.selected).toList();
 
     if (categories.isNotEmpty) {
+      final single = categories.length == 1
+          ? _categoryFacetName(categories.first)
+          : null;
       result.add((
-        label: 'כל הספרים',
+        label:
+            single ??
+            (categories.length == 1
+                ? 'כל הספרים'
+                : context.settingsText(
+                    '{count} פריטים',
+                    args: {'count': categories.length},
+                  )),
         partial: true,
         onRemove: () => widget.onChanged(dimensions.toSet()),
       ));
