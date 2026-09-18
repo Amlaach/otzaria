@@ -1442,7 +1442,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   ) async {
     final textBook = TextBook(
       title: utils.getTitleFromPath(link.path2),
-      isUserBook: link.targetIsUserBook,
+      source: link.targetSource,
       categoryId: link.targetCategoryId,
       fileType: link.targetFileType,
     );
@@ -1911,7 +1911,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                   copyLinkToClipboard(
                     buildPdfBookLink(
                       bookId,
-                      isUserBook: widget.tab.book.isUserBook,
+                      source: widget.tab.book.source,
                     ),
                   );
                 }
@@ -1930,7 +1930,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                     buildPdfPageLink(
                       bookId,
                       page,
-                      isUserBook: widget.tab.book.isUserBook,
+                      source: widget.tab.book.source,
                     ),
                   );
                 }
@@ -3661,7 +3661,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         bookTitle,
         categoryId: categoryId,
         filePath: filePath,
-        preferUserBooks: widget.tab.book.isUserBook,
+        preferSource: widget.tab.book.source,
       );
       if (headings != null) {
         widget.tab.pdfHeadings = headings;
@@ -4469,7 +4469,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                             bookTopics: widget.tab.book.topics,
                             bookCategoryPath: widget.tab.book.categoryPath,
                             bookId: widget.tab.book.id,
-                            isUserBook: widget.tab.book.isUserBook,
+                            source: widget.tab.book.source,
                             externalLibraryId:
                                 widget.tab.book.externalLibraryId,
                             pdfFilePath: _resolvedPdfPath,
@@ -5038,7 +5038,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                       onPressed: () => copyLinkToClipboard(
                         buildPdfBookLink(
                           bookId,
-                          isUserBook: widget.tab.book.isUserBook,
+                          source: widget.tab.book.source,
                         ),
                       ),
                     ),
@@ -5054,7 +5054,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                           buildPdfPageLink(
                             bookId,
                             page,
-                            isUserBook: widget.tab.book.isUserBook,
+                            source: widget.tab.book.source,
                           ),
                         );
                       },
