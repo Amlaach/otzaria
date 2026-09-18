@@ -42,4 +42,7 @@ const List<String> pluginNetworkAllowlist = <String>[
   'https://script.google.com/macros/s/AKfycbxzlCAZzhaEM68jRqqekW8InrtbSiZrtiiIjgCKOInUvyBG43wLY29MYY6PrbHijpO6/exec',
   'https://script.googleusercontent.com/macros/echo',
   'https://docs.google.com/forms/d/e/1FAIpQLSd7NiGDUahnwpaestosEcDxPJoAkYXzVRUa2yB5EiXkLPSWvQ/formResponse',
+  'https://github.com/yakov100/otzaria-moadei-yisrael-data/releases/download',
+  'https://raw.githubusercontent.com/yakov100/otzaria-moadei-yisrael-data/main',
+  'https://tora-forum.co.il/forums',
 ];
