@@ -16,6 +16,7 @@ import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
 import 'package:otzaria/migration/database/daos/database.dart';
 import 'package:otzaria/migration/database/db_capabilities.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
+import 'package:otzaria/migration/database/untrusted_database.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/user_content_import/repository/user_alt_toc_repository.dart';
 import 'package:otzaria/user_content_import/models/user_import_models.dart';
@@ -587,14 +588,14 @@ List<LinkAnchorSpan> _parseAnchorSpans(String? spans) {
 }
 
 List<Map<String, dynamic>> _loadBookLinksRowsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasLinks) return const [];
 
@@ -671,13 +672,13 @@ List<Map<String, dynamic>> _loadBookLinksRowsInIsolate({
 /// GROUP BY זולה במקום למשוך עשרות אלפי שורות קישורים לדארט.
 ({List<Map<String, dynamic>> rows, int? maxSourceLineIndex})
 _loadBookLinkTargetsSummaryRowsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     const empty = (rows: <Map<String, dynamic>>[], maxSourceLineIndex: null);
     if (!capabilities.hasLinks) return empty;
@@ -815,13 +816,13 @@ _loadBookLinkTargetsSummaryRowsInIsolate({
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<({List<Map<String, dynamic>> rows, int? maxSourceLineIndex})>
 _runBookLinkTargetsSummaryInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
 }) {
   return Isolate.run(
     () => _loadBookLinkTargetsSummaryRowsInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
     ),
@@ -829,7 +830,7 @@ _runBookLinkTargetsSummaryInIsolate({
 }
 
 List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
@@ -839,7 +840,7 @@ List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     // מסד בלי טבלאות קישורים הוא תשובה ריקה תקפה, לא כשל שדורש ניסיון חוזר.
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasLinks) return const [];
@@ -945,13 +946,13 @@ List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
 }
 
 List<Map<String, dynamic>> _loadAlternativeStructuresRowsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasAltTocStructures) return const [];
 
@@ -979,13 +980,13 @@ List<Map<String, dynamic>> _loadAlternativeStructuresRowsInIsolate({
 /// שאינו ניתן לשליחה ל-isolate) ולגרום לכשל
 /// "Illegal argument in isolate message".
 Future<List<Map<String, dynamic>>> _runAlternativeStructuresInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   return Isolate.run(
     () => _loadAlternativeStructuresRowsInIsolate(
-      dbPath: dbPath,
+      target: target,
       bookTitle: bookTitle,
       categoryId: categoryId,
     ),
@@ -997,13 +998,13 @@ Future<List<Map<String, dynamic>>> _runAlternativeStructuresInIsolate({
 /// (סעיפים בנושאי-כלים, "סעיף ג"; מגרסת ספרייה 24).
 /// [headings] — רשומות `Topic` ("הלכות ציצית"), רק כשאינן כבר גלויות בטקסט.
 InlineSectionMarks _loadInlineSectionMarksInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasAltToc) return (markers: const {}, headings: const {});
 
@@ -1091,13 +1092,13 @@ typedef InlineSectionMarks = ({
 /// Top-level wrapper עבור טעינת סמני החלוקה ב-isolate.
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<InlineSectionMarks> _runInlineSectionMarksInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   return Isolate.run(
     () => _loadInlineSectionMarksInIsolate(
-      dbPath: dbPath,
+      target: target,
       bookTitle: bookTitle,
       categoryId: categoryId,
     ),
@@ -1108,13 +1109,13 @@ Future<InlineSectionMarks> _runInlineSectionMarksInIsolate({
 /// (`dhDisplay`) מטבלת `line_dh`. מסד ישן, בלי הטבלה או בלי העמודה, נותן
 /// מפה ריקה.
 Map<int, String> _loadDibburHamatchilInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasLineDhDisplay) return const {};
 
@@ -1148,13 +1149,13 @@ Map<int, String> _loadDibburHamatchilInIsolate({
 /// Top-level wrapper עבור טעינת דיבורי-המתחיל ב-isolate.
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<Map<int, String>> _runDibburHamatchilInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String bookTitle,
   int? categoryId,
 }) {
   return Isolate.run(
     () => _loadDibburHamatchilInIsolate(
-      dbPath: dbPath,
+      target: target,
       bookTitle: bookTitle,
       categoryId: categoryId,
     ),
@@ -1164,14 +1165,14 @@ Future<Map<int, String>> _runDibburHamatchilInIsolate({
 /// Top-level wrapper עבור טעינת קישורי ספר ב-isolate.
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<List<Map<String, Object?>>> _runBookLinksInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
 }) {
   return Isolate.run(
     () => _loadBookLinksRowsInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -1182,7 +1183,7 @@ Future<List<Map<String, Object?>>> _runBookLinksInIsolate({
 /// Top-level wrapper עבור טעינת קישורי טווח ב-isolate.
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<List<Map<String, Object?>>> _runBookLinksInRangeInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
@@ -1192,7 +1193,7 @@ Future<List<Map<String, Object?>>> _runBookLinksInRangeInIsolate({
 }) {
   return Isolate.run(
     () => _loadBookLinksRowsInRangeInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -1207,7 +1208,7 @@ Future<List<Map<String, Object?>>> _runBookLinksInRangeInIsolate({
 /// מתבצע כאן כדי לא לחסום את ה-UI thread. ראה [_runAlternativeStructuresInIsolate].
 ({int startLine, int endLine, int totalLines, List<String> lines})?
 _loadBookTextRangeRowsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
@@ -1217,7 +1218,7 @@ _loadBookTextRangeRowsInIsolate({
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasLines) return null;
 
@@ -1290,7 +1291,7 @@ _loadBookTextRangeRowsInIsolate({
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<({int startLine, int endLine, int totalLines, List<String> lines})?>
 _runBookTextRangeInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
   required String fileType,
@@ -1300,7 +1301,7 @@ _runBookTextRangeInIsolate({
 }) {
   return Isolate.run(
     () => _loadBookTextRangeRowsInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -1314,13 +1315,13 @@ _runBookTextRangeInIsolate({
 /// Top-level worker לרשימת המהדורות (book_version) של ספר. רשימה ריקה כשה-DB
 /// ישן (אין טבלה) או כשאין לספר מידע גרסאות.
 List<Map<String, dynamic>> _loadBookVersionsRowsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasBookVersions) return const [];
 
@@ -1352,13 +1353,13 @@ List<Map<String, dynamic>> _loadBookVersionsRowsInIsolate({
 /// Top-level wrapper עבור רשימת מהדורות ב-isolate.
 /// ראה ההסבר ב-[_runAlternativeStructuresInIsolate].
 Future<List<Map<String, dynamic>>> _runBookVersionsInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
   required String title,
   required int categoryId,
 }) {
   return Isolate.run(
     () => _loadBookVersionsRowsInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
     ),
@@ -1369,11 +1370,11 @@ Future<List<Map<String, dynamic>>> _runBookVersionsInIsolate({
 /// יחידה עם טקסט שמור. גרסה יחידה מטא-דאטה בלבד = הנוסח המוצג עצמו, ואינה
 /// נכללת. נטען פעם אחת ומשמש לקביעת הצגת תפריט 'גרסאות'.
 List<Map<String, dynamic>> _loadSelectableVersionKeysInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
 }) {
   sqlite3.Database? db;
   try {
-    db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    db = openReadOnlyTarget(target);
     final capabilities = DbCapabilities.probe(db);
     if (!capabilities.hasBookVersions) return const [];
 
@@ -1392,10 +1393,10 @@ List<Map<String, dynamic>> _loadSelectableVersionKeysInIsolate({
 }
 
 Future<List<Map<String, dynamic>>> _runSelectableVersionKeysInIsolate({
-  required String dbPath,
+  required ReadOnlyDbTarget target,
 }) {
   return Isolate.run(
-    () => _loadSelectableVersionKeysInIsolate(dbPath: dbPath),
+    () => _loadSelectableVersionKeysInIsolate(target: target),
   );
 }
 
@@ -1473,9 +1474,9 @@ class DatabaseLibraryProvider implements LibraryProvider {
   String? _bundledTalmudBavliPathCache;
   bool? _bundledTalmudBavliExistsCache;
 
-  /// מפתחות "title\u0000categoryId" של ספרים שראוי להציג להם תפריט 'גרסאות'.
-  /// ממוזמז — נטען פעם אחת ל-DB; מנוקה ב-[clearCache].
-  Future<Set<String>>? _selectableVersionKeysFuture;
+  /// מפתחות "title\u0000categoryId" של ספרים שראוי להציג להם תפריט 'גרסאות',
+  /// לפי `BookSource.wireKey`. נטען פעם אחת לכל מסד; מנוקה ב-[clearCache].
+  final Map<String, Future<Set<String>>> _selectableVersionKeysFutures = {};
 
   /// IDs **טבעיים** (native AUTOINCREMENT) של קטגוריות ב-`user_books.db`
   /// שצורפו ל-Library. שימושי כדי לדעת לאיזה DB לפנות בקריאות
@@ -1591,6 +1592,25 @@ class DatabaseLibraryProvider implements LibraryProvider {
         : BookSource.official;
   }
 
+  /// המסד שממנו קוראים ב-isolate נתוני ספר מ-[source]: seforim.db, או מסד
+  /// מצורף (נפתח מוקשח). null — אין מסד כזה (ספר אישי, מסד שאינו תקין).
+  ReadOnlyDbTarget? _isolateTargetFor(BookSource source) => switch (source) {
+    OfficialBookSource() =>
+      _sqliteProvider.isInitialized && _sqliteProvider.repository != null
+          ? trustedDbTarget(_sqliteProvider.dbPath)
+          : null,
+    UserBookSource() => null,
+    AttachedBookSource(:final slug) => switch (AttachedLibraryRegistry.instance
+        .libraryFor(slug)) {
+      final library? => (
+        path: library.path,
+        untrusted: true,
+        immutable: library.immutable,
+      ),
+      null => null,
+    },
+  };
+
   /// תור פעולות יחיד לכל כתיבות ה-DB של ספרים אישיים.
   /// ה-static מאפשר גישה ישירה ב-DatabaseLibraryProvider.operationQueue
   /// גם ממסכים אחרים, בלי להצמד ל-instance.
@@ -1610,12 +1630,13 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static List<Map<String, dynamic>> loadBookLinksRowsForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String title,
     required int categoryId,
     required String fileType,
   }) {
     return _loadBookLinksRowsInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -1625,11 +1646,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static List<Map<String, dynamic>> loadAlternativeStructuresRowsForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String bookTitle,
     int? categoryId,
   }) {
     return _loadAlternativeStructuresRowsInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       bookTitle: bookTitle,
       categoryId: categoryId,
     );
@@ -1638,11 +1660,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static Map<int, String> loadDibburHamatchilForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String bookTitle,
     int? categoryId,
   }) {
     return _loadDibburHamatchilInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       bookTitle: bookTitle,
       categoryId: categoryId,
     );
@@ -1651,11 +1674,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static InlineSectionMarks loadInlineSectionMarksForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String bookTitle,
     int? categoryId,
   }) {
     return _loadInlineSectionMarksInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       bookTitle: bookTitle,
       categoryId: categoryId,
     );
@@ -1664,13 +1688,17 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static List<Map<String, dynamic>> loadSelectableVersionKeysForTesting({
     required String dbPath,
+    bool untrusted = false,
   }) {
-    return _loadSelectableVersionKeysInIsolate(dbPath: dbPath);
+    return _loadSelectableVersionKeysInIsolate(
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
+    );
   }
 
   @visibleForTesting
   static List<Map<String, dynamic>> loadBookLinksRowsInRangeForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String title,
     required int categoryId,
     required String fileType,
@@ -1679,7 +1707,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
     List<String>? targetBookTitles,
   }) {
     return _loadBookLinksRowsInRangeInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -1693,11 +1721,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   static ({List<Map<String, dynamic>> rows, int? maxSourceLineIndex})
   loadBookLinkTargetsSummaryRowsForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String title,
     required int categoryId,
   }) {
     return _loadBookLinkTargetsSummaryRowsInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       title: title,
       categoryId: categoryId,
     );
@@ -1706,11 +1735,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
   @visibleForTesting
   static List<Map<String, dynamic>> loadBookVersionsRowsForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String title,
     required int categoryId,
   }) {
     return _loadBookVersionsRowsInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       title: title,
       categoryId: categoryId,
     );
@@ -1720,6 +1750,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
   static ({int startLine, int endLine, int totalLines, List<String> lines})?
   loadBookTextRangeRowsForTesting({
     required String dbPath,
+    bool untrusted = false,
     required String title,
     required int categoryId,
     required String fileType,
@@ -1728,7 +1759,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
     String? versionTitle,
   }) {
     return _loadBookTextRangeRowsInIsolate(
-      dbPath: dbPath,
+      target: (path: dbPath, untrusted: untrusted, immutable: false),
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -2600,7 +2631,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
     _titlesCached = false;
     _bundledTalmudBavliPathCache = null;
     _bundledTalmudBavliExistsCache = null;
-    _selectableVersionKeysFuture = null;
+    _selectableVersionKeysFutures.clear();
     debugPrint('💾 Database cache cleared');
   }
 
@@ -2634,13 +2665,16 @@ class DatabaseLibraryProvider implements LibraryProvider {
     T defaultValue,
     String errorContext, {
     bool Function(DbCapabilities capabilities)? requires,
+    BookSource source = BookSource.official,
   }) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return defaultValue;
-    }
-
     try {
-      final database = _sqliteProvider.repository!.database;
+      final repository = source is AttachedBookSource
+          ? await AttachedLibraryRegistry.instance.repositoryFor(source.slug)
+          : _sqliteProvider.isInitialized
+          ? _sqliteProvider.repository
+          : null;
+      if (repository == null) return defaultValue;
+      final database = repository.database;
       if (requires != null && !requires(await database.capabilities)) {
         return defaultValue;
       }
@@ -3824,19 +3858,17 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<List<Link>> getAllLinksForBook(
     String title,
     int categoryId,
-    String fileType,
-  ) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return [];
-    }
-
+    String fileType, {
+    BookSource source = BookSource.official,
+  }) async {
     // ראה הערה ב-_runAlternativeStructuresInIsolate: ה-Isolate.run עצמו
     // חייב להיווצר בתוך פונקציה ברמת קובץ, אחרת `this` עלול להיתפס.
-    final dbPath = _sqliteProvider.dbPath;
+    final target = _isolateTargetFor(source);
+    if (target == null) return [];
 
     try {
       final result = await _runBookLinksInIsolate(
-        dbPath: dbPath,
+        target: target,
         title: title,
         categoryId: categoryId,
         fileType: fileType,
@@ -3873,6 +3905,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
               ? (row['targetRangeEndLineIndex'] as int) + 1
               : null,
           baseProvenance: row['baseProvenance'] as int? ?? 0,
+          targetSource: source,
         );
       }).toList();
 
@@ -3891,6 +3924,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
     required int startLineIndex,
     required int endLineIndex,
     Iterable<String>? targetBookTitles,
+    BookSource source = BookSource.official,
   }) async {
     final normalizedTargetBookTitles =
         targetBookTitles
@@ -3901,15 +3935,14 @@ class DatabaseLibraryProvider implements LibraryProvider {
           ?..sort();
     // כשל או מסד סגור זורקים ולא מחזירים ריק: הקורא שומר תוצאה ריקה כחלון
     // "מכוסה" ולא ינסה שוב, והמפרשים נעלמים עד גלילה רחוקה.
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      throw StateError('seforim.db אינו פתוח — קישורי "$title" לא נטענו');
+    final target = _isolateTargetFor(source);
+    if (target == null) {
+      throw StateError('המסד של "$title" אינו פתוח — הקישורים לא נטענו');
     }
 
     // ראה הערה ב-_runAlternativeStructuresInIsolate.
-    final dbPath = _sqliteProvider.dbPath;
-
     final result = await _runBookLinksInRangeInIsolate(
-      dbPath: dbPath,
+      target: target,
       title: title,
       categoryId: categoryId,
       fileType: fileType,
@@ -3949,6 +3982,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
             ? (row['targetRangeEndLineIndex'] as int) + 1
             : null,
         baseProvenance: row['baseProvenance'] as int? ?? 0,
+        targetSource: source,
       );
     }).toList();
     return links;
@@ -3959,17 +3993,18 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// מיועד לבניית רשימת המפרשים של ספר בלי לטעון את כל הקישורים לזיכרון.
   /// מחזיר null אם המסד לא זמין או שהשאילתה נכשלה.
   Future<({List<LinkTargetSummary> targets, int maxSourceLine})?>
-  getBookLinkTargetsSummary(String title, int categoryId) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return null;
-    }
-
+  getBookLinkTargetsSummary(
+    String title,
+    int categoryId, {
+    BookSource source = BookSource.official,
+  }) async {
     // ראה הערה ב-_runAlternativeStructuresInIsolate.
-    final dbPath = _sqliteProvider.dbPath;
+    final target = _isolateTargetFor(source);
+    if (target == null) return null;
 
     try {
       final result = await _runBookLinkTargetsSummaryInIsolate(
-        dbPath: dbPath,
+        target: target,
         title: title,
         categoryId: categoryId,
       );
@@ -4002,17 +4037,15 @@ class DatabaseLibraryProvider implements LibraryProvider {
     required int startLine,
     required int endLine,
     String? versionTitle,
+    BookSource source = BookSource.official,
   }) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return null;
-    }
-
     // ראה הערה ב-_runAlternativeStructuresInIsolate.
-    final dbPath = _sqliteProvider.dbPath;
+    final target = _isolateTargetFor(source);
+    if (target == null) return null;
 
     try {
       return await _runBookTextRangeInIsolate(
-        dbPath: dbPath,
+        target: target,
         title: title,
         categoryId: categoryId,
         fileType: fileType,
@@ -4030,16 +4063,14 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// רשימה ריקה כשה-DB ישן או כשאין לספר מידע גרסאות.
   Future<List<BookVersionInfo>> getBookVersions(
     String title,
-    int categoryId,
-  ) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return const [];
-    }
-
-    final dbPath = _sqliteProvider.dbPath;
+    int categoryId, {
+    BookSource source = BookSource.official,
+  }) async {
+    final target = _isolateTargetFor(source);
+    if (target == null) return const [];
     try {
       final rows = await _runBookVersionsInIsolate(
-        dbPath: dbPath,
+        target: target,
         title: title,
         categoryId: categoryId,
       );
@@ -4052,24 +4083,30 @@ class DatabaseLibraryProvider implements LibraryProvider {
 
   /// האם להציג לספר תפריט 'גרסאות' — כלומר יש מהדורה לבחירה (2+ גרסאות, או
   /// גרסה יחידה עם טקסט). גרסה יחידה מטא-דאטה בלבד = הנוסח המוצג, ולכן false.
-  Future<bool> hasSelectableBookVersions(String title, int categoryId) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return false;
-    }
-    final keys = await (_selectableVersionKeysFuture ??=
-        _loadSelectableVersionKeys());
+  Future<bool> hasSelectableBookVersions(
+    String title,
+    int categoryId, {
+    BookSource source = BookSource.official,
+  }) async {
+    final target = _isolateTargetFor(source);
+    if (target == null) return false;
+    final sourceKey = source.wireKey;
+    final keys = await (_selectableVersionKeysFutures[sourceKey] ??=
+        _loadSelectableVersionKeys(sourceKey, target));
     return keys.contains('$title\u0000$categoryId');
   }
 
-  Future<Set<String>> _loadSelectableVersionKeys() async {
+  Future<Set<String>> _loadSelectableVersionKeys(
+    String sourceKey,
+    ReadOnlyDbTarget target,
+  ) async {
     try {
-      final rows = await _runSelectableVersionKeysInIsolate(
-        dbPath: _sqliteProvider.dbPath,
-      );
+      final rows = await _runSelectableVersionKeysInIsolate(target: target);
       return rows.map((r) => '${r['title']}\u0000${r['categoryId']}').toSet();
     } catch (e) {
       debugPrint('⚠️ Error loading selectable version keys: $e');
-      _selectableVersionKeysFuture = null; // אפשר ניסיון חוזר בטעינה הבאה
+      // אפשר ניסיון חוזר בטעינה הבאה
+      _selectableVersionKeysFutures.remove(sourceKey);
       return const <String>{};
     }
   }
@@ -4159,12 +4196,11 @@ class DatabaseLibraryProvider implements LibraryProvider {
     return name;
   }
 
-  /// מבני ה-AltToc של [book] מהספרייה הרשמית. ספר אישי ממוספר אחרת מספר
-  /// רשמי בשם זהה, ולכן לעולם אינו מקבל את מבניו.
+  /// מבני ה-AltToc של [book] מהמסד שלו. ספר ממקור אחר בשם זהה ממוספר אחרת,
+  /// ולכן לעולם אינו מקבל את מבניו; כל מבנה נושא את [AltTocStructure.source].
   Future<List<AltTocStructure>> getAlternativeStructuresForBook(
     TextBook book,
   ) async {
-    if (book.source.isAttached) return const [];
     if (book.isUserBook) {
       return _userAltTocOperation(
         (repo) async {
@@ -4179,9 +4215,8 @@ class DatabaseLibraryProvider implements LibraryProvider {
         'getAlternativeStructuresForBook (user) "${book.title}"',
       );
     }
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return [];
-    }
+    final target = _isolateTargetFor(book.source);
+    if (target == null) return [];
     final bookTitle = book.title;
 
     // לא להעביר ל-Isolate.run closure שנוצר בתוך instance method הזה -
@@ -4189,16 +4224,17 @@ class DatabaseLibraryProvider implements LibraryProvider {
     // הלא-ניתן-לשליחה), והקריאה תיכשל עם "Illegal argument in isolate
     // message". במקום זאת אנו משתמשים ב-tear-off של פונקציה ברמת קובץ
     // ומעבירים את הפרמטרים כ-record של ערכים פרימיטיביים.
-    final dbPath = _sqliteProvider.dbPath;
-
     try {
       final results = await _runAlternativeStructuresInIsolate(
-        dbPath: dbPath,
+        target: target,
         bookTitle: bookTitle,
         categoryId: book.categoryId,
       );
 
-      return results.map((json) => AltTocStructure.fromJson(json)).toList();
+      return [
+        for (final json in results)
+          AltTocStructure.fromJson(json, source: book.source),
+      ];
     } catch (e) {
       debugPrint(
         '⚠️ Error in getAlternativeStructuresForBook "$bookTitle": $e',
@@ -4254,17 +4290,15 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<InlineSectionMarks> getInlineSectionMarksByLineIndex(
     String bookTitle, {
     int? categoryId,
+    BookSource source = BookSource.official,
   }) async {
     const empty = (markers: <int, String>{}, headings: <int, List<String>>{});
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return empty;
-    }
-
-    final dbPath = _sqliteProvider.dbPath;
+    final target = _isolateTargetFor(source);
+    if (target == null) return empty;
 
     try {
       return await _runInlineSectionMarksInIsolate(
-        dbPath: dbPath,
+        target: target,
         bookTitle: bookTitle,
         categoryId: categoryId,
       );
@@ -4282,14 +4316,14 @@ class DatabaseLibraryProvider implements LibraryProvider {
   Future<Map<int, String>> getDibburHamatchilByLineIndex(
     String bookTitle, {
     int? categoryId,
+    BookSource source = BookSource.official,
   }) async {
-    if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
-      return const {};
-    }
+    final target = _isolateTargetFor(source);
+    if (target == null) return const {};
 
     try {
       return await _runDibburHamatchilInIsolate(
-        dbPath: _sqliteProvider.dbPath,
+        target: target,
         bookTitle: bookTitle,
         categoryId: categoryId,
       );
@@ -4319,7 +4353,6 @@ class DatabaseLibraryProvider implements LibraryProvider {
     int structureId, {
     BookSource source = BookSource.official,
   }) async {
-    if (source.isAttached) return const [];
     if (source.isUser) {
       return _userAltTocOperation(
         (repo) => repo.entries(structureId),
@@ -4349,6 +4382,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       [],
       'getAllAlternativeEntries $structureId',
       requires: (c) => c.hasAltToc,
+      source: source,
     );
   }
 
@@ -4357,7 +4391,6 @@ class DatabaseLibraryProvider implements LibraryProvider {
     int structureId, {
     BookSource source = BookSource.official,
   }) async {
-    if (source.isAttached) return const [];
     if (source.isUser) {
       return _userAltTocOperation(
         (repo) => repo.lineIndices(structureId),
@@ -4393,6 +4426,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       [],
       'getAltTocLineIndices $structureId',
       requires: (c) => c.hasAltToc,
+      source: source,
     );
   }
 
@@ -4407,7 +4441,6 @@ class DatabaseLibraryProvider implements LibraryProvider {
     int structureId, {
     BookSource source = BookSource.official,
   }) async {
-    if (source.isAttached) return const [];
     if (source.isUser) {
       return _userAltTocOperation(
         (repo) => repo.entriesWithLineIndex(structureId),
@@ -4448,6 +4481,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       [],
       'getAltTocEntriesWithLineIndex $structureId',
       requires: (c) => c.hasAltToc,
+      source: source,
     );
   }
 
@@ -4457,7 +4491,6 @@ class DatabaseLibraryProvider implements LibraryProvider {
     int altTocEntryId, {
     BookSource source = BookSource.official,
   }) async {
-    if (source.isAttached) return const [];
     if (source.isUser) {
       return _userAltTocOperation(
         (repo) => repo.linksForEntry(structureId, altTocEntryId),
@@ -4495,12 +4528,14 @@ class DatabaseLibraryProvider implements LibraryProvider {
             path2: bookTitle,
             index2: lineIndex + 1, // 1-based index for UI
             connectionType: 'alt_toc',
+            targetSource: source,
           );
         }).toList();
       },
       [],
       'getLinksForAltTocEntry',
       requires: (c) => c.hasLineAltToc,
+      source: source,
     );
   }
 
@@ -4511,7 +4546,6 @@ class DatabaseLibraryProvider implements LibraryProvider {
     int structureId, {
     BookSource source = BookSource.official,
   }) async {
-    if (source.isAttached) return null;
     if (source.isUser) {
       return _userAltTocOperation(
         (repo) => repo.entryForLine(structureId, lineIndex),
@@ -4543,6 +4577,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       null,
       'getAltTocEntryForLine',
       requires: (c) => c.hasLineAltToc,
+      source: source,
     );
   }
 
