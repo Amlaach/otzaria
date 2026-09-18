@@ -89,3 +89,6 @@ https://docs.google.com/forms/d/e/1FAIpQLSd7NiGDUahnwpaestosEcDxPJoAkYXzVRUa2yB5
 https://github.com/yakov100/otzaria-moadei-yisrael-data/releases/download
 # המאגר המרכזי, נמשך ב-network.fetchStream
 https://raw.githubusercontent.com/yakov100/otzaria-moadei-yisrael-data/main
+
+# תוסף מועדי ישראל — אשכולות חיים מפורום לתורה, לפי מועד
+https://tora-forum.co.il/forums
