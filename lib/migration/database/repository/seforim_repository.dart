@@ -2466,7 +2466,7 @@ class SeforimRepository {
     // Convert the database books to model books
     return Future.wait(
       result.map((row) async {
-        final bookData = Book.fromJson(row);
+        final bookData = _database.bookDao.bookFromRow(row);
         final authors = await _getBookAuthors(bookData.id);
         final topics = await _getBookTopics(bookData.id);
         final pubPlaces = await _getBookPubPlaces(bookData.id);
@@ -2496,7 +2496,7 @@ class SeforimRepository {
     // Convert the database books to model books
     return Future.wait(
       result.map((row) async {
-        final bookData = Book.fromJson(row);
+        final bookData = _database.bookDao.bookFromRow(row);
         final authors = await _getBookAuthors(bookData.id);
         final topics = await _getBookTopics(bookData.id);
         final pubPlaces = await _getBookPubPlaces(bookData.id);
@@ -2526,7 +2526,7 @@ class SeforimRepository {
     // Convert the database books to model books
     return Future.wait(
       result.map((row) async {
-        final bookData = Book.fromJson(row);
+        final bookData = _database.bookDao.bookFromRow(row);
         final authors = await _getBookAuthors(bookData.id);
         final topics = await _getBookTopics(bookData.id);
         final pubPlaces = await _getBookPubPlaces(bookData.id);
@@ -2597,7 +2597,7 @@ class SeforimRepository {
 
     // Convert to Book objects
     var all = booksWithRelations
-        .map((bookData) => Book.fromJson(bookData))
+        .map((bookData) => _database.bookDao.bookFromRow(bookData))
         .toList();
     return all;
   }
