@@ -124,7 +124,7 @@ class TargetLineLinksService {
   static String _cacheKey(Link link) {
     final title = utils.getTitleFromPath(link.path2);
     final target =
-        '${link.targetIsUserBook ? 'u' : 'o'}_${link.targetCategoryId ?? ''}'
+        '${link.targetSource.wireKey}_${link.targetCategoryId ?? ''}'
         '_${link.targetFileType ?? ''}';
     return '$title|$target|${link.index2}|${link.index2End}';
   }
@@ -263,7 +263,7 @@ class TargetLineLinksService {
       if (link.path2.isEmpty || link.index2 <= 0) continue;
       if (LinkTypes.isVirtualSource(link.connectionType)) continue;
       final targetKey =
-          '${link.path2}|${link.index2}|${link.targetIsUserBook ? 'u' : 'o'}';
+          '${link.path2}|${link.index2}|${link.targetSource.wireKey}';
 
       if (link.anchorStart != null || link.anchorSpans.isNotEmpty) {
         anchored.add(link);
