@@ -122,7 +122,7 @@ dependency_overrides:
   printing:
     git:
       url: https://github.com/DavBfr/dart_pdf
-      ref: eacbeceaf9368fa3c3e661e97d94612cbedeff93
+      ref: 5d899ad8dfdc5735fc8d5a09e0c76a9d0767b8c1
       path: printing
   # TODO: להחזיר ל-pub.dev כשיתמזג וישוחרר MaikuB/flutter_local_notifications#2826
   # (קריאות WinRT ב-thread ייעודי). עד אז הפורק Otzaria, מוצמד לקומיט.
