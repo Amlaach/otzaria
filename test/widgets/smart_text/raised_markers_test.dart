@@ -6,6 +6,7 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart'
     show HtmlWidget;
 import 'package:otzaria/text_book/utils/link_anchor_variants.dart'
     show kLinkAnchorMarkerScale;
+import 'package:otzaria/text_book/utils/numbered_note_markers.dart';
 import 'package:otzaria/text_book/view/widgets/continuous_reading_paragraph.dart';
 import 'package:otzaria/widgets/smart_text/raised_markers.dart';
 import 'package:otzaria/widgets/smart_text/render_settings.dart';
@@ -576,6 +577,36 @@ void main() {
       expect(marker.clickable, isTrue);
       expect(marker.useLinkColor, isFalse);
       expect(marker.active, isFalse);
+    });
+
+    test('סמן-אות של הערה: העוגן שורד את processText ונשאר לחיץ', () {
+      final processed = TextRendererService.processText(
+        addNumberedNoteMarkerLinks(
+          'ועובר על איסור בישול <sup>(א)</sup>',
+          lineIndex: 12,
+        ),
+        const RenderSettings(),
+      );
+
+      expect(processed, isNot(contains('<sup')));
+      final marker = RaisedMarkers.extract(processed).single;
+      expect(marker.text, '$rli(א)$pdi');
+      expect(marker.clickable, isTrue);
+    });
+
+    test('סמן-אות של הערה: מטריקות raised-sup + הפניית ריחוף', () {
+      final markers = RaisedMarkers.extract(
+        'בישול <a class="numbered-note-marker" '
+        'href="otzaria://note-marker?line=12&num=%D7%90">'
+        '<span class="$kRaisedSupClass">(א)</span></a> ועוד',
+      );
+      expect(markers, hasLength(1));
+      final marker = markers.single;
+      expect(marker.text, '(א)');
+      expect(marker.scale, kHtmlSmallerFontScale);
+      expect(marker.italic, isFalse);
+      expect(marker.clickable, isTrue);
+      expect(marker.useLinkColor, isFalse);
     });
 
     test('link-anchor: וריאנט, צבע קישור ומצב פעיל', () {

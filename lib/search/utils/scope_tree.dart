@@ -19,6 +19,10 @@ class ScopeTree {
   static final Expando<Future<ScopeTree>> _pendingBuilds =
       Expando<Future<ScopeTree>>('pendingScopeTree');
 
+  /// העץ שכבר נבנה לספרייה הזו, או null. אינו בונה — מי שרק צריך שם להצגה
+  /// לא ישלם בסריקת הספרייה.
+  static ScopeTree? cachedFor(Library library) => _cache[library];
+
   factory ScopeTree.fromLibrary(Library library) {
     return _cache[library] ??= ScopeTree._build(library);
   }

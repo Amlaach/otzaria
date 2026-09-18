@@ -69,7 +69,6 @@ import 'package:otzaria/utils/navigation/talmud_bavli_open_format.dart';
 import 'package:otzaria/utils/text/global_search_helper.dart';
 import 'package:otzaria/utils/text/ref_helper.dart';
 import 'package:pdfrx/pdfrx.dart';
-import 'package:provider/provider.dart';
 
 import 'pdf_search_screen.dart';
 
@@ -561,7 +560,6 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   _BookPageTurnDirection? _interactiveDirection;
   int? _interactiveTargetPage;
   bool _pdfViewerSuspended = false;
-  bool _readerFocusAndHideQueued = false;
   bool _bookHasCommentaryLinks = false;
 
   final PdfPaneToggleAnchor _paneToggleAnchor = PdfPaneToggleAnchor();
@@ -827,26 +825,6 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         scrollDelta: scrollDelta / _kScrollByMouseWheel,
       ),
     );
-    _scheduleReaderFocusAndHidePaneIfNeeded();
-  }
-
-  void _scheduleReaderFocusAndHidePaneIfNeeded() {
-    if (widget.tab.pinLeftPane.value ||
-        (Settings.getValue<bool>('key-pin-sidebar') ?? false) ||
-        _readerFocusAndHideQueued) {
-      return;
-    }
-
-    _readerFocusAndHideQueued = true;
-    Future.microtask(() {
-      _readerFocusAndHideQueued = false;
-      if (!mounted) {
-        return;
-      }
-
-      _setLeftPaneVisibility(false);
-      _pdfViewFocusNode.requestFocus();
-    });
   }
 
   int? _lastProcessedSearchSessionId;
@@ -1730,7 +1708,6 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                 widget.tab.pdfViewerController.handlePointerSignalEvent(
                   adjusted,
                 );
-                _scheduleReaderFocusAndHidePaneIfNeeded();
               },
               // בדסקטופ, גלילה בשתי אצבעות על לוח מגע מדויק מגיעה כמחוות
               // PointerPanZoom שעוקפות את מסלול אירועי הגלילה - נתבעות
@@ -1917,6 +1894,8 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         );
         if (mounted) {
           if (shouldShowLeftPane) {
+            // נעוצה: חלונית לא נעוצה הייתה מכסה את הספר בהצללה כבר בפתיחה.
+            widget.tab.pinLeftPane.value = true;
             _setLeftPaneVisibility(true);
           } else {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3265,10 +3244,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     // מראה של עץ הווידג'טים החי: תוכן לפני-סינון בתוך שכבה עם אותו
     // ColorFilter של מצב כהה — אחרת הצילום היה נבדל מהתצוגה בסיום האנימציה.
     final canvasRect = Rect.fromLTWH(0, 0, viewSize.width, viewSize.height);
-    final isDarkMode = Provider.of<SettingsBloc>(
-      context,
-      listen: false,
-    ).state.isDarkMode;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     if (isDarkMode) {
       canvas.saveLayer(
         canvasRect,
@@ -4321,32 +4297,6 @@ class _PdfBookScreenState extends State<PdfBookScreen>
               minCenterWidth: ReaderNavCenter.minTitleWidth,
               leadingItems: [
                 AppTopBarItem(
-                  flexible: true,
-                  widget: BlocBuilder<PdfBookBloc, PdfBookState>(
-                    buildWhen: (prev, curr) {
-                      if (prev is PdfBookLoaded && curr is PdfBookLoaded) {
-                        return prev.showLeftPane != curr.showLeftPane ||
-                            prev.sidebarWidth != curr.sidebarWidth;
-                      }
-                      return true;
-                    },
-                    builder: (context, state) => ValueListenableBuilder<bool>(
-                      valueListenable: widget.tab.pinLeftPane,
-                      builder: (context, isPinned, _) => NavPanelSearchBar(
-                        host: _searchHost,
-                        isOpen: state is PdfBookLoaded && state.showLeftPane,
-                        paneWidth: state is PdfBookLoaded
-                            ? state.sidebarWidth
-                            : 300.0,
-                        isPinned: isPinned,
-                        onTogglePin: MediaQuery.of(context).size.width >= 600
-                            ? () => widget.tab.pinLeftPane.value = !isPinned
-                            : null,
-                      ),
-                    ),
-                  ),
-                ),
-                AppTopBarItem(
                   widget: NavPanelToggleButton(
                     key: widget.enableTourTargets
                         ? pdfBookNavigationTourTargetKey
@@ -4356,6 +4306,18 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                         _setLeftPaneVisibility(!widget.tab.showLeftPane.value),
                   ),
                 ),
+                if (widget.tab.showLeftPane.value &&
+                    NavPanelSearch.isWide(context))
+                  AppTopBarItem(
+                    widget: ValueListenableBuilder<bool>(
+                      valueListenable: widget.tab.pinLeftPane,
+                      builder: (context, isPinned, _) => NavPanelPinButton(
+                        isPinned: isPinned,
+                        onToggle: () =>
+                            widget.tab.pinLeftPane.value = !isPinned,
+                      ),
+                    ),
+                  ),
               ],
               center: _buildPdfCenter(context),
               trailingItems: [
@@ -4397,57 +4359,61 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                       : false;
                   // כל חלונית מנוהלת בנפרד, כמו בספרי טקסט: חלונית הניווט
                   // (NavSidePanel) עוטפת את חלונית המפרשים, שעוטפת את הקורא.
-                  return NavSidePanel(
-                    isOpen: showLeftPane,
-                    alignment: AlignmentDirectional.centerEnd,
-                    paneWidth: leftPaneWidth,
-                    minMainContentWidth: 200,
-                    onClose: () => _setLeftPaneVisibility(false),
-                    isResizable: true,
-                    minPaneWidth: 200,
-                    maxPaneWidth: 600,
-                    autoHandleResponsiveVisibility: false,
-                    onLayoutModeChanged: (usesPushLayout) {
-                      _leftPaneUsesPushLayout = usesPushLayout;
-                    },
-                    onPaneWidthChanged: (nextWidth) {
-                      _bloc.add(pdf_events.UpdateSidebarWidth(nextWidth));
-                    },
-                    onPaneResizeEnd: () {
-                      final current = _bloc.state;
-                      if (current is PdfBookLoaded) {
-                        context.read<SettingsBloc>().add(
-                          UpdateSidebarWidth(current.sidebarWidth),
-                        );
-                      }
-                    },
-                    paneContent: _buildLeftPaneContent(showLeftPane),
-                    mainContent: AdaptiveSidePane(
-                      isOpen: showRightPane,
-                      alignment: AlignmentDirectional.centerStart,
-                      paneWidth: rightPaneWidth,
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: widget.tab.pinLeftPane,
+                    builder: (context, isPinned, _) => NavSidePanel(
+                      isOpen: showLeftPane,
+                      isPinned: isPinned,
+                      alignment: AlignmentDirectional.centerEnd,
+                      paneWidth: leftPaneWidth,
                       minMainContentWidth: 200,
-                      onClose: () => _setRightPaneVisibility(false),
+                      onClose: () => _setLeftPaneVisibility(false),
                       isResizable: true,
-                      minPaneWidth: 250,
+                      minPaneWidth: 200,
                       maxPaneWidth: 600,
                       autoHandleResponsiveVisibility: false,
                       onLayoutModeChanged: (usesPushLayout) {
-                        _rightPaneUsesPushLayout = usesPushLayout;
+                        _leftPaneUsesPushLayout = usesPushLayout;
                       },
                       onPaneWidthChanged: (nextWidth) {
-                        _bloc.add(pdf_events.UpdateRightPaneWidth(nextWidth));
+                        _bloc.add(pdf_events.UpdateSidebarWidth(nextWidth));
                       },
                       onPaneResizeEnd: () {
                         final current = _bloc.state;
                         if (current is PdfBookLoaded) {
                           context.read<SettingsBloc>().add(
-                            UpdateCommentaryPaneWidth(current.rightPaneWidth),
+                            UpdateSidebarWidth(current.sidebarWidth),
                           );
                         }
                       },
-                      paneContent: _buildRightPaneContent(),
-                      mainContent: _buildReaderMainContent(),
+                      paneContent: _buildLeftPaneContent(showLeftPane),
+                      mainContent: AdaptiveSidePane(
+                        isOpen: showRightPane,
+                        alignment: AlignmentDirectional.centerStart,
+                        paneWidth: rightPaneWidth,
+                        minMainContentWidth: 200,
+                        onClose: () => _setRightPaneVisibility(false),
+                        isResizable: true,
+                        minPaneWidth: 250,
+                        maxPaneWidth: 600,
+                        autoHandleResponsiveVisibility: false,
+                        onLayoutModeChanged: (usesPushLayout) {
+                          _rightPaneUsesPushLayout = usesPushLayout;
+                        },
+                        onPaneWidthChanged: (nextWidth) {
+                          _bloc.add(pdf_events.UpdateRightPaneWidth(nextWidth));
+                        },
+                        onPaneResizeEnd: () {
+                          final current = _bloc.state;
+                          if (current is PdfBookLoaded) {
+                            context.read<SettingsBloc>().add(
+                              UpdateCommentaryPaneWidth(current.rightPaneWidth),
+                            );
+                          }
+                        },
+                        paneContent: _buildRightPaneContent(),
+                        mainContent: _buildReaderMainContent(),
+                      ),
                     ),
                   );
                 },
@@ -4474,158 +4440,148 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       },
       child: Stack(
         children: [
-          NotificationListener<UserScrollNotification>(
-            onNotification: (notification) {
-              _scheduleReaderFocusAndHidePaneIfNeeded();
-              return false;
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                RepaintBoundary(
-                  key: _pdfViewportBoundaryKey,
-                  child: ColorFiltered(
-                    colorFilter: ColorFilter.mode(
-                      Colors.white,
-                      Provider.of<SettingsBloc>(
-                            context,
-                            listen: true,
-                          ).state.isDarkMode
-                          ? BlendMode.difference
-                          : BlendMode.dst,
-                    ),
-                    child: Stack(
-                      children: [
-                        _buildPdfViewerFromFile(_resolvedPdfPath),
-                        BlocBuilder<PdfBookBloc, PdfBookState>(
-                          buildWhen: (prev, curr) {
-                            if (prev is PdfBookLoaded &&
-                                curr is PdfBookLoaded) {
-                              return prev.isLoading != curr.isLoading ||
-                                  prev.loadSucceeded != curr.loadSucceeded;
-                            }
-                            return true;
-                          },
-                          builder: (context, state) {
-                            // בזמן auto-retry נשאר הספינר על המסך
-                            if (state is PdfBookError && !state.autoRetry) {
-                              return const SizedBox.shrink();
-                            }
-                            if (state is PdfBookError ||
-                                state is! PdfBookLoaded ||
-                                state.isLoading) {
-                              // RepaintBoundary סביב הספינר בלבד: בלי הבידוד
-                              // כל טיק שלו מרסטר מחדש את כל שכבת ה-viewport
-                              // (כולל ה-ColorFiltered) — יקר בטעינות ארוכות.
-                              return const Positioned.fill(
-                                child: ColoredBox(
-                                  color: AppColors.pageWhite,
-                                  child: Center(
-                                    child: RepaintBoundary(
-                                      child: CircularProgressIndicator(),
-                                    ),
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              RepaintBoundary(
+                key: _pdfViewportBoundaryKey,
+                child: ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                    Colors.white,
+                    Theme.of(context).brightness == Brightness.dark
+                        ? BlendMode.difference
+                        : BlendMode.dst,
+                  ),
+                  child: Stack(
+                    children: [
+                      _buildPdfViewerFromFile(_resolvedPdfPath),
+                      BlocBuilder<PdfBookBloc, PdfBookState>(
+                        buildWhen: (prev, curr) {
+                          if (prev is PdfBookLoaded && curr is PdfBookLoaded) {
+                            return prev.isLoading != curr.isLoading ||
+                                prev.loadSucceeded != curr.loadSucceeded;
+                          }
+                          return true;
+                        },
+                        builder: (context, state) {
+                          // בזמן auto-retry נשאר הספינר על המסך
+                          if (state is PdfBookError && !state.autoRetry) {
+                            return const SizedBox.shrink();
+                          }
+                          if (state is PdfBookError ||
+                              state is! PdfBookLoaded ||
+                              state.isLoading) {
+                            // RepaintBoundary סביב הספינר בלבד: בלי הבידוד
+                            // כל טיק שלו מרסטר מחדש את כל שכבת ה-viewport
+                            // (כולל ה-ColorFiltered) — יקר בטעינות ארוכות.
+                            return const Positioned.fill(
+                              child: ColoredBox(
+                                color: AppColors.pageWhite,
+                                child: Center(
+                                  child: RepaintBoundary(
+                                    child: CircularProgressIndicator(),
                                   ),
                                 ),
-                              );
-                            }
-                            if (!state.loadSucceeded) {
-                              return const Positioned.fill(
-                                child: Center(
-                                  child: Text('Failed to load PDF'),
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ],
-                    ),
+                              ),
+                            );
+                          }
+                          if (!state.loadSucceeded) {
+                            return const Positioned.fill(
+                              child: Center(
+                                child: Text('Failed to load PDF'),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                // שגיאת טעינה - מחוץ ל-ColorFiltered כדי שהצבעים יהיו נכונים
-                BlocBuilder<PdfBookBloc, PdfBookState>(
-                  buildWhen: (prev, curr) {
-                    final prevShow = prev is PdfBookError && !prev.autoRetry;
-                    final currShow = curr is PdfBookError && !curr.autoRetry;
-                    return prevShow != currShow;
-                  },
-                  builder: (context, state) {
-                    // הצג כפתור רק כשהכישלון הוא "אמיתי" (לא auto-retry)
-                    if (state is! PdfBookError || state.autoRetry) {
-                      return const SizedBox.shrink();
-                    }
-                    return Positioned.fill(
-                      child: ColoredBox(
-                        color: Theme.of(context).colorScheme.surface,
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                state.message,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
-                                ),
+              ),
+              // שגיאת טעינה - מחוץ ל-ColorFiltered כדי שהצבעים יהיו נכונים
+              BlocBuilder<PdfBookBloc, PdfBookState>(
+                buildWhen: (prev, curr) {
+                  final prevShow = prev is PdfBookError && !prev.autoRetry;
+                  final currShow = curr is PdfBookError && !curr.autoRetry;
+                  return prevShow != currShow;
+                },
+                builder: (context, state) {
+                  // הצג כפתור רק כשהכישלון הוא "אמיתי" (לא auto-retry)
+                  if (state is! PdfBookError || state.autoRetry) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned.fill(
+                    child: ColoredBox(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              state.message,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface,
                               ),
-                              const SizedBox(height: 16),
-                              ActionButton.recommended(
-                                text: 'נסה שוב',
-                                icon: FluentIcons.arrow_clockwise_24_regular,
-                                onPressed: () {
-                                  setState(() {
-                                    _pdfDocumentRef = _createDocumentRef();
-                                  });
-                                  _bloc.add(const pdf_events.RetryLoad());
-                                },
-                              ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 16),
+                            ActionButton.recommended(
+                              text: 'נסה שוב',
+                              icon: FluentIcons.arrow_clockwise_24_regular,
+                              onPressed: () {
+                                setState(() {
+                                  _pdfDocumentRef = _createDocumentRef();
+                                });
+                                _bloc.add(const pdf_events.RetryLoad());
+                              },
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                ),
-                _buildPageTurnOverlay(context),
-                // הלחצנים מעל שכבת האנימציה ומחוץ ל-boundary המצולם — כדי
-                // שיישארו גלויים ולחיצים גם בזמן דפדוף.
-                ListenableBuilder(
-                  listenable: widget.tab.pdfViewerController,
-                  builder: (context, _) => LayoutBuilder(
-                    builder: (context, constraints) =>
-                        _buildBookViewTurnButtons(context, constraints.biggest),
-                  ),
-                ),
-                ValueListenableBuilder<List<PdfOutlineNode>?>(
-                  valueListenable: widget.tab.outline,
-                  builder: (context, outline, _) => RepaintBoundary(
-                    child: PdfScrollbar(
-                      controller: widget.tab.pdfViewerController,
-                      orientation: ScrollbarOrientation.right,
-                      trackThickness: _verticalScrollbarGutter,
-                      thumbMinSize: 50.0,
-                      scrollBoundsBuilder: _currentVerticalScrollbarBounds,
-                      freezeThumb: _pageTurnTransition != null,
-                      outline: outline,
-                      bookTitle: widget.tab.book.title,
                     ),
+                  );
+                },
+              ),
+              _buildPageTurnOverlay(context),
+              // הלחצנים מעל שכבת האנימציה ומחוץ ל-boundary המצולם — כדי
+              // שיישארו גלויים ולחיצים גם בזמן דפדוף.
+              ListenableBuilder(
+                listenable: widget.tab.pdfViewerController,
+                builder: (context, _) => LayoutBuilder(
+                  builder: (context, constraints) =>
+                      _buildBookViewTurnButtons(context, constraints.biggest),
+                ),
+              ),
+              ValueListenableBuilder<List<PdfOutlineNode>?>(
+                valueListenable: widget.tab.outline,
+                builder: (context, outline, _) => RepaintBoundary(
+                  child: PdfScrollbar(
+                    controller: widget.tab.pdfViewerController,
+                    orientation: ScrollbarOrientation.right,
+                    trackThickness: _verticalScrollbarGutter,
+                    thumbMinSize: 50.0,
+                    scrollBoundsBuilder: _currentVerticalScrollbarBounds,
+                    freezeThumb: _pageTurnTransition != null,
+                    outline: outline,
+                    bookTitle: widget.tab.book.title,
                   ),
                 ),
-                Positioned(
-                  left: 0,
-                  right: _verticalScrollbarGutter + _scrollbarGutterGap,
-                  bottom: 0,
-                  child: RepaintBoundary(
-                    child: PdfHorizontalScrollbar(
-                      controller: widget.tab.pdfViewerController,
-                      trackThickness: _horizontalScrollbarGutter,
-                    ),
+              ),
+              Positioned(
+                left: 0,
+                right: _verticalScrollbarGutter + _scrollbarGutterGap,
+                bottom: 0,
+                child: RepaintBoundary(
+                  child: PdfHorizontalScrollbar(
+                    controller: widget.tab.pdfViewerController,
+                    trackThickness: _horizontalScrollbarGutter,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           BlocBuilder<PdfBookBloc, PdfBookState>(
             buildWhen: (prev, curr) {

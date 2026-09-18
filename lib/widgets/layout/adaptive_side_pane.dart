@@ -6,7 +6,7 @@ import 'package:otzaria/widgets/layout/reading_area_width.dart';
 import 'package:otzaria/widgets/layout/resizable_drag_handle.dart';
 
 /// חלונית צד אדפטיבית:
-/// במסך רחב דוחקת תוכן, ובמסך צר נפתחת כ-overlay.
+/// במסך רחב דוחקת תוכן (או מרחפת מעליו — [floatOverContent]), ובמסך צר נפתחת כ-overlay.
 ///
 /// כללי ברירת מחדל:
 /// - תוכן החלונית מקבל שכבת רקע נוספת של חלון (solidPanelBackground).
@@ -55,6 +55,10 @@ class AdaptiveSidePane extends StatefulWidget {
   /// עליונה מרובעת), כך שהיא נראית כהמשך של הסרגל העליון. שאר הפינות מעוגלות.
   final bool attachToTopEdge;
 
+  /// במצב רחב: החלונית מרחפת מעל התוכן עם הצללה (לחיצה עליה סוגרת) במקום
+  /// לדחוק אותו — כך פתיחה וסגירה אינן משנות את שבירת השורות.
+  final bool floatOverContent;
+
   const AdaptiveSidePane({
     super.key,
     required this.isOpen,
@@ -78,6 +82,7 @@ class AdaptiveSidePane extends StatefulWidget {
     this.autoHandleResponsiveVisibility = true,
     this.scrollbarTopMargin,
     this.attachToTopEdge = false,
+    this.floatOverContent = false,
   });
 
   @override
@@ -99,6 +104,16 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
   // זה מונע בנייה כבדה של התוכן (TocViewer וכו') כשהפאנל סגור מההתחלה.
   // אחרי הפתיחה הראשונה, התוכן נשמר במגדל הוויידג'טים גם בזמן סגירה כדי לשמור state.
   bool _paneEverOpened = false;
+
+  // שלוש הפריסות בונות עצים שונים; המפתח מעביר את התוכן ביניהן בלי לבנות אותו
+  // מחדש — אחרת נעיצה/ביטול נעיצה מאפסים את מיקום הקריאה.
+  final GlobalKey _mainContentKey = GlobalKey();
+  final GlobalKey _paneContentKey = GlobalKey();
+
+  /// תוכן החלונית עם מפתח קבוע — נעיצה מעבירה אותו בין הפריסות בלי לבנות מחדש
+  /// (גלילה, ענפים פתוחים ושדה חיפוש פתוח נשמרים).
+  Widget get _paneContent =>
+      KeyedSubtree(key: _paneContentKey, child: widget.paneContent);
 
   static const double _kWideTopGap = 14;
   static const double _kWideBottomGap = 10;
@@ -311,12 +326,21 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
           _lastHadRoomForSideBySide = hasRoomForSideBySide;
         }
 
+        final usesPushLayout = hasRoomForSideBySide && !widget.floatOverContent;
         if (widget.onLayoutModeChanged != null &&
-            _lastReportedLayoutMode != hasRoomForSideBySide) {
-          _lastReportedLayoutMode = hasRoomForSideBySide;
+            _lastReportedLayoutMode != usesPushLayout) {
+          _lastReportedLayoutMode = usesPushLayout;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) widget.onLayoutModeChanged!(hasRoomForSideBySide);
+            if (mounted) widget.onLayoutModeChanged!(usesPushLayout);
           });
+        }
+
+        if (hasRoomForSideBySide && widget.floatOverContent) {
+          return _buildFloatingWideLayout(
+            context,
+            paneOnRight: paneOnRight,
+            areaWidth: constraints.maxWidth,
+          );
         }
 
         if (hasRoomForSideBySide) {
@@ -340,9 +364,13 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
   /// ממנו ולא ישתנה כשהחלונית נפתחת ודוחקת את התוכן. פאנל מקונן לא דורס את
   /// הבסיס של הפאנל שמעליו — הרוחב שהוא רואה כבר צומצם ע"י אותו פאנל.
   Widget _mainContentWithAreaWidth(BuildContext context, double areaWidth) {
+    final content = KeyedSubtree(
+      key: _mainContentKey,
+      child: widget.mainContent,
+    );
     final base = ReadingAreaWidth.maybeOf(context) ?? areaWidth;
-    if (!base.isFinite) return widget.mainContent;
-    return ReadingAreaWidth(width: base, child: widget.mainContent);
+    if (!base.isFinite) return content;
+    return ReadingAreaWidth(width: base, child: content);
   }
 
   Widget _buildWideLayout(
@@ -388,10 +416,10 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
           final widePaneContent = widget.widePaneBuilder != null
               ? widget.widePaneBuilder!(
                   context,
-                  widget.paneContent,
+                  _paneContent,
                   currentWidth,
                 )
-              : widget.paneContent;
+              : _paneContent;
           paneSlotContent = Padding(
             padding: EdgeInsetsDirectional.only(
               top: _wideTopGap,
@@ -485,6 +513,93 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
     );
   }
 
+  /// הצללה שמכסה את התוכן כשהחלונית פתוחה מעליו; לחיצה עליה סוגרת.
+  Widget _buildScrim(BuildContext context) {
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: widget.onClose,
+        child: AnimatedOpacity(
+          duration: AppTokens.animPanelOpacity,
+          opacity: widget.isOpen ? 1.0 : 0.0,
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.30),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingWideLayout(
+    BuildContext context, {
+    required bool paneOnRight,
+    required double areaWidth,
+  }) {
+    final showHandle = widget.isResizable && widget.onPaneWidthChanged != null;
+    final outreach = showHandle ? handleHitOutreach(context) : 0.0;
+    final closedOffset = paneOnRight ? const Offset(1, 0) : const Offset(-1, 0);
+    final pane = _paneEverOpened
+        ? _buildPaneShell(
+            context,
+            _paneContent,
+            paneOnRight: paneOnRight,
+            attached: widget.attachToTopEdge,
+          )
+        : const SizedBox.shrink();
+
+    // ClipRect: החלונית מחליקה מחוץ לאזור, ובתצוגה מפוצלת אסור לה לצוף מעל השכנה.
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(child: _mainContentWithAreaWidth(context, areaWidth)),
+          IgnorePointer(
+            ignoring: !widget.isOpen,
+            child: Stack(
+              children: [
+                _buildScrim(context),
+                ValueListenableBuilder<double>(
+                  valueListenable: _livePaneWidth,
+                  builder: (context, liveWidth, _) {
+                    final width = liveWidth.clamp(0.0, areaWidth);
+                    final slide = AnimatedSlide(
+                      duration: AppTokens.animPanelSlide,
+                      curve: Curves.easeInOut,
+                      offset: widget.isOpen ? Offset.zero : closedOffset,
+                      child: pane,
+                    );
+                    return Stack(
+                      children: [
+                        Positioned(
+                          top: 0,
+                          bottom: 0,
+                          right: paneOnRight ? 0 : null,
+                          left: paneOnRight ? null : 0,
+                          width: width,
+                          child: slide,
+                        ),
+                        if (showHandle && widget.isOpen)
+                          Positioned(
+                            top: 0,
+                            bottom: 0,
+                            left: paneOnRight
+                                ? areaWidth - width - outreach
+                                : null,
+                            right: paneOnRight
+                                ? null
+                                : areaWidth - width - outreach,
+                            child: _buildResizeHandle(paneOnRight, true),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNarrowLayout(
     BuildContext context, {
     required bool paneOnRight,
@@ -502,7 +617,7 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
             context,
             (widget.narrowPaneBuilder ?? _defaultNarrowPaneBuilder).call(
               context,
-              widget.paneContent,
+              _paneContent,
             ),
             paneOnRight: paneOnRight,
           )
@@ -518,20 +633,7 @@ class _AdaptiveSidePaneState extends State<AdaptiveSidePane> {
           ignoring: !widget.isOpen,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: widget.onClose,
-                  child: AnimatedOpacity(
-                    duration: AppTokens.animPanelOpacity,
-                    opacity: widget.isOpen ? 1.0 : 0.0,
-                    child: ColoredBox(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.scrim.withValues(alpha: 0.30),
-                    ),
-                  ),
-                ),
-              ),
+              _buildScrim(context),
               ValueListenableBuilder<double>(
                 valueListenable: _livePaneWidth,
                 builder: (context, liveWidth, _) {

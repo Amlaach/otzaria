@@ -1094,6 +1094,7 @@
   "אותיות הציון שבגוף הטקסט, למשל (א)": "The marker letters inside the text, e.g. (א)",
   "ספרים": "Books",
   "כל הספרים": "All Books",
+  "{count} פריטים": "{count} items",
   "תנ\"ך": "Tanach",
   "יעד": "Target",
   "גוף הספר": "Main Text",

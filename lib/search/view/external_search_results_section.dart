@@ -18,6 +18,7 @@ import 'package:otzaria/search/bloc/search_bloc.dart';
 import 'package:otzaria/search/bloc/search_state.dart';
 import 'package:otzaria/search/models/external_search_status.dart';
 import 'package:otzaria/search/models/external_search_summary.dart';
+import 'package:otzaria/search/models/search_match_policy.dart';
 import 'package:otzaria/search/models/search_preview_target.dart';
 import 'package:otzaria/search/search_query_builder.dart';
 import 'package:otzaria/search/utils/facet_helper.dart';
@@ -83,6 +84,13 @@ String externalFilterCategoryOf(String facet) {
   }
   return segments.isEmpty ? '/' : '/${segments.join('/')}';
 }
+
+/// מדיניות ההתאמה שנשלחת לספק — רק במצב המתקדם, כמו במנוע המובנה.
+@visibleForTesting
+SearchMatchPolicy externalMatchPolicyOf(SearchState state) =>
+    state.isAdvancedSearchEnabled
+    ? state.configuration.matchPolicy
+    : SearchMatchPolicy.standard;
 
 /// אימות נתיב קטגוריה שהספק צירף לרשומת אינדקס מול עץ הספרייה: נתיב קיים
 /// מתקבל כמות שהוא; אחרת נופלים לקטגוריית-העל שלו אם היא קיימת; אחרת null
@@ -280,6 +288,7 @@ class _ExternalSearchResultsSectionState
         ? ''
         : '${active.$1} $query '
               '${state.configuration.searchMode.name} ${state.distance} '
+              '${jsonEncode(externalMatchPolicyOf(state).toJson())} '
               '${jsonEncode(_globalOptionsOf(state))} '
               '${jsonEncode(_wordOptionsOf(state))}';
     final filterFacets = signature.isEmpty
@@ -419,6 +428,7 @@ class _ExternalSearchResultsSectionState
         query: state.searchQuery.trim(),
         mode: state.configuration.searchMode.name,
         distance: state.distance,
+        matchPolicy: externalMatchPolicyOf(state),
         offset: offset,
         limit: _pageSize,
         ids: idsSlice,

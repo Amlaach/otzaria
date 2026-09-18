@@ -180,12 +180,7 @@ void main() {
     );
 
     expect(host.activeTab, 1);
-    expect(host.active, isNotNull, reason: 'סרגל החיפוש שמעל החלונית פעיל');
-    expect(
-      find.byType(TextField),
-      findsNothing,
-      reason: 'השדה מורם לסרגל ואינו מצויר בחלונית',
-    );
+    expect(find.byType(TextField), findsOneWidget, reason: 'השדה בתוך החלונית');
   });
 
   testWidgets('הרחבת המסך: הלשונית האוטומטית מסומנת בדיעבד (issue #1063)', (
@@ -194,12 +189,11 @@ void main() {
     await pumpHarness(tester, size: const Size(412, 900), initialIndex: 1);
     expect(host.activeTab, 0, reason: 'במסך צר הלשונית האוטומטית אינה מסומנת');
 
-    // סיבוב לרוחב / הגדלת החלון — השדה עולה לסרגל, ומעתה יש לסמן.
+    // סיבוב לרוחב / הגדלת החלון — מעתה יש לסמן.
     tester.view.physicalSize = const Size(900, 412);
     await tester.pumpAndSettle();
 
     expect(host.activeTab, 1);
-    expect(host.active, isNotNull, reason: 'סרגל החיפוש שמעל החלונית פעיל');
     expect(focusNode.hasFocus, isFalse, reason: 'סימון אינו בקשת פוקוס');
   });
 }

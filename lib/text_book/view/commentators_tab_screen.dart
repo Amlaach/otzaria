@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/shortcuts/shortcut_helper.dart';
@@ -376,7 +375,6 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
   bool _pinLeftPane = false;
   // רשימת המפרשים הנבחרים (עצמאית לחלונית זו, מסונכרנת פעם אחת עם מקור הפתיחה)
   List<String>? _selectedCommentatorsOverride;
-  bool _navPaneAutoCloseQueued = false;
   final _commentarySearchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _tocSearchController = TextEditingController();
@@ -708,6 +706,7 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
                           children: [
                             NavSidePanel(
                               isOpen: _navPaneOpen || _pinLeftPane,
+                              isPinned: _pinLeftPane,
                               onClose: () {
                                 if (!_pinLeftPane) {
                                   setState(() => _navPaneOpen = false);
@@ -752,60 +751,35 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
     TextBookLoaded state,
     List<int>? effectiveIndexes,
   ) {
+    // אין SelectionArea חיצוני כאן: CommentaryListBase עוטף את הרשימה כולה
+    // ב-SelectionArea יחיד משלו. קינון היה הופך את תוכן המפרשים ל"בלוק אטום"
+    // שבחירת מקלדת (Shift+חץ) מדלגת עליו (עברה רק על שמות המפרשים).
     Widget listContentWithWidth(
       double? contentMaxWidth,
-    ) => NotificationListener<UserScrollNotification>(
-      onNotification: (notification) {
-        if (notification.direction != ScrollDirection.idle &&
-            _navPaneOpen &&
-            !_pinLeftPane &&
-            !_navPaneAutoCloseQueued) {
-          _navPaneAutoCloseQueued = true;
-          Future.microtask(() {
-            if (!mounted) {
-              _navPaneAutoCloseQueued = false;
-              return;
-            }
-            if (_navPaneOpen && !_pinLeftPane) {
-              setState(() {
-                _navPaneOpen = false;
-                _navPaneAutoCloseQueued = false;
-              });
-            } else {
-              _navPaneAutoCloseQueued = false;
-            }
-          });
-        }
-        return false;
-      },
-      // אין SelectionArea חיצוני כאן: CommentaryListBase עוטף את הרשימה כולה
-      // ב-SelectionArea יחיד משלו. קינון היה הופך את תוכן המפרשים ל"בלוק אטום"
-      // שבחירת מקלדת (Shift+חץ) מדלגת עליו (עברה רק על שמות המפרשים).
-      child: BlocBuilder<SettingsBloc, SettingsState>(
-        builder: (context, settingsState) => CommentaryListBase(
-          key: _commentaryKey,
-          openBookCallback: widget.openBookCallback,
-          fontSize: settingsState.commentatorsFontSize,
-          indexes: effectiveIndexes,
-          showSearch: true,
-          autofocus: true,
-          // shrinkWrap היה כופה layout של כל המפרשים בפריים אחד — פתיחה
-          // איטית מאוד על קטע עם הרבה מפרשים (issue #844).
-          shrinkWrap: false,
-          useAvailableCommentators: _selectedCommentatorsOverride == null,
-          selectedCommentatorsOverride: _selectedCommentatorsOverride,
-          onSelectedCommentatorsOverrideChanged: _updateSelectedCommentators,
-          onFilterOpenRequested: _openCommentatorsSelectionPane,
-          externalSearchController: _commentarySearchController,
-          externalCurrentIndexNotifier: _externalCurrentIndex,
-          externalTotalResultsNotifier: _externalTotalResults,
-          externalSearchResultsByPathNotifier: _externalSearchResultsByPath,
-          externalSearchSnippetsNotifier: _externalSearchSnippets,
-          externalAllExpandedNotifier: _allExpandedInChild,
-          typeSelection: _typeSelection,
-          personalNotesLoader: loadStoredPersonalNotes,
-          contentMaxWidth: contentMaxWidth,
-        ),
+    ) => BlocBuilder<SettingsBloc, SettingsState>(
+      builder: (context, settingsState) => CommentaryListBase(
+        key: _commentaryKey,
+        openBookCallback: widget.openBookCallback,
+        fontSize: settingsState.commentatorsFontSize,
+        indexes: effectiveIndexes,
+        showSearch: true,
+        autofocus: true,
+        // shrinkWrap היה כופה layout של כל המפרשים בפריים אחד — פתיחה
+        // איטית מאוד על קטע עם הרבה מפרשים (issue #844).
+        shrinkWrap: false,
+        useAvailableCommentators: _selectedCommentatorsOverride == null,
+        selectedCommentatorsOverride: _selectedCommentatorsOverride,
+        onSelectedCommentatorsOverrideChanged: _updateSelectedCommentators,
+        onFilterOpenRequested: _openCommentatorsSelectionPane,
+        externalSearchController: _commentarySearchController,
+        externalCurrentIndexNotifier: _externalCurrentIndex,
+        externalTotalResultsNotifier: _externalTotalResults,
+        externalSearchResultsByPathNotifier: _externalSearchResultsByPath,
+        externalSearchSnippetsNotifier: _externalSearchSnippets,
+        externalAllExpandedNotifier: _allExpandedInChild,
+        typeSelection: _typeSelection,
+        personalNotesLoader: loadStoredPersonalNotes,
+        contentMaxWidth: contentMaxWidth,
       ),
     );
 
@@ -988,16 +962,6 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
       minCenterWidth: ReaderNavCenter.minTitleWidth,
       leadingItems: [
         AppTopBarItem(
-          flexible: true,
-          widget: NavPanelSearchBar(
-            host: _searchHost,
-            isOpen: _navPaneOpen || _pinLeftPane,
-            paneWidth: _kNavPaneWidth,
-            isPinned: _pinLeftPane,
-            onTogglePin: () => setState(() => _pinLeftPane = !_pinLeftPane),
-          ),
-        ),
-        AppTopBarItem(
           widget: NavPanelToggleButton(
             isOpen: _navPaneOpen,
             onToggle: () {
@@ -1008,6 +972,13 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
             },
           ),
         ),
+        if (_navPaneOpen || _pinLeftPane)
+          AppTopBarItem(
+            widget: NavPanelPinButton(
+              isPinned: _pinLeftPane,
+              onToggle: () => setState(() => _pinLeftPane = !_pinLeftPane),
+            ),
+          ),
       ],
       center: ReaderNavCenter(
         title: Text(
@@ -1406,97 +1377,86 @@ class _CommentatorsTabScreenState extends State<CommentatorsTabScreen>
       onClear: () {},
     );
 
-    return NavPanelSearchPublisher(
+    return NavPanelCollapsibleSearch(
       delegate: delegate,
-      // Builder: הבדיקה חייבת context שמתחת ל-NavPanelSearchScope — ה-context
-      // של המסך שמגיע כפרמטר תמיד מחזיר "לא מורם" והשדה היה מוצג פעמיים.
-      child: Builder(
-        builder: (context) => Column(
-          children: [
-            if (!NavPanelSearch.isHoisted(context))
-              NavPanelLocalSearchField(delegate: delegate),
-            Expanded(
-              child: ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _tocSearchController,
-                builder: (context, val, _) {
-                  final query = val.text;
-                  final filteredChapters = query.isEmpty
-                      ? chapters
-                      : chapters
-                            .where((ch) => ch.text.contains(query))
-                            .toList();
-                  final items = [
-                    _TocListItem.header(title),
-                    ..._buildVisibleTocItems(
-                      filteredChapters,
-                      chapters,
-                      content,
-                    ),
-                  ];
-                  _navItems = items;
-                  return NavTreeFocusGroup(
-                    child: ScrollablePositionedList.builder(
-                      itemScrollController: _navScrollController,
-                      itemCount: items.length,
-                      padding: kNavTreeListPadding,
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        if (item.isHeader) {
-                          return NavTreeHeader(title: item.text!);
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _tocSearchController,
+        builder: (context, val, _) {
+          final query = val.text;
+          final filteredChapters = query.isEmpty
+              ? chapters
+              : chapters.where((ch) => ch.text.contains(query)).toList();
+          final items = [
+            _TocListItem.header(title),
+            ..._buildVisibleTocItems(
+              filteredChapters,
+              chapters,
+              content,
+            ),
+          ];
+          _navItems = items;
+          return NavTreeFocusGroup(
+            child: ScrollablePositionedList.builder(
+              itemScrollController: _navScrollController,
+              itemCount: items.length,
+              padding: kNavTreeListPadding,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                if (item.isHeader) {
+                  return NavTreeHeader(
+                    title: item.text!,
+                    trailing: const NavPanelSearchToggle(),
+                  );
+                }
+                final isGroupStart = index == 1;
+                final isGroupEnd = index == items.length - 1;
+                if (item.isChapter) {
+                  final ch = item.chapter!;
+                  return NavTreeGroupCard(
+                    isGroupStart: isGroupStart,
+                    isGroupEnd: isGroupEnd,
+                    child: NavTreeTile.category(
+                      title: ch.text,
+                      level: 0,
+                      isSelected: ch == _selectedChapter,
+                      isExpanded: ch == _navExpandedChapter,
+                      hasChildren: true,
+                      // לחיצה על גוף השורה בוחרת את הפרק (טעינת מפרשים);
+                      // הצ'ברן משנה רק את תצוגת תתי-הפריטים בניווט.
+                      onTap: () {
+                        // no-op כשהפרק כבר נבחר — מונע טעינה כפולה של links.
+                        final current = debugNavSelection;
+                        if (identical(
+                          reduceChapterBodyTap(current, ch),
+                          current,
+                        )) {
+                          return;
                         }
-                        final isGroupStart = index == 1;
-                        final isGroupEnd = index == items.length - 1;
-                        if (item.isChapter) {
-                          final ch = item.chapter!;
-                          return NavTreeGroupCard(
-                            isGroupStart: isGroupStart,
-                            isGroupEnd: isGroupEnd,
-                            child: NavTreeTile.category(
-                              title: ch.text,
-                              level: 0,
-                              isSelected: ch == _selectedChapter,
-                              isExpanded: ch == _navExpandedChapter,
-                              hasChildren: true,
-                              // לחיצה על גוף השורה בוחרת את הפרק (טעינת מפרשים);
-                              // הצ'ברן משנה רק את תצוגת תתי-הפריטים בניווט.
-                              onTap: () {
-                                // no-op כשהפרק כבר נבחר — מונע טעינה כפולה של links.
-                                final current = debugNavSelection;
-                                if (identical(
-                                  reduceChapterBodyTap(current, ch),
-                                  current,
-                                )) {
-                                  return;
-                                }
-                                _onChapterSelected(ch, chapters);
-                              },
-                              onToggleExpand: () => _applyNavSelection(
-                                reduceChevronTap(debugNavSelection, ch),
-                                clearMulti: false,
-                              ),
-                            ),
-                          );
-                        }
-
-                        return NavTreeGroupCard(
-                          isGroupStart: isGroupStart,
-                          isGroupEnd: isGroupEnd,
-                          child: _buildSubItem(
-                            context,
-                            text: item.text!,
-                            isSelected: item.isSelected,
-                            onTap: item.onTap!,
-                            isAllChapter: item.isAllChapter,
-                          ),
-                        );
+                        _onChapterSelected(ch, chapters);
                       },
+                      onToggleExpand: () => _applyNavSelection(
+                        reduceChevronTap(debugNavSelection, ch),
+                        clearMulti: false,
+                      ),
                     ),
                   );
-                },
-              ),
+                }
+
+                return NavTreeGroupCard(
+                  isGroupStart: isGroupStart,
+                  isGroupEnd: isGroupEnd,
+                  child: _buildSubItem(
+                    context,
+                    text: item.text!,
+                    isSelected: item.isSelected,
+                    onTap: item.onTap!,
+                    isAllChapter: item.isAllChapter,
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

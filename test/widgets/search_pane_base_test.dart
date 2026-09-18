@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:otzaria/widgets/navigation/search_pane_base.dart';
+import 'package:otzaria/widgets/text/rtl_text_field.dart';
 
 void main() {
-  // הפעולות בשדה חייבות להופיע גם בחלונית ניווט: שם השדה המקומי אינו
-  // מצויר כלל, והשדה שבסרגל שמעליה הוא היחיד שנראה.
-  testWidgets('searchFieldActions מוצגות גם כשהשדה מורם לסרגל החלונית', (
+  testWidgets('בתוך חלונית ניווט השדה והפעולות שלו מצוירים בחלונית עצמה', (
     tester,
   ) async {
     final controller = TextEditingController();
@@ -22,42 +21,28 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Column(
-            children: [
-              SizedBox(
-                height: 56,
-                child: NavPanelSearchBar(
-                  host: host,
-                  isOpen: true,
-                  paneWidth: 300,
-                  isPinned: false,
-                ),
+          body: NavPanelSearchScope(
+            host: host,
+            child: NavPanelSearchSlot(
+              index: 0,
+              child: SearchPaneBase(
+                searchController: controller,
+                focusNode: focusNode,
+                resultsWidget: const SizedBox.shrink(),
+                isNoResults: false,
+                resetSearchCallback: () {},
+                searchFieldActions: const [
+                  Icon(Icons.abc, key: ValueKey('wholeWordToggle')),
+                ],
               ),
-              Expanded(
-                child: NavPanelSearchScope(
-                  host: host,
-                  child: NavPanelSearchSlot(
-                    index: 0,
-                    child: SearchPaneBase(
-                      searchController: controller,
-                      focusNode: focusNode,
-                      resultsWidget: const SizedBox.shrink(),
-                      isNoResults: false,
-                      resetSearchCallback: () {},
-                      searchFieldActions: const [
-                        Icon(Icons.abc, key: ValueKey('wholeWordToggle')),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
     await tester.pump();
 
+    expect(find.byType(RtlTextField), findsOneWidget);
     expect(find.byKey(const ValueKey('wholeWordToggle')), findsOneWidget);
   });
 

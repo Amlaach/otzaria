@@ -6,6 +6,7 @@ import 'package:otzaria/search/utils/facet_helper.dart';
 import 'package:otzaria/search/utils/search_catalogue_order_helper.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:otzaria/widgets/lists/nav_tree_tile.dart';
+import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:otzaria/utils/ui/book_format_icon.dart';
 
@@ -52,6 +53,9 @@ class SearchNavigationTree extends StatelessWidget {
   /// (מיד אחרי כותרת השורש) במקום בסופו.
   final bool extraCategoriesFirst;
 
+  /// פעולה נוספת בכותרת השורש, ליד אייקון החיפוש (למשל סינון לפי מאפיין).
+  final Widget? rootHeaderAction;
+
   const SearchNavigationTree({
     super.key,
     required this.library,
@@ -68,6 +72,7 @@ class SearchNavigationTree extends StatelessWidget {
     required this.onClearAll,
     this.extraRootCategories = const [],
     this.extraCategoriesFirst = false,
+    this.rootHeaderAction,
   });
 
   static const double _iconBoxSize = 26;
@@ -255,6 +260,10 @@ class SearchNavigationTree extends StatelessWidget {
           isSelected: !_anyFilterActive,
           onTap: () => onSetFacet('/'),
           onClearFilter: _anyFilterActive ? onClearAll : null,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [const NavPanelSearchToggle(), ?rootHeaderAction],
+          ),
         );
       case _FlatRowKind.category:
         return _wrapInGroupCard(

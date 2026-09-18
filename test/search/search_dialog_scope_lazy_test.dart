@@ -224,10 +224,10 @@ Future<void> main() async {
       expectScanFree(small, large, 'היקף שמור');
     });
 
-    testWidgets('תווית הצ׳יפ מדויקת גם בבחירה שמורה, בלי לחסום את הפתיחה', (
+    testWidgets('תווית הצ׳יפ היא שם הספר הנבחר, בלי לחסום את הפתיחה', (
       tester,
     ) async {
-      // התווית נגזרת מה-facet עצמו ואינה תלויה בבניית העץ.
+      // התווית נגזרת מה-facet עצמו (או מעץ שכבר נבנה) ולעולם אינה בונה אותו.
       final library = _buildLibrary(200);
       final libraryBloc = _MockLibraryBloc();
       whenListen(
@@ -259,10 +259,91 @@ Future<void> main() async {
         ),
       );
 
-      // ספר בודד שאינו ספר יסוד → "כל הספרים", ולא תווית ריקה או קריסה.
+      // ספר בודד → שמו, ולא "כל הספרים" (issue #1435).
       await tester.pump();
-      expect(find.text('כל הספרים'), findsOneWidget);
+      expect(find.text('ספר 0'), findsOneWidget);
+      expect(find.text('כל הספרים'), findsNothing);
       expect(find.text('ספרי יסוד'), findsNothing);
+    });
+
+    testWidgets('תווית הצ׳יפ לספר בודד אינה תלויה בעץ שנבנה', (tester) async {
+      // אותו מסלול בלי שהעץ נבנה מעולם: השם מגיע ממפתח ה-facet עצמו.
+      final library = _buildLibrary(200);
+      final libraryBloc = _MockLibraryBloc();
+      whenListen(
+        libraryBloc,
+        const Stream<LibraryState>.empty(),
+        initialState: LibraryState(library: library),
+      );
+      addTearDown(libraryBloc.close);
+
+      final book = library
+          .subCategories
+          .first
+          .subCategories
+          .first
+          .subCategories
+          .first
+          .books
+          .first;
+      final bookFacet = FacetHelper.buildBookFacet(
+        FacetHelper.resolveCategoryPath(book),
+        book,
+      );
+
+      await tester.binding.setSurfaceSize(const Size(600, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: BlocProvider<LibraryBloc>.value(
+            value: libraryBloc,
+            child: Scaffold(
+              body: SearchScopeMenuButton(
+                selected: {bookFacet},
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(book.title), findsOneWidget);
+      expect(find.text('כל הספרים'), findsNothing);
+    });
+
+    testWidgets('בחירה של כמה פריטים מוצגת כמונה', (tester) async {
+      final libraryBloc = _MockLibraryBloc();
+      whenListen(
+        libraryBloc,
+        const Stream<LibraryState>.empty(),
+        initialState: LibraryState(library: _buildLibrary(200)),
+      );
+      addTearDown(libraryBloc.close);
+
+      await tester.binding.setSurfaceSize(const Size(600, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: BlocProvider<LibraryBloc>.value(
+            value: libraryBloc,
+            child: Scaffold(
+              body: SearchScopeMenuButton(
+                selected: const {'/ראש 0', '/ראש 1'},
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('2 פריטים'), findsOneWidget);
+      expect(find.text('כל הספרים'), findsNothing);
     });
 
     testWidgets('התווית "ספרי יסוד" מגיעה מה-facet הממדי, בלי ספרייה טעונה', (

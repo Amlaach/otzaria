@@ -33,6 +33,14 @@ void main() {
       expect(source, contains('LaazCommentarySubBlock.forLine'));
     });
 
+    test('מחווט במסך העיון הראשי כשהספר עצמו הוא רש"י (issue #885)', () {
+      final source = contents(
+        'lib/text_book/view/combined_view/combined_book_screen.dart',
+      );
+      expect(source, isNotNull);
+      expect(source, contains('LaazCommentarySubBlock.forLine'));
+    });
+
     test('הטקסט וה-PDF צורכים את אותו CommentaryContent המשותף', () {
       // בלעדי זה שני הצדדים חוזרים להתפצל, וה-PDF מאבד את הלעז (וגם את
       // הטעמים, הדגשת עוגן הציטוט וזהות ספר היעד) בשקט.

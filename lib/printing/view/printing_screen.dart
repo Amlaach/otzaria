@@ -1532,6 +1532,8 @@ class _PrintingScreenState extends State<PrintingScreen> {
           Navigator.of(context).pop(true);
         }
       case _PrintDestination.word:
+        await ExportRestrictionService.ensureLoaded();
+        if (!mounted) return;
         if (_editableExportRestricted) {
           UiSnack.showError(PdfMessages.editableExportRestricted);
           return;

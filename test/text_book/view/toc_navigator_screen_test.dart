@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/widgets/misc/expanding_chevron.dart';
 import 'package:otzaria/models/books.dart';
@@ -335,7 +336,7 @@ Future<void> main() async {
       );
       await tester.pump();
 
-      await tester.enterText(find.byType(TextField), 'seif');
+      await _typeInSearch(tester, 'seif');
       await tester.pump();
       // הסינון מוחל בהשהיה כדי לא לחסום את ההקלדה.
       await tester.pump(const Duration(milliseconds: 300));
@@ -392,7 +393,7 @@ Future<void> main() async {
       // הקלדה תו-אחר-תו בקצב מהיר מהשהיית הסינון. השאילתה נשארת קצרה
       // מהכותרת שהיא תואמת, כך ש-find.text לא יתפוס גם את שדה החיפוש.
       for (final q in ['a', 'al', 'alp']) {
-        await tester.enterText(find.byType(TextField), q);
+        await _typeInSearch(tester, q);
         await tester.pump(const Duration(milliseconds: 40));
       }
 
@@ -439,7 +440,7 @@ Future<void> main() async {
       );
       await tester.pump();
 
-      await tester.enterText(find.byType(TextField), 'al');
+      await _typeInSearch(tester, 'al');
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('beta'), findsNothing);
 
@@ -471,7 +472,7 @@ Future<void> main() async {
             ?.findAncestorWidgetOfExactType<TextField>(),
         isNotNull,
       );
-      await tester.enterText(find.byType(TextField), 'alp');
+      await _typeInSearch(tester, 'alp');
       await tester.pump(const Duration(milliseconds: 300));
 
       // שינוי שאילתה מאפס את סימון הדפדוף — חוזרת הדגשת מיקום הקריאה.
@@ -621,7 +622,7 @@ Future<void> main() async {
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'unique');
+      await _typeInSearch(tester, 'unique');
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(SingleChildScrollView), findsOneWidget);
 
@@ -813,4 +814,14 @@ Future<void> main() async {
       reason: 'setState בתחילת/סוף גלילה גורם לפריים ארוך שקוטע את האינרציה',
     );
   });
+}
+
+/// השדה בלשונית הניווט סגור עד הלחיצה על אייקון החיפוש שבכותרת.
+Future<void> _typeInSearch(WidgetTester tester, String text) async {
+  if (find.byType(TextField).evaluate().isEmpty) {
+    await tester.tap(find.byType(NavPanelSearchToggle));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+  await tester.enterText(find.byType(TextField), text);
 }

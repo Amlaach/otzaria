@@ -204,9 +204,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
   bool _includePersonalBooks =
       Settings.getValue<bool>(
         FindRefDialog._keyIncludePersonalBooks,
-        defaultValue: false,
+        defaultValue: true,
       ) ??
-      false;
+      true;
   final Map<int, GlobalKey> _itemKeys = {};
   final Map<int, GlobalKey> _commentatorsButtonKeys = {};
   // המפתח כולל את כל הפרמטרים המבדילים בין refs (bookId/sourceLineId/isAltToc/

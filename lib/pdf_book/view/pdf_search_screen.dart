@@ -908,7 +908,6 @@ class PdfBookSearchViewState extends State<PdfBookSearchView> {
             onToggle: _toggleWholeWord,
           ),
       ],
-      searchFieldActionsKey: (_isSimpleSearch, _wholeWord),
       hintText: 'חפש כאן..',
       onAdvancedSearch: () async {
         final pdfBookBloc = context.read<PdfBookBloc>();

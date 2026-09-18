@@ -195,22 +195,26 @@ void main() {
       expect(updated, ['רש"י', 'רמב"ן']);
     });
 
-    test('בלי מפרשים לפסקה — רק פריטי הפתיחה', () {
+    test('בלי מפרשים לפסקה — תת-התפריט ריק (issue #1413)', () {
       final entries = build(
         availableCommentators: const [],
         onOpenPane: () {},
         onSelectMultiple: () {},
       );
-      expect(labelsOf(entries), ['פתח את חלונית המפרשים', 'בחר מפרשים מרובים']);
+      expect(entries, isEmpty);
+      expect(hasEnabledAppContextMenuEntries(entries), isFalse);
     });
 
     test('בזמן טעינת הקישורים מוצג פריט "טוען" מושבת', () {
       final entries = build(
         availableCommentators: const [],
         linksLoading: true,
+        onOpenPane: () {},
+        onSelectMultiple: () {},
       );
       expect(labelsOf(entries), ['טוען מפרשים…']);
       expect(entries.single.enabled, isFalse);
+      expect(hasEnabledAppContextMenuEntries(entries), isFalse);
     });
   });
 

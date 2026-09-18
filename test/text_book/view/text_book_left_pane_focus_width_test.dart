@@ -162,13 +162,13 @@ void main() {
     );
   });
 
-  testWidgets('מסך רחב: השדה המורם לסרגל כן מקבל פוקוס', (tester) async {
+  testWidgets('מסך רחב: שדה החיפוש שבחלונית כן מקבל פוקוס', (tester) async {
     await pumpScreen(tester, size: const Size(1600, 900));
 
     expect(
       anyTextFieldFocused(tester),
       isTrue,
-      reason: 'בסרגל שמעל החלונית השדה גלוי ואינו מסתיר את הספר',
+      reason: 'במסך רחב החלונית אינה מסתירה את הספר, ומיקוד הרגע נצרך',
     );
   });
 

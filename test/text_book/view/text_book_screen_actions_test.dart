@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +25,7 @@ import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
 import 'package:otzaria/navigation/bloc/navigation_event.dart';
 import 'package:otzaria/navigation/bloc/navigation_state.dart';
 import 'package:otzaria/personal_notes/personal_notes_system.dart';
+import 'package:otzaria/printing/export_restriction_service.dart';
 import 'package:otzaria/search/models/search_configuration.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
@@ -132,6 +136,54 @@ void main() {
       expect(find.text('אודות הספר'), findsOneWidget);
       // ספר בלי מהדורות במאגר — אין מה להציע
       expect(find.text('הצג נוסחאות נוספות'), findsNothing);
+    });
+
+    testWidgets('ספר מוגבל לייצוא — הפריט נעדר בלי טעינה מוקדמת של הרשימה', (
+      tester,
+    ) async {
+      // בלי הטעינה שהמסך עושה בעצמו הרשימה ריקה, והפריט היה מוצג.
+      ExportRestrictionService.resetForTesting();
+      addTearDown(ExportRestrictionService.resetForTesting);
+      _mockRestrictedBooksAsset(const ['שמירת שבת כהלכתה - א']);
+
+      final book = TextBook(title: 'שמירת שבת כהלכתה - א');
+      final bloc = _TestTextBookBloc(_loadedState(book));
+      final tab = TextBookTab(book: book, index: 0, blocOverride: bloc);
+      final tabsBloc = _TestTabsBloc(
+        TabsState(tabs: [tab], currentTabIndex: 0),
+      );
+      final settingsBloc = _TestSettingsBloc(SettingsState.initial());
+
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await bloc.close();
+        await tabsBloc.close();
+        await settingsBloc.close();
+        tab.dispose();
+      });
+
+      await _setSurfaceSize(tester, const Size(1600, 900));
+      await _pumpTextBookScreen(
+        tester,
+        tab: tab,
+        textBookBloc: bloc,
+        tabsBloc: tabsBloc,
+        settingsBloc: settingsBloc,
+        focusRepository: focusRepository,
+        shamorZachorDataProvider: shamorZachorDataProvider,
+        shamorZachorProgressProvider: shamorZachorProgressProvider,
+        bookmarkBloc: bookmarkBloc,
+        personalNotesBloc: personalNotesBloc,
+        tourCubit: tourCubit,
+        isInCombinedView: false,
+      );
+
+      await tester.tap(find.byIcon(FluentIcons.more_vertical_24_regular));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ייצוא הספר'), findsNothing);
+      expect(find.text('הדפסה'), findsOneWidget);
     });
 
     testWidgets('הלחצן למהדורה המובנית כתוב "פתח בתצוגת PDF"', (
@@ -771,6 +823,7 @@ void main() {
     Future<int> pumpAndToggleLeftPane(
       WidgetTester tester, {
       required Size size,
+      bool pinned = true,
     }) async {
       final book = TextBook(title: 'ספר בדיקה');
       final loaded = _loadedState(book);
@@ -809,7 +862,13 @@ void main() {
       await tester.pump();
 
       // פתיחת החלונית (false→true) מפעילה את בדיקת ה-reanchor
-      bloc.emitStateForTest(loaded.copyWith(showLeftPane: true));
+      // הנעיצה נקבעת לפני הפתיחה, כמו אצל משתמש: מצב הפריסה מדווח ב-post-frame.
+      bloc.emitStateForTest(loaded.copyWith(pinLeftPane: pinned));
+      await tester.pump();
+      await tester.pump();
+      bloc.emitStateForTest(
+        loaded.copyWith(showLeftPane: true, pinLeftPane: pinned),
+      );
       await tester.pump();
 
       final dynamic state = tester.state(find.byType(TextBookViewerBloc));
@@ -822,6 +881,17 @@ void main() {
         size: const Size(1600, 900),
       );
       expect(count, greaterThan(0));
+    });
+
+    testWidgets('חלונית לא נעוצה מרחפת מעל הטקסט — ה-reanchor מדוכא', (
+      tester,
+    ) async {
+      final count = await pumpAndToggleLeftPane(
+        tester,
+        size: const Size(1600, 900),
+        pinned: false,
+      );
+      expect(count, 0);
     });
 
     testWidgets('במסך צר (overlay) ה-reanchor מדוכא בפתיחת החלונית', (
@@ -1048,6 +1118,25 @@ Future<void> _setSurfaceSize(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// מגיש את רשימת הספרים המוגבלים מהזיכרון. קריאה אמיתית ל-asset נתקעת תחת
+/// ה-FakeAsync של testWidgets ולא הייתה מסתיימת לעולם.
+void _mockRestrictedBooksAsset(List<String> titles) {
+  rootBundle.clear();
+  addTearDown(rootBundle.clear);
+  final payload = ByteData.sublistView(
+    Uint8List.fromList(utf8.encode(jsonEncode({'books': titles}))),
+  );
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMessageHandler('flutter/assets', (message) async {
+        final key = utf8.decode(message!.buffer.asUint8List());
+        return key == ExportRestrictionService.assetPath ? payload : null;
+      });
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', null),
+  );
 }
 
 TextBookLoaded _loadedState(TextBook book, {bool showSplitView = false}) {

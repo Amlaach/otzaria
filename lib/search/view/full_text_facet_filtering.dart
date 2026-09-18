@@ -212,17 +212,16 @@ class _SearchFacetFilteringState extends State<SearchFacetFiltering>
     );
   }
 
-  /// פעולת החיפוש של החלונית — מצוירת בסרגל שמעליה ולא כאן.
+  /// שדה "איתור ספר" של החלונית.
   NavPanelSearchDelegate _searchDelegate() => NavPanelSearchDelegate(
     controller: _filterQuery,
     hintText: 'איתור ספר…',
     onChanged: _onQueryChanged,
     onClear: _clearFilter,
-    trailingActions: [_buildDimensionFilterButton()],
   );
 
-  /// כפתור סינון בשדה — פותח תפריט שטוח (בלי תתי-תפריטים) של מאפייני הספר:
-  /// ספרי יסוד ותקופות. סימון מרובה נשמר פתוח (closeOnActivate: false).
+  /// כפתור סינון בכותרת השורש — תפריט שטוח של מאפייני הספר (ספרי יסוד
+  /// ותקופות). סימון מרובה נשמר פתוח (closeOnActivate: false).
   Widget _buildDimensionFilterButton() {
     return BlocBuilder<SearchBloc, SearchState>(
       buildWhen: (p, c) => p.currentFacets != c.currentFacets,
@@ -380,6 +379,7 @@ class _SearchFacetFilteringState extends State<SearchFacetFiltering>
                       onClearAll: () => _clearAllScope(context),
                       extraRootCategories: extraRoots,
                       extraCategoriesFirst: settingsState.externalResultsFirst,
+                      rootHeaderAction: _buildDimensionFilterButton(),
                     );
                   },
                 );
@@ -395,17 +395,9 @@ class _SearchFacetFilteringState extends State<SearchFacetFiltering>
   Widget build(BuildContext context) {
     super.build(context);
     final delegate = _searchDelegate();
-    return NavPanelSearchPublisher(
+    return NavPanelCollapsibleSearch(
       delegate: delegate,
-      child: Column(
-        children: [
-          if (!NavPanelSearch.isHoisted(context))
-            NavPanelLocalSearchField(delegate: delegate),
-          Expanded(
-            child: _buildFacetTree(),
-          ),
-        ],
-      ),
+      child: _buildFacetTree(),
     );
   }
 }

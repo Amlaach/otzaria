@@ -25,7 +25,6 @@ class SearchPaneBase extends StatefulWidget {
     this.hintText,
     this.onAdvancedSearch,
     this.searchFieldActions,
-    this.searchFieldActionsKey,
     this.collapsibleOnScroll = false,
     this.onSubmitted,
     this.onArrowDown,
@@ -50,14 +49,8 @@ class SearchPaneBase extends StatefulWidget {
   final String? hintText;
   final VoidCallback? onAdvancedSearch;
 
-  /// פעולות שנוספות בתוך שדה החיפוש עצמו, לפני כפתור ההגדרות. נכנסות גם
-  /// לשדה המקומי וגם לשדה המורם שבסרגל חלונית הניווט — שם השדה המקומי אינו
-  /// מצויר כלל, ולכן פעולה שמוזרקת רק אליו לא תיראה.
+  /// פעולות שנוספות בתוך שדה החיפוש עצמו, לפני כפתור ההגדרות.
   final List<Widget>? searchFieldActions;
-
-  /// מזהה המצב החזותי של [searchFieldActions] — ראה
-  /// [NavPanelSearchDelegate.actionsKey]. חובה כשפעולה מחליפה אייקון או צבע.
-  final Object? searchFieldActionsKey;
   final bool collapsibleOnScroll;
   final VoidCallback? onSubmitted;
 
@@ -72,6 +65,10 @@ class SearchPaneBase extends StatefulWidget {
 class _SearchPaneBaseState extends State<SearchPaneBase> {
   Timer? _debounceTimer;
   bool _isCompact = false;
+
+  // נקבע בבנייה הראשונה בלבד: EditableText בודק autofocus בכל שינוי תלות
+  // (סיבוב מסך), ומיקוד מאוחר פותח מקלדת על לשונית שנבחרה אוטומטית.
+  bool? _autofocus;
 
   void _debounce(VoidCallback action) {
     _debounceTimer?.cancel();
@@ -114,52 +111,30 @@ class _SearchPaneBaseState extends State<SearchPaneBase> {
     return false;
   }
 
-  /// פעולת החיפוש שמפורסמת לסרגל שמעל החלונית (במקום שדה מקומי).
-  NavPanelSearchDelegate get _delegate => NavPanelSearchDelegate(
-    controller: widget.searchController,
-    focusNode: widget.focusNode,
-    hintText: widget.hintText ?? '',
-    onChanged: (value) =>
-        _debounce(() => widget.onSearchTextChanged?.call(value)),
-    onSubmitted: (_) {
-      widget.onSubmitted?.call();
-      widget.focusNode.requestFocus();
-    },
-    onClear: () {
-      widget.onSearchTextChanged?.call('');
-      widget.resetSearchCallback();
-      widget.focusNode.requestFocus();
-    },
-    trailingActions: [
-      ...?widget.searchFieldActions,
-      if (widget.onAdvancedSearch != null)
-        OtzariaSearchAction.settings(onPressed: widget.onAdvancedSearch!),
-    ],
-    actionsKey: widget.searchFieldActionsKey,
-    onArrowDown: widget.onArrowDown,
-    onArrowUp: widget.onArrowUp,
-  );
-
   @override
   Widget build(BuildContext context) {
-    // בתוך חלונית ניווט השדה מצויר בסרגל שמעליה, ולכן מפרסמים ולא מציירים.
-    final hoisted = NavPanelSearch.isHoisted(context);
     // TabBarView בונה גם את הלשונית השכנה תוך כדי החלקה. autofocus בשכנה
     // היה חוטף את הפוקוס ופותח את מקלדת המערכת בלי שהמשתמש ביקש.
     final slot = NavPanelSearchSlot.indexOf(context);
     final host = NavPanelSearchScope.hostOf(context);
     final isActiveSlot = slot == null || host == null || host.activeTab == slot;
-    final delegate = _delegate;
+    final delegate = NavPanelSearchDelegate(
+      controller: widget.searchController,
+      hintText: widget.hintText ?? '',
+      onArrowDown: widget.onArrowDown,
+      onArrowUp: widget.onArrowUp,
+    );
     final searchField = Padding(
       key: const ValueKey('searchField'),
       padding: const EdgeInsets.all(8.0),
       child: Focus(
         canRequestFocus: false,
-        onKeyEvent: (node, event) => delegate.handleArrowKey(event),
+        onKeyEvent: (node, event) =>
+            NavPanelSearch.handleFieldKey(context, delegate, event),
         child: OtzariaSearchField(
           controller: widget.searchController,
           focusNode: widget.focusNode,
-          autofocus: isActiveSlot,
+          autofocus: _autofocus ??= isActiveSlot,
           hintText: widget.hintText ?? '',
           onChanged: (value) =>
               _debounce(() => widget.onSearchTextChanged?.call(value)),
@@ -206,16 +181,15 @@ class _SearchPaneBaseState extends State<SearchPaneBase> {
     final pane = Column(
       children: [
         if (widget.progressWidget != null) widget.progressWidget!,
-        if (!hoisted)
-          AnimatedAlign(
-            key: const ValueKey('searchFieldAlign'),
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeInOut,
-            alignment: _isCompact
-                ? AlignmentDirectional.centerEnd
-                : AlignmentDirectional.center,
-            child: searchField,
-          ),
+        AnimatedAlign(
+          key: const ValueKey('searchFieldAlign'),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          alignment: _isCompact
+              ? AlignmentDirectional.centerEnd
+              : AlignmentDirectional.center,
+          child: searchField,
+        ),
         if (shouldShowToolbarRow)
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -253,7 +227,6 @@ class _SearchPaneBaseState extends State<SearchPaneBase> {
       ],
     );
 
-    if (!hoisted) return pane;
-    return NavPanelSearchPublisher(delegate: _delegate, child: pane);
+    return pane;
   }
 }

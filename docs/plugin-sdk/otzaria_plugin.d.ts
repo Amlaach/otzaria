@@ -1370,10 +1370,21 @@ export interface OtzariaEventMap {
     provider: string;
     query: string;
     mode: 'exact' | 'advanced' | 'fuzzy';
+    /** Words allowed between query words (0 = adjacent). Binding only with
+     *  `proximityScope: 'wordDistance'` and `wordMatchMode: 'all'`. */
     distance: number;
+    /** Always `'wordDistance'` outside `mode: 'advanced'`. Older hosts omit it. */
+    proximityScope?: SearchProximityScope;
+    /** Always `'all'` outside `mode: 'advanced'`. Older hosts omit it. */
+    wordMatchMode?: SearchWordMatchMode;
+    wordMatchCount?: number;
     offset: number;
     limit: number;
     ids?: number[];
+    /** Global options applied to every query word ("options for all words"). */
+    options?: Record<string, boolean>;
+    /** Per-word options keyed `'<word>_<index>'`, same format as `search.requested`. */
+    wordOptions?: Record<string, Record<string, boolean>>;
     /** The host consumes `[id, hits, categoryPath, title]` index entries. */
     indexTitles?: boolean;
   };

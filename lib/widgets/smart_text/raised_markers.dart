@@ -120,7 +120,7 @@ class RaisedMarkers {
   // אם הדגשת-חיפוש מזריקה span בתוך הסימון, ההתאמה העצלה נעצרת ב-close
   // הפנימי; הטקסט שיחולץ עדיין מכיל את אות הסימון, ולכן האיתור בציור מצליח.
   //
-  // שלוש משפחות, כולן בסריקה אחת בסדר המסמך (ספירת המופעים תלויה בסדר):
+  // ארבע משפחות, כולן בסריקה אחת בסדר המסמך (ספירת המופעים תלויה בסדר):
   //  1+2. שני תגי הסימון של processText.
   //  3.   סימון הערה מוטמעת לחיץ — addInlineNotePreviewLinks פולט בדיוק
   //       `<a class="book-note-marker" href=...>`.
@@ -128,13 +128,16 @@ class RaisedMarkers {
   //       `class="link-anchor link-anchor-N..."`; הצורה החשופה
   //       `class="link-anchor"` נתפסת גם היא, כי customStylesBuilder צובע
   //       אותה שקוף — אחרת הטקסט היה נעלם. טווח-ציטוט
-  //       (`class="link-anchor-range"`) לעולם אינו נתפס ("-" ולא רווח/גרש),
-  //       וסמן-מספר מודפס (`numbered-note-marker`) נשאר במקומו בכוונה —
-  //       הוא חלק מהטקסט המודפס.
+  //       (`class="link-anchor-range"`) לעולם אינו נתפס ("-" ולא רווח/גרש).
+  //  7.   סמן-אות של הערה בספר אחר — `<sup>` שעטוף בעוגן ריחוף. הוא נשאר
+  //       בגודלו ובמקומו, ורק ה-hit-test של הציור המורם מופנה לעוגן. סמן-מספר
+  //       (`(9)` בלי `<sup>`) אינו נתפס כאן — הוא טקסט מודפס רגיל בשורה.
   static final RegExp _markerSpanRegex = RegExp(
     '<span class="($kFootnoteMarkerClass|$kRaisedSupClass)">(.*?)</span>'
     '|<a class="book-note-marker"[^>]*>(.*?)</a>'
-    '|<(a|span) class="link-anchor( [^"]*)?"[^>]*>(.*?)</\\4>',
+    '|<(a|span) class="link-anchor( [^"]*)?"[^>]*>(.*?)</\\4>'
+    '|<a class="numbered-note-marker"[^>]*>'
+    '<span class="$kRaisedSupClass">(.*?)</span></a>',
     caseSensitive: false,
     dotAll: true,
   );
@@ -213,6 +216,11 @@ class RaisedMarkers {
         rawContent = match[3]!;
         scale = kFootnoteMarkerScale;
         italic = true;
+        clickable = true;
+      } else if (match[7] != null) {
+        // סמן-אות של הערה בספר אחר — מטריקות raised-sup, עם הפניית ריחוף.
+        rawContent = match[7]!;
+        scale = kHtmlSmallerFontScale;
         clickable = true;
       } else {
         // אות מפרש — צבע קישור, וריאנט טיפוגרפי קבוע למפרש, רקע כשפעילה.

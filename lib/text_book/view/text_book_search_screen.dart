@@ -1083,12 +1083,6 @@ class TextBookSearchViewState extends State<TextBookSearchView>
           color: _limitToSection ? Theme.of(context).colorScheme.primary : null,
         ),
       ],
-      searchFieldActionsKey: (
-        _isSimpleSearch,
-        _wholeWord,
-        _limitToSection,
-        _activeSection?.title,
-      ),
       hintText: 'חפש כאן...',
       onSubmitted: () => _moveBetweenResults(1),
       onArrowDown: () => _moveBetweenResults(1),

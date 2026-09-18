@@ -412,6 +412,10 @@ class CommentaryListBaseState extends State<CommentaryListBase>
   void _toggleGroupExpansion(CommentaryGroup group) {
     final key = group.bookTitle;
     final expanded = !(_expansionStates[key] ?? _allExpanded);
+    final headerIndex = _groupHeaderFlatIndex[key];
+    final headerEdge = expanded || headerIndex == null
+        ? null
+        : _leadingEdgeOfItem(headerIndex);
     setState(() {
       _expansionStates[key] = expanded;
       _updateGlobalExpansionState();
@@ -419,9 +423,11 @@ class CommentaryListBaseState extends State<CommentaryListBase>
     if (expanded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final headerIndex = _groupHeaderFlatIndex[key];
-        if (headerIndex != null) _ensureExpandedGroupVisible(headerIndex);
+        final index = _groupHeaderFlatIndex[key];
+        if (index != null) _ensureExpandedGroupVisible(index);
       });
+    } else if (headerEdge != null) {
+      _reanchorAfterCollapse(key, headerEdge);
     }
   }
 
@@ -532,12 +538,17 @@ class CommentaryListBaseState extends State<CommentaryListBase>
 
   /// מתג מצב הכיווץ הגלובלי של כל המפרשים. מעדכן את כל הקבוצות בהתאם.
   void toggleAllExpanded() {
+    final collapsing = _allExpanded;
+    final anchorTitle = collapsing
+        ? groupTitleAtFlatIndex(_groupHeaderFlatIndex, _lastScrollIndex)
+        : null;
     setState(() {
       _allExpanded = !_allExpanded;
       for (final key in _expansionStates.keys) {
         _expansionStates[key] = _allExpanded;
       }
     });
+    if (collapsing) _reanchorAfterCollapse(anchorTitle, 0);
   }
 
   /// ניווט לתוצאת חיפוש לפי אינדקס גלובלי (לשימוש חיצוני)
@@ -664,14 +675,7 @@ class CommentaryListBaseState extends State<CommentaryListBase>
                   : FluentIcons.arrow_expand_all_24_regular,
             ),
             tooltip: _allExpanded ? 'כווץ את כל המפרשים' : 'הרחב את כל המפרשים',
-            onPressed: () {
-              setState(() {
-                _allExpanded = !_allExpanded;
-                for (var key in _expansionStates.keys) {
-                  _expansionStates[key] = _allExpanded;
-                }
-              });
-            },
+            onPressed: toggleAllExpanded,
           ),
         ],
         // 3. פתיחה בכרטיסייה חדשה
@@ -1213,6 +1217,21 @@ class CommentaryListBaseState extends State<CommentaryListBase>
       if (position.index == index) return position.itemLeadingEdge;
     }
     return null;
+  }
+
+  /// עיגון מחדש על [groupTitle] אחרי כיווץ: כשהרשימה מתקצרת SPL מקצץ את
+  /// פריט-העוגן בלי לתקן את ההיסט, ונותר רווח ריק (issue #1174).
+  void _reanchorAfterCollapse(String? groupTitle, double alignment) {
+    if (groupTitle == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_itemScrollController.isAttached) return;
+      final index = _groupHeaderFlatIndex[groupTitle];
+      if (index == null) return;
+      _itemScrollController.jumpTo(
+        index: index,
+        alignment: alignment.clamp(0.0, 1.0),
+      );
+    });
   }
 
   void _updateLastScrollIndex() {
@@ -2341,15 +2360,7 @@ class CommentaryListBaseState extends State<CommentaryListBase>
                       tooltip: _allExpanded
                           ? 'כווץ את כל המפרשים'
                           : 'הרחב את כל המפרשים',
-                      onPressed: () {
-                        setState(() {
-                          _allExpanded = !_allExpanded;
-                          // מעדכן את כל המצבים של הקבוצות
-                          for (var key in _expansionStates.keys) {
-                            _expansionStates[key] = _allExpanded;
-                          }
-                        });
-                      },
+                      onPressed: toggleAllExpanded,
                     ),
                   ),
                 ),
@@ -2484,6 +2495,21 @@ List<CommentaryFlatItem> buildCommentaryFlatItems({
     }
   }
   return items;
+}
+
+/// כותרת הקבוצה שהפריט [flatIndex] שייך לה, לפי מיפוי הכותרות
+/// [headerIndexes] (כותרת → אינדקס ברשימה השטוחה) — הכותרת הקרובה ביותר מעליו.
+@visibleForTesting
+String? groupTitleAtFlatIndex(Map<String, int> headerIndexes, int flatIndex) {
+  String? title;
+  int best = -1;
+  headerIndexes.forEach((groupTitle, index) {
+    if (index <= flatIndex && index > best) {
+      best = index;
+      title = groupTitle;
+    }
+  });
+  return title;
 }
 
 /// כותרת קבוצת מפרשים ברשימה השטוחה — לחיצה מרחיבה/מכווצת דרך ההורה,

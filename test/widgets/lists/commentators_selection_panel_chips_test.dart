@@ -2,6 +2,7 @@
 // ציר הסוגים אופציונלי — פאנלי ה-PDF אינם מעבירים אותו כלל.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
 import 'package:otzaria/widgets/lists/nav_tree_tile.dart';
 import 'package:otzaria/text_book/models/commentator_group.dart';
 import 'package:otzaria/theme/app_tokens.dart';
@@ -307,6 +308,8 @@ void main() {
     ) async {
       await pumpWithTypes(tester, selectedTypeChips: const {});
 
+      await tester.tap(find.byType(NavPanelSearchToggle));
+      await tester.pumpAndSettle();
       await tester.enterText(find.byType(OtzariaSearchField), 'לא קיים');
       await tester.pumpAndSettle();
       expect(

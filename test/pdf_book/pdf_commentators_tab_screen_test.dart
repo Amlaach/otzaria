@@ -337,7 +337,7 @@ void main() {
       return tab;
     }
 
-    testWidgets('גלילה במפרשים סוגרת את חלונית הניווט כשאינה נעוצה', (
+    testWidgets('חלונית לא נעוצה: גלילה אינה סוגרת, לחיצה על התוכן סוגרת', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(1600, 900);
@@ -376,11 +376,13 @@ void main() {
       ).dispatch(context);
       await tester.pumpAndSettle();
 
-      expect(
-        panel().isOpen,
-        isFalse,
-        reason: 'בכרטיסיית הטקסט חלונית לא-נעוצה נסגרת בגלילה — גם כאן',
-      );
+      expect(panel().isOpen, isTrue, reason: 'גלילה אינה סגירה מפורשת');
+
+      // ההצללה מכסה את המפרשים; לחיצה עליה סוגרת את החלונית.
+      await tester.tapAt(const Offset(100, 450));
+      await tester.pumpAndSettle();
+
+      expect(panel().isOpen, isFalse);
     });
 
     testWidgets('הגדרת רוחב הטקסט חלה על רשימת המפרשים', (tester) async {
