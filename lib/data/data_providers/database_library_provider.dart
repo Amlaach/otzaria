@@ -12,6 +12,7 @@ import 'package:otzaria/data/data_providers/library_provider.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
 import 'package:otzaria/migration/database/daos/database.dart';
+import 'package:otzaria/migration/database/db_capabilities.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
 import 'package:otzaria/user_content_import/repository/user_alt_toc_repository.dart';
 import 'package:otzaria/user_content_import/models/user_import_models.dart';
@@ -43,6 +44,9 @@ import 'link_visibility_sql.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:path/path.dart' as p;
+
+/// שם השורש שמרכז את ספרי מסד שאין בו טבלת קטגוריות.
+const kUncategorizedCategoryTitle = 'ללא קטגוריה';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Isolate helpers for scanning external-book folders.
@@ -294,11 +298,12 @@ void _flattenRawRecursive(
 /// side=1) — כך קישור שהצד התלוי שלו משתרע על כמה שורות מופיע בכל שורה בטווח.
 List<Map<String, dynamic>> _loadInverseSourceRows(
   sqlite3.Database db,
+  DbCapabilities capabilities,
   int bookId, {
   int? startLineIndex,
   int? endLineIndex,
 }) {
-  final hasSuppressedSide = hasLinkSuppressedSideTable(db);
+  final hasSuppressedSide = capabilities.hasLinkSuppressedSide;
   final dependentTypes = LinkTypes.dependentTextTypes.toList();
   // קישורי הפניה דו-כיווניים רק בסכמה שמספקת verdict נפרד לכל צד.
   final types = LinkTypes.inverseQueryTypes(bidirectional: hasSuppressedSide);
@@ -310,8 +315,8 @@ List<Map<String, dynamic>> _loadInverseSourceRows(
     hasSuppressedSide,
     displayedSide: 1,
   );
-  final hasLinkAnchor = _hasLinkAnchorTable(db);
-  final hasLinkRanges = _hasLinkRangeTables(db);
+  final hasLinkAnchor = capabilities.hasLinkAnchors;
+  final hasLinkRanges = capabilities.hasLinkRanges;
   final referenceTypes = LinkTypes.referenceTypes
       .map((type) => "'$type'")
       .join(', ');
@@ -331,7 +336,7 @@ List<Map<String, dynamic>> _loadInverseSourceRows(
       : 'AND l.sourceBookId != l.targetBookId';
   final anchorSelect = _anchorSelectColumns(hasLinkAnchor);
   final anchorJoin = _anchorJoinClause(hasLinkAnchor, displayedSide: 1);
-  final provenanceSelect = _hasLinkBaseProvenanceColumn(db)
+  final provenanceSelect = capabilities.hasLinkBaseProvenance
       ? 'l.baseProvenance as baseProvenance,'
       : '0 as baseProvenance,';
   // בפאנל של תצוגת המקור מוצג צד ה-source של הקישור (side=0).
@@ -437,41 +442,24 @@ List<Map<String, dynamic>> _loadInverseSourceRows(
     ''', params).toMapList();
 }
 
-/// עוגני-מילה (link_anchor) — קיים רק במסדים חדשים; במסד ישן השאילתות חוזרות
-/// לעמודות NULL. side=0 = העוגן יושב בשורת המקור של הקישור, side=1 = בשורת
-/// היעד. `displayedSide` הוא הצד שהשורה שלו מוצגת בגוף הטקסט (הסמן/הטווח
-/// מוזרקים אליה), והצד הנגדי הוא קטע-הפאנל (anchorLinked*).
-bool _hasLinkAnchorTable(sqlite3.Database db) => db
-    .select(
-      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='link_anchor' LIMIT 1",
-    )
-    .isNotEmpty;
-
-/// `baseProvenance` — קיימת רק במסדים חדשים; במסד ישן כל הקישורים מקבלים 0
-/// והעדפת המקור נשארת כפי שהייתה.
-bool _hasLinkBaseProvenanceColumn(sqlite3.Database db) => db
-    .select(
-      "SELECT 1 FROM pragma_table_info('link') WHERE name = 'baseProvenance' LIMIT 1",
-    )
-    .isNotEmpty;
-
-/// קישורי-טווח (link_range/link_coverage) — קיימים רק במסדים חדשים; במסד ישן
-/// השאילתות חוזרות לעמודות NULL ולשורת העוגן הראשונה בלבד. שתי הטבלאות
-/// נשלחות יחד, לכן די בבדיקת link_coverage.
-bool _hasLinkRangeTables(sqlite3.Database db) => db
-    .select(
-      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='link_coverage' LIMIT 1",
-    )
-    .isNotEmpty;
-
-/// מהדורות ספרים (book_version/version_line) — קיימות רק במסדים חדשים; במסד
-/// ישן רשימת הגרסאות ריקה ופתיחת גרסה נכשלת בשקט. שתי הטבלאות נשלחות יחד,
-/// לכן די בבדיקת book_version.
-bool _hasBookVersionTables(sqlite3.Database db) => db
-    .select(
-      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='book_version' LIMIT 1",
-    )
-    .isNotEmpty;
+/// מזהה הספר [title] — בקטגוריה [categoryId] כשהמסד מכיר קטגוריות — או null.
+/// במסד בלי עמודת קטגוריה כל הספרים יושבים תחת שורש אחד, וההתאמה לפי כותרת.
+int? _selectBookId(
+  sqlite3.Database db,
+  DbCapabilities capabilities,
+  String title, {
+  int? categoryId,
+}) {
+  if (!capabilities.hasBooks) return null;
+  final byCategory = categoryId != null && capabilities.hasBookCategories;
+  final rows = db.select(
+    byCategory
+        ? 'SELECT id FROM book WHERE title = ? AND categoryId = ? LIMIT 1'
+        : 'SELECT id FROM book WHERE title = ? LIMIT 1',
+    [title, if (byCategory) categoryId],
+  );
+  return rows.isEmpty ? null : rows.first['id'] as int;
+}
 
 /// עמודות קצה-הטווח של צד-הפאנל: heRef של השורה האחרונה בטווח + האינדקס שלה
 /// (0-based), או NULL כשאין טווח / כשהמסד ישן.
@@ -563,22 +551,22 @@ List<Map<String, dynamic>> _loadBookLinksRowsInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasLinks) return const [];
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? AND categoryId = ? LIMIT 1',
-      [title, categoryId],
-    ).toMapList();
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      title,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return const [];
 
-    if (bookResults.isEmpty) {
-      return const [];
-    }
-
-    final bookId = bookResults.first['id'] as int;
-    final hasLinkAnchor = _hasLinkAnchorTable(db);
-    final hasLinkRanges = _hasLinkRangeTables(db);
+    final hasLinkAnchor = capabilities.hasLinkAnchors;
+    final hasLinkRanges = capabilities.hasLinkRanges;
     // בשאילתה הקדמית השורה המוצגת היא צד המקור השמור.
     final suppressedFilter = suppressedSideFilter(
-      hasLinkSuppressedSideTable(db),
+      capabilities.hasLinkSuppressedSide,
       displayedSide: 0,
     );
 
@@ -626,7 +614,10 @@ List<Map<String, dynamic>> _loadBookLinksRowsInIsolate({
           [bookId, if (hasLinkRanges) bookId],
         )
         .toMapList();
-    return [...forwardRows, ..._loadInverseSourceRows(db, bookId)];
+    return [
+      ...forwardRows,
+      ..._loadInverseSourceRows(db, capabilities, bookId),
+    ];
   } finally {
     db?.close();
   }
@@ -643,18 +634,20 @@ _loadBookLinkTargetsSummaryRowsInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    const empty = (rows: <Map<String, dynamic>>[], maxSourceLineIndex: null);
+    if (!capabilities.hasLinks) return empty;
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? AND categoryId = ? LIMIT 1',
-      [title, categoryId],
-    ).toMapList();
-    if (bookResults.isEmpty) {
-      return (rows: const [], maxSourceLineIndex: null);
-    }
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      title,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return empty;
 
-    final bookId = bookResults.first['id'] as int;
-    final hasLinkRanges = _hasLinkRangeTables(db);
-    final hasSuppressedSide = hasLinkSuppressedSideTable(db);
+    final hasLinkRanges = capabilities.hasLinkRanges;
+    final hasSuppressedSide = capabilities.hasLinkSuppressedSide;
     final forwardSuppressed = suppressedSideFilter(
       hasSuppressedSide,
       displayedSide: 0,
@@ -803,21 +796,22 @@ List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    // מסד בלי טבלאות קישורים הוא תשובה ריקה תקפה, לא כשל שדורש ניסיון חוזר.
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasLinks) return const [];
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? AND categoryId = ? LIMIT 1',
-      [title, categoryId],
-    ).toMapList();
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      title,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return const [];
 
-    if (bookResults.isEmpty) {
-      return const [];
-    }
-
-    final bookId = bookResults.first['id'] as int;
-    final hasLinkAnchor = _hasLinkAnchorTable(db);
-    final hasLinkRanges = _hasLinkRangeTables(db);
+    final hasLinkAnchor = capabilities.hasLinkAnchors;
+    final hasLinkRanges = capabilities.hasLinkRanges;
     final suppressedFilter = suppressedSideFilter(
-      hasLinkSuppressedSideTable(db),
+      capabilities.hasLinkSuppressedSide,
       displayedSide: 0,
     );
 
@@ -895,13 +889,12 @@ List<Map<String, dynamic>> _loadBookLinksRowsInRangeInIsolate({
       ...rows,
       ..._loadInverseSourceRows(
         db,
+        capabilities,
         bookId,
         startLineIndex: startLineIndex,
         endLineIndex: endLineIndex,
       ),
     ];
-  } catch (error) {
-    rethrow;
   } finally {
     db?.close();
   }
@@ -915,17 +908,16 @@ List<Map<String, dynamic>> _loadAlternativeStructuresRowsInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasAltTocStructures) return const [];
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? AND (?2 IS NULL OR categoryId = ?2) LIMIT 1',
-      [bookTitle, categoryId],
-    ).toMapList();
-
-    if (bookResults.isEmpty) {
-      return const [];
-    }
-
-    final bookId = bookResults.first['id'] as int;
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      bookTitle,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return const [];
 
     return db.select(
       'SELECT * FROM alt_toc_structure WHERE bookId = ? ORDER BY id',
@@ -963,21 +955,21 @@ Future<List<Map<String, dynamic>>> _runAlternativeStructuresInIsolate({
 InlineSectionMarks _loadInlineSectionMarksInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasAltToc) return (markers: const {}, headings: const {});
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? LIMIT 1',
-      [bookTitle],
-    ).toMapList();
-
-    if (bookResults.isEmpty) {
-      return (markers: const {}, headings: const {});
-    }
-
-    final bookId = bookResults.first['id'] as int;
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      bookTitle,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return (markers: const {}, headings: const {});
 
     // hasChildren = 0 — רק העלים. רשומות הביניים של המבנה משכפלות
     // כותרות פרשה/פרק/סימן שכבר גלויות בטקסט (ובקוהלת רבה המבנה
@@ -1057,11 +1049,13 @@ typedef InlineSectionMarks = ({
 Future<InlineSectionMarks> _runInlineSectionMarksInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   return Isolate.run(
     () => _loadInlineSectionMarksInIsolate(
       dbPath: dbPath,
       bookTitle: bookTitle,
+      categoryId: categoryId,
     ),
   );
 }
@@ -1072,22 +1066,21 @@ Future<InlineSectionMarks> _runInlineSectionMarksInIsolate({
 Map<int, String> _loadDibburHamatchilInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasLineDhDisplay) return const {};
 
-    final hasDisplayColumn = db
-        .select("PRAGMA table_info('line_dh')")
-        .any((row) => row['name'] == 'dhDisplay');
-    if (!hasDisplayColumn) return const {};
-
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? LIMIT 1',
-      [bookTitle],
-    ).toMapList();
-    if (bookResults.isEmpty) return const {};
-    final bookId = bookResults.first['id'] as int;
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      bookTitle,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return const {};
 
     final rows = db.select(
       'SELECT lineIndex, dhDisplay FROM line_dh WHERE bookId = ? '
@@ -1113,11 +1106,13 @@ Map<int, String> _loadDibburHamatchilInIsolate({
 Future<Map<int, String>> _runDibburHamatchilInIsolate({
   required String dbPath,
   required String bookTitle,
+  int? categoryId,
 }) {
   return Isolate.run(
     () => _loadDibburHamatchilInIsolate(
       dbPath: dbPath,
       bookTitle: bookTitle,
+      categoryId: categoryId,
     ),
   );
 }
@@ -1179,27 +1174,30 @@ _loadBookTextRangeRowsInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasLines) return null;
 
-    final bookResults = db.select(
-      'SELECT id, totalLines FROM book WHERE title = ? AND categoryId = ? LIMIT 1',
-      [title, categoryId],
-    ).toMapList();
-    if (bookResults.isEmpty) {
-      return null;
-    }
-
-    final totalLines = bookResults.first['totalLines'] as int;
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      title,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return null;
+    final totalLinesQuery = capabilities.hasColumn('book', 'totalLines')
+        ? 'SELECT totalLines FROM book WHERE id = ?'
+        : 'SELECT COUNT(*) FROM line WHERE bookId = ?';
+    final totalLines = firstIntValue(db.select(totalLinesQuery, [bookId])) ?? 0;
     if (totalLines <= 0) {
       return null;
     }
-    final bookId = bookResults.first['id'] as int;
 
     final normalizedStart = startLine.clamp(0, totalLines - 1);
     final normalizedEnd = endLine.clamp(normalizedStart, totalLines - 1);
 
     final List<Map<String, dynamic>> rows;
     if (versionTitle != null) {
-      if (!_hasBookVersionTables(db)) return null;
+      if (!capabilities.hasBookVersions) return null;
       final versionRows = db.select(
         'SELECT id FROM book_version WHERE bookId = ? AND versionTitle = ? LIMIT 1',
         [bookId, versionTitle],
@@ -1279,14 +1277,16 @@ List<Map<String, dynamic>> _loadBookVersionsRowsInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
-    if (!_hasBookVersionTables(db)) return const [];
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasBookVersions) return const [];
 
-    final bookResults = db.select(
-      'SELECT id FROM book WHERE title = ? AND categoryId = ? LIMIT 1',
-      [title, categoryId],
-    ).toMapList();
-    if (bookResults.isEmpty) return const [];
-    final bookId = bookResults.first['id'] as int;
+    final bookId = _selectBookId(
+      db,
+      capabilities,
+      title,
+      categoryId: categoryId,
+    );
+    if (bookId == null) return const [];
 
     return db
         .select(
@@ -1330,10 +1330,11 @@ List<Map<String, dynamic>> _loadSelectableVersionKeysInIsolate({
   sqlite3.Database? db;
   try {
     db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
-    if (!_hasBookVersionTables(db)) return const [];
+    final capabilities = DbCapabilities.probe(db);
+    if (!capabilities.hasBookVersions) return const [];
 
     return db.select('''
-      SELECT b.title, b.categoryId
+      SELECT b.title, ${capabilities.hasBookCategories ? 'b.categoryId' : '0 AS categoryId'}
       FROM book b
       WHERE b.id IN (
         SELECT bookId FROM book_version
@@ -1569,8 +1570,33 @@ class DatabaseLibraryProvider implements LibraryProvider {
   static Map<int, String> loadDibburHamatchilForTesting({
     required String dbPath,
     required String bookTitle,
+    int? categoryId,
   }) {
-    return _loadDibburHamatchilInIsolate(dbPath: dbPath, bookTitle: bookTitle);
+    return _loadDibburHamatchilInIsolate(
+      dbPath: dbPath,
+      bookTitle: bookTitle,
+      categoryId: categoryId,
+    );
+  }
+
+  @visibleForTesting
+  static InlineSectionMarks loadInlineSectionMarksForTesting({
+    required String dbPath,
+    required String bookTitle,
+    int? categoryId,
+  }) {
+    return _loadInlineSectionMarksInIsolate(
+      dbPath: dbPath,
+      bookTitle: bookTitle,
+      categoryId: categoryId,
+    );
+  }
+
+  @visibleForTesting
+  static List<Map<String, dynamic>> loadSelectableVersionKeysForTesting({
+    required String dbPath,
+  }) {
+    return _loadSelectableVersionKeysInIsolate(dbPath: dbPath);
   }
 
   @visibleForTesting
@@ -2471,17 +2497,23 @@ class DatabaseLibraryProvider implements LibraryProvider {
   SqliteDataProvider get sqliteProvider => _sqliteProvider;
 
   /// Private helper for database operations to reduce boilerplate
+  /// [requires] — היכולת שבלעדיה המסד אינו מכיל את המידע ומוחזר [defaultValue].
   Future<T> _dbOperation<T>(
     Future<T> Function(sqlite3.Database db) operation,
     T defaultValue,
-    String errorContext,
-  ) async {
+    String errorContext, {
+    bool Function(DbCapabilities capabilities)? requires,
+  }) async {
     if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
       return defaultValue;
     }
 
     try {
-      final db = await _sqliteProvider.repository!.database.database;
+      final database = _sqliteProvider.repository!.database;
+      if (requires != null && !requires(await database.capabilities)) {
+        return defaultValue;
+      }
+      final db = await database.database;
       return await operation(db);
     } catch (e) {
       debugPrint('⚠️ Error in $errorContext: $e');
@@ -2519,7 +2551,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
     final tQuery = DateTime.now();
 
     late final List<Map<String, dynamic>> allDbBooks;
-    late final List<Map<String, dynamic>> allCatRows;
+    late List<Map<String, dynamic>> allCatRows;
     late final Map<int, String> authorsByBookId;
 
     final db = await repository.database.database;
@@ -2528,6 +2560,12 @@ class DatabaseLibraryProvider implements LibraryProvider {
       allCatRows = repository.database.categoryDao.getAllCategoryRows(db);
       authorsByBookId = repository.database.bookDao.getBookAuthorsMap(db);
     });
+    // מסד בלי קטגוריות: כל ספריו (categoryId = 0) תחת שורש יחיד.
+    if (allCatRows.isEmpty && allDbBooks.isNotEmpty) {
+      allCatRows = const [
+        {'id': 0, 'parentId': null, 'title': kUncategorizedCategoryTitle},
+      ];
+    }
 
     debugPrint(
       '⏱️ Transaction (books+categories): ${DateTime.now().difference(tQuery).inMilliseconds}ms (${allDbBooks.length} books, ${allCatRows.length} categories)',
@@ -3842,8 +3880,9 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// סמני חלוקה וכותרות נושא להצגה בגוף הטקסט, לפי `lineIndex` של שורת
   /// התוכן (issues #773, #1121). לספר בלי מבנים כאלה — מפות ריקות.
   Future<InlineSectionMarks> getInlineSectionMarksByLineIndex(
-    String bookTitle,
-  ) async {
+    String bookTitle, {
+    int? categoryId,
+  }) async {
     const empty = (markers: <int, String>{}, headings: <int, List<String>>{});
     if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
       return empty;
@@ -3855,6 +3894,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       return await _runInlineSectionMarksInIsolate(
         dbPath: dbPath,
         bookTitle: bookTitle,
+        categoryId: categoryId,
       );
     } catch (e) {
       debugPrint(
@@ -3868,8 +3908,9 @@ class DatabaseLibraryProvider implements LibraryProvider {
   /// `lineIndex` של שורת הפירוש: הצורה המודפסת של הדיבור, לתצוגה כתת-כותרת
   /// בעץ הניווט. לספר בלי אינדקס, או במסד ישן, מוחזרת מפה ריקה.
   Future<Map<int, String>> getDibburHamatchilByLineIndex(
-    String bookTitle,
-  ) async {
+    String bookTitle, {
+    int? categoryId,
+  }) async {
     if (!_sqliteProvider.isInitialized || _sqliteProvider.repository == null) {
       return const {};
     }
@@ -3878,6 +3919,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       return await _runDibburHamatchilInIsolate(
         dbPath: _sqliteProvider.dbPath,
         bookTitle: bookTitle,
+        categoryId: categoryId,
       );
     } catch (e) {
       debugPrint('⚠️ Error in getDibburHamatchilByLineIndex "$bookTitle": $e');
@@ -3896,6 +3938,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       [],
       'getAlternativeStructures',
+      requires: (c) => c.hasAltTocStructures,
     );
   }
 
@@ -3932,6 +3975,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       [],
       'getAllAlternativeEntries $structureId',
+      requires: (c) => c.hasAltToc,
     );
   }
 
@@ -3974,6 +4018,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       [],
       'getAltTocLineIndices $structureId',
+      requires: (c) => c.hasAltToc,
     );
   }
 
@@ -4027,6 +4072,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       [],
       'getAltTocEntriesWithLineIndex $structureId',
+      requires: (c) => c.hasAltToc,
     );
   }
 
@@ -4078,6 +4124,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       [],
       'getLinksForAltTocEntry',
+      requires: (c) => c.hasLineAltToc,
     );
   }
 
@@ -4118,6 +4165,7 @@ class DatabaseLibraryProvider implements LibraryProvider {
       },
       null,
       'getAltTocEntryForLine',
+      requires: (c) => c.hasLineAltToc,
     );
   }
 

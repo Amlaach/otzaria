@@ -25,6 +25,7 @@ import '../../models/toc_text.dart';
 import '../../models/topic.dart';
 import '../daos/connection_type_dao.dart';
 import '../daos/database.dart';
+import '../db_capabilities.dart';
 import '../sqlite3_utils.dart';
 
 /// Repository class for accessing and manipulating the Seforim database.
@@ -47,11 +48,9 @@ class SeforimRepository {
   /// קאש בזיכרון לערכי AltToc (כותרות-משנה) לכל ספר.
   final Map<int, _TocBookCache> _altTocCache = <int, _TocBookCache>{};
 
-  /// האם `idx_line_book_index` קיים. חיבור ה-RO של ה-worker אינו יכול
-  /// ליצור אותו, ולכן הוא נבדק ולא מונח.
-  bool? _hasLineBookIndexCache;
-
   SeforimRepository(this._database);
+
+  Future<DbCapabilities> get _capabilities => _database.capabilities;
 
   /// מבטל את ערך הקאש של [getTocEntriesForReference] ו-[getAltTocEntriesForReference].
   /// אם [bookId] סופק — מבטל רק את הערך של אותו ספר; אחרת מנקה הכול.
@@ -325,6 +324,7 @@ class SeforimRepository {
   /// Returns all descendant category IDs (including the category itself) using the
   /// category_closure table.
   Future<List<int>> getDescendantCategoryIds(int ancestorId) async {
+    if (!(await _capabilities).hasCategoryClosure) return const [];
     final db = await _database.database;
     final result = db.select(
       'SELECT descendantId FROM category_closure WHERE ancestorId = ?',
@@ -519,6 +519,7 @@ class SeforimRepository {
 
   // Get all authors for a book
   Future<List<Author>> _getBookAuthors(int bookId) async {
+    if (!(await _capabilities).hasAuthors) return const [];
     final db = await _database.database;
     final result = db
         .select(
@@ -535,6 +536,7 @@ class SeforimRepository {
 
   // Get all topics for a book
   Future<List<Topic>> _getBookTopics(int bookId) async {
+    if (!(await _capabilities).hasTopics) return const [];
     final db = await _database.database;
     final result = db
         .select(
@@ -551,6 +553,7 @@ class SeforimRepository {
 
   // Get all publication places for a book
   Future<List<PubPlace>> _getBookPubPlaces(int bookId) async {
+    if (!(await _capabilities).hasPubPlaces) return const [];
     final db = await _database.database;
     final result = db
         .select(
@@ -567,6 +570,7 @@ class SeforimRepository {
 
   // Get all publication dates for a book
   Future<List<PubDate>> _getBookPubDates(int bookId) async {
+    if (!(await _capabilities).hasPubDates) return const [];
     final db = await _database.database;
     final result = db
         .select(
@@ -588,7 +592,7 @@ class SeforimRepository {
     int limit = 20,
   }) async {
     final trimmed = prefix.trim();
-    if (trimmed.isEmpty || limit <= 0) {
+    if (trimmed.isEmpty || limit <= 0 || !(await _capabilities).hasAuthors) {
       return const [];
     }
     final db = await _database.database;
@@ -609,6 +613,7 @@ class SeforimRepository {
   /// מזהי כל ספרי היסוד (`isBaseBook = 1`) ב-DB זה — לשילוב רשימת ספרי
   /// היסוד בתפריט סינון החיפוש. המיפוי לספרי הספרייה נעשה לפי `book.id`.
   Future<Set<int>> loadBaseBookIds() async {
+    if (!(await _capabilities).hasColumn('book', 'isBaseBook')) return {};
     final db = await _database.database;
     final result = db
         .select('SELECT id FROM book WHERE isBaseBook = 1')
@@ -1284,6 +1289,7 @@ class SeforimRepository {
   }
 
   Future<String?> getLineBreadcrumb(int bookId, int lineIndex) async {
+    if (!(await _capabilities).hasLineToc) return null;
     final db = await _database.database;
     final rows = db.select(
       'WITH RECURSIVE chain(id, parentId, textId, level) AS ('
@@ -1886,17 +1892,20 @@ class SeforimRepository {
   }
 
   Future<List<CommentatorInfo>> getAvailableCommentators(int bookId) async {
+    final capabilities = await _capabilities;
+    if (!capabilities.hasLinks) return const [];
+    final hasAuthors = capabilities.hasAuthors;
     final db = await _database.database;
     final result = db
         .select(
           '''
-      SELECT b.id as targetBookId, b.title as targetBookTitle, a.name as author, COUNT(l.id) as linkCount
+      SELECT b.id as targetBookId, b.title as targetBookTitle,
+        ${hasAuthors ? 'a.name' : 'NULL'} as author, COUNT(l.id) as linkCount
       FROM link l
       JOIN book b ON l.targetBookId = b.id
-      LEFT JOIN book_author ba ON b.id = ba.bookId
-      LEFT JOIN author a ON ba.authorId = a.id
+      ${hasAuthors ? 'LEFT JOIN book_author ba ON b.id = ba.bookId LEFT JOIN author a ON ba.authorId = a.id' : ''}
       WHERE l.sourceBookId = ?
-      GROUP BY b.id, b.title, a.name
+      GROUP BY b.id, b.title${hasAuthors ? ', a.name' : ''}
       ORDER BY b.title
     ''',
           [bookId],
@@ -1920,6 +1929,7 @@ class SeforimRepository {
   /// [bookId] - מזהה הספר
   /// מחזיר [BookGenerationInfo] עם שם הדור וסדר המיון, או null אם לא נמצא
   Future<BookGenerationInfo?> getBookGenerationInfo(int bookId) async {
+    if (!(await _capabilities).hasGenerations) return null;
     final db = await _database.database;
     final result = db
         .select(
@@ -1952,6 +1962,7 @@ class SeforimRepository {
   Future<BookGenerationInfo?> getBookGenerationInfoByTitle(
     String bookTitle,
   ) async {
+    if (!(await _capabilities).hasGenerations) return null;
     final db = await _database.database;
     final result = db
         .select(
@@ -2961,6 +2972,11 @@ extension BookAcronymRepository on SeforimRepository {
     int limit = 100,
   }) async {
     if (query.isEmpty) return [];
+    final capabilities = await _capabilities;
+    if (!capabilities.hasBooks) return [];
+    final categoryColumn = capabilities.hasBookCategories
+        ? 'b.categoryId'
+        : '0 AS categoryId';
 
     final db = await _database.database;
     final results = <Map<String, dynamic>>[];
@@ -2971,10 +2987,9 @@ extension BookAcronymRepository on SeforimRepository {
     final queryPattern = '%$normalizedQuery%';
 
     // 1. Search by book title (LIKE search)
-    final titleResults = db
-        .select(
-          '''
-        SELECT b.id, b.title, b.categoryId
+    final titleResults = db.select(
+      capabilities.adaptBookQuery('''
+        SELECT b.id, b.title, $categoryColumn
         FROM book b
         WHERE LOWER(b.title) LIKE ?
         ORDER BY 
@@ -2983,10 +2998,9 @@ extension BookAcronymRepository on SeforimRepository {
                ELSE 2 END,
           b.orderIndex
         LIMIT ?
-      ''',
-          [queryPattern, normalizedQuery, '$normalizedQuery%', limit],
-        )
-        .toMapList();
+      '''),
+      [queryPattern, normalizedQuery, '$normalizedQuery%', limit],
+    ).toMapList();
 
     for (final row in titleResults) {
       final bookId = row['id'] as int;
@@ -3003,10 +3017,11 @@ extension BookAcronymRepository on SeforimRepository {
     }
 
     // 2. Search by acronym
-    final acronymResults = db
-        .select(
-          '''
-        SELECT DISTINCT b.id, b.title, b.categoryId, ba.term
+    final acronymResults = !capabilities.hasAcronyms
+        ? const <Map<String, dynamic>>[]
+        : db.select(
+            capabilities.adaptBookQuery('''
+        SELECT DISTINCT b.id, b.title, $categoryColumn, ba.term
         FROM book_acronym ba
         JOIN book b ON ba.bookId = b.id
         WHERE LOWER(ba.term) LIKE ?
@@ -3016,10 +3031,9 @@ extension BookAcronymRepository on SeforimRepository {
                ELSE 2 END,
           b.orderIndex
         LIMIT ?
-      ''',
-          [queryPattern, normalizedQuery, '$normalizedQuery%', limit],
-        )
-        .toMapList();
+      '''),
+            [queryPattern, normalizedQuery, '$normalizedQuery%', limit],
+          ).toMapList();
 
     for (final row in acronymResults) {
       final bookId = row['id'] as int;
@@ -3158,6 +3172,8 @@ extension BookAcronymRepository on SeforimRepository {
       final int tocCount;
       if (cached != null) {
         tocCount = cached.all.length;
+      } else if (!(await _capabilities).hasToc) {
+        tocCount = 0;
       } else {
         final db = await _database.database;
         tocCount = db
@@ -3245,14 +3261,8 @@ extension BookAcronymRepository on SeforimRepository {
     return end;
   }
 
-  bool _hasLineBookIndex(sqlite3.Database db) {
-    return _hasLineBookIndexCache ??= db
-        .select(
-          "SELECT 1 FROM sqlite_master "
-          "WHERE type = 'index' AND name = 'idx_line_book_index'",
-        )
-        .isNotEmpty;
-  }
+  bool _hasLineBookIndex(sqlite3.Database db) =>
+      DbCapabilities.forDatabase(_database.path, db).hasLineBookIndex;
 
   /// מיפוי `line.id → line.lineIndex` לספר, מהאינדקס המכסה: `JOIN line`
   /// קרא עמוד 16KB של טקסט לכל ערך TOC. [neededLineIds] רק לנסיגה.
@@ -3322,6 +3332,7 @@ extension BookAcronymRepository on SeforimRepository {
   ) async {
     final cached = _tocCache[bookId];
     if (cached != null) return cached;
+    if (!(await _capabilities).hasToc) return _TocBookCache.empty;
 
     final db = await _database.database;
 
@@ -3656,6 +3667,7 @@ extension BookAcronymRepository on SeforimRepository {
   ) async {
     final cached = _altTocCache[bookId];
     if (cached != null) return cached;
+    if (!(await _capabilities).hasAltToc) return _TocBookCache.empty;
 
     final db = await _database.database;
 
@@ -3777,6 +3789,7 @@ extension BookAcronymRepository on SeforimRepository {
   /// מחזיר את כל הספרים שיש להם לפחות מבנה AltToc אחד.
   /// משמש ל-fallback גלובלי של חיפוש כותרות-משנה ללא שם ספר בשאילתה.
   Future<List<({int bookId, String bookTitle})>> getAllBooksWithAltToc() async {
+    if (!(await _capabilities).hasAltTocStructures) return const [];
     final db = await _database.database;
     final rows = db
         .select(
@@ -3806,6 +3819,7 @@ extension BookAcronymRepository on SeforimRepository {
   /// מזהי כל הספרים שיש להם מבנה AltToc — מאפשר לצרכן לדלג על שאילתות
   /// AltToc פר-ספר עבור הרוב המכריע של הספרים שאין להם כזה.
   Future<List<int>> getAltStructureBookIds() async {
+    if (!(await _capabilities).hasAltToc) return const [];
     final db = await _database.database;
     final rows = db.select('SELECT DISTINCT bookId FROM alt_toc_structure');
     return [for (final r in rows) r['bookId'] as int];
@@ -3836,6 +3850,7 @@ extension BookAcronymRepository on SeforimRepository {
   }
 
   Future<List<Map<String, dynamic>>> getAllAltTocFlatEntries() async {
+    if (!(await _capabilities).hasAltToc) return const [];
     final db = await _database.database;
     final rows = db.select('''
       SELECT s.bookId AS bookId,
