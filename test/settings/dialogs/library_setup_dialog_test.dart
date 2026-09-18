@@ -1,14 +1,22 @@
+import 'dart:async';
 import 'dart:io';
 
+// ignore: depend_on_referenced_packages
+import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/dialogs/library_setup_dialog.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
+import 'package:path/path.dart' as p;
 // ignore: depend_on_referenced_packages
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+// navigatorKey — כדי ש-UiSnack ימצא Overlay להודעות השגיאה.
 Widget _host(void Function(BuildContext) onOpen) => MaterialApp(
+  navigatorKey: navigatorKey,
   home: Scaffold(
     body: Builder(
       builder: (ctx) => TextButton(
@@ -83,6 +91,72 @@ class _FolderFilePickerPlatform extends FilePickerPlatform
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
   }) async => folder;
+}
+
+/// קובץ שנבחר בבורר — כמו העותק שאנדרואיד יוצר במטמון.
+final class _PickedFile extends PlatformFile {
+  _PickedFile(this._path);
+  final String _path;
+
+  @override
+  String get name => p.basename(_path);
+
+  @override
+  Uri get uri => Uri.file(_path);
+
+  @override
+  XFile get xFile => XFile(_path);
+
+  @override
+  int? lengthSync() => File(_path).lengthSync();
+
+  @override
+  Future<int> length() => File(_path).length();
+
+  @override
+  Future<Uint8List> readAsBytes() => File(_path).readAsBytes();
+
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      File(_path).openRead().map(Uint8List.fromList);
+}
+
+/// בורר קבצים מזויף שמדמה את ההעתקה למטמון באנדרואיד: מדווח picking, מחכה
+/// ל-[finishCopy], ורק אז מחזיר את הקובץ (או זורק, כשההעתקה נכשלת).
+class _CopyingFilePickerPlatform extends FilePickerPlatform
+    with MockPlatformInterfaceMixin {
+  _CopyingFilePickerPlatform(this.path, {this.fails = false});
+  final String path;
+  final bool fails;
+  final _copy = Completer<void>();
+
+  void finishCopy() => _copy.complete();
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    onFileLoading?.call(FilePickerStatus.picking);
+    await _copy.future;
+    onFileLoading?.call(FilePickerStatus.done);
+    if (fails) {
+      throw PlatformException(
+        code: 'unknown_path',
+        message: 'Failed to retrieve path.',
+      );
+    }
+    return _PickedFile(path);
+  }
 }
 
 void main() {
@@ -282,6 +356,91 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(find.textContaining('הספרייה (seforim.db)'), findsNothing);
+      expect(_actionOnPressed(tester, 'אישור'), isNotNull);
+    });
+  });
+
+  group('בחירת קובץ ספרייה — העתקה למטמון באנדרואיד (issue #1360)', () {
+    late Directory temp;
+
+    setUp(() async {
+      temp = await Directory.systemTemp.createTemp('otzaria_1360_');
+      await File('${temp.path}/seforim.db').writeAsBytes([0, 1, 2]);
+    });
+
+    tearDown(() async {
+      await temp.delete(recursive: true);
+    });
+
+    Future<void> tapPickFile(WidgetTester tester) async {
+      await _openSetup(tester);
+      await _select(tester, 'בחירת תיקייה מהמחשב');
+      await tester.ensureVisible(find.text('בחר קובץ ספרייה'));
+      await tester.tap(find.text('בחר קובץ ספרייה'));
+      await tester.pump();
+    }
+
+    testWidgets('בזמן ההעתקה: הודעה, הכפתורים והאישור מושבתים; בסיום — זוהה', (
+      tester,
+    ) async {
+      final picker = _CopyingFilePickerPlatform('${temp.path}/seforim.db');
+      FilePickerPlatform.instance = picker;
+      await tapPickFile(tester);
+
+      expect(
+        find.textContaining('המערכת מעתיקה את הקובץ שנבחר'),
+        findsOneWidget,
+      );
+      expect(_actionOnPressed(tester, 'בחר קובץ ספרייה'), isNull);
+      expect(_actionOnPressed(tester, 'בחר תיקייה'), isNull);
+      expect(_actionOnPressed(tester, 'אישור'), isNull);
+
+      picker.finishCopy();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('המערכת מעתיקה'), findsNothing);
+      expect(_actionOnPressed(tester, 'בחר קובץ ספרייה'), isNotNull);
+      expect(_actionOnPressed(tester, 'אישור'), isNotNull);
+    });
+
+    testWidgets('כשל בהעתקה למטמון מוצג למשתמש ומשחרר את הכפתורים', (
+      tester,
+    ) async {
+      final picker = _CopyingFilePickerPlatform(
+        '${temp.path}/seforim.db',
+        fails: true,
+      );
+      FilePickerPlatform.instance = picker;
+      await tapPickFile(tester);
+      expect(_actionOnPressed(tester, 'בחר קובץ ספרייה'), isNull);
+
+      picker.finishCopy();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('העתקת הקובץ שנבחר נכשלה'), findsOneWidget);
+      expect(_actionOnPressed(tester, 'בחר קובץ ספרייה'), isNotNull);
+      expect(_actionOnPressed(tester, 'אישור'), isNull);
+      // ההודעה נעלמת מעצמה — מנקים כדי שלא יישאר טיימר פתוח.
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+    });
+
+    testWidgets('בזמן ההעתקה אי אפשר להחליף פעולה', (tester) async {
+      final picker = _CopyingFilePickerPlatform('${temp.path}/seforim.db');
+      FilePickerPlatform.instance = picker;
+      await tapPickFile(tester);
+
+      final download = find.text('הורדת הספרייה');
+      await tester.ensureVisible(download);
+      await tester.tap(download);
+      final archive = find.text('בחירת קובץ דחוס');
+      await tester.ensureVisible(archive);
+      await tester.tap(archive);
+      await tester.pump();
+
+      picker.finishCopy();
+      await tester.pumpAndSettle();
+
       expect(_actionOnPressed(tester, 'אישור'), isNotNull);
     });
   });
