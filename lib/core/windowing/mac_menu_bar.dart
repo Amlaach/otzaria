@@ -202,8 +202,8 @@ class MacMenuBar extends StatelessWidget {
 
 /// ממיר מחרוזת קיצור בפורמט ההגדרות ל-activator שניתן להצהיר עליו בתפריט.
 ///
-/// מחזיר `null` לקיצור שאינו ניתן לייצוג — ואז הפריט מוצג בלי מקש, והקיצור
-/// ממשיך להיות מטופל ב-`KeyboardShortcuts` כרגיל.
+/// מחזיר `null` לקיצור שאינו ניתן לייצוג, או לסימן תלוי־פריסה. במקרה כזה
+/// הפריט מוצג בלי מקש, והקיצור מטופל ב-`KeyboardShortcuts` לפי מיקומו הפיזי.
 @visibleForTesting
 SingleActivator? menuShortcutActivator(String? shortcut) =>
     _toActivator(shortcut);
@@ -226,6 +226,7 @@ SingleActivator? _toActivator(String? shortcut) {
       case '':
         continue;
       default:
+        if (KeyMap.isLayoutSensitiveSymbol(part)) return null;
         final mapped = KeyMap.nameToKey[part];
         if (mapped != null) {
           key = mapped;

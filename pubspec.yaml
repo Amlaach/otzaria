@@ -117,12 +117,12 @@ dependencies:
   wakelock_plus: ^1.8.0
 
 dependency_overrides:
-  # TODO: להחזיר ל-pub.dev כשיתמזג וישוחרר DavBfr/dart_pdf#1969 (ערוץ פר-מופע
-  # לריבוי חלונות). עד אז הפורק Otzaria/dart_pdf, מוצמד לקומיט.
+  # DavBfr/dart_pdf#1969 (ערוץ פר-מופע לריבוי חלונות) מוזג. הקומיט בפורק
+  # Otzaria נמחק, לכן משתמשים במקור הראשי ובקומיט מוצמד שכולל את התיקון.
   printing:
     git:
-      url: https://github.com/Otzaria/dart_pdf
-      ref: de6181ded2071eb0a9f9f8e66b99b6a557eefb34
+      url: https://github.com/DavBfr/dart_pdf
+      ref: 5d899ad8dfdc5735fc8d5a09e0c76a9d0767b8c1
       path: printing
   # TODO: להחזיר ל-pub.dev כשיתמזג וישוחרר MaikuB/flutter_local_notifications#2826
   # (קריאות WinRT ב-thread ייעודי). עד אז הפורק Otzaria, מוצמד לקומיט.
