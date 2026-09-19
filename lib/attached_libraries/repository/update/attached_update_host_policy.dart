@@ -72,6 +72,26 @@ class AttachedUpdateHostPolicy {
 
   /// בדיקה מלאה: תחביר + כל כתובות ה-DNS ציבוריות. מחזיר את הכתובות
   /// שנבדקו, כדי שהחיבור ייעשה אליהן בדיוק (בלי תרגום DNS שני).
+  /// For a proxied request: [checkUri], then rejects a host that resolves
+  /// locally to a non-public address. A failed local lookup is not an error.
+  Future<void> checkNotPrivate(Uri uri) async {
+    checkUri(uri);
+    if (_isTestTarget(uri)) return;
+    final List<InternetAddress> addresses;
+    try {
+      addresses = await lookup(uri.host).timeout(lookupTimeout);
+    } on SocketException {
+      return;
+    } on TimeoutException {
+      return;
+    }
+    if (!addresses.every(isPublicAddress)) {
+      throw const AttachedUpdateHostRejected(
+        'host name resolves to a non-public address',
+      );
+    }
+  }
+
   Future<List<InternetAddress>> resolve(Uri uri) async {
     checkUri(uri);
     if (_isTestTarget(uri)) return [InternetAddress.loopbackIPv4];

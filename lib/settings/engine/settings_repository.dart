@@ -113,6 +113,10 @@ class SettingsRepository {
   static const String keyAttachedLibraries = 'key-attached-libraries';
   static const String keyAttachedLibraryFolders =
       'key-attached-library-folders';
+  static const String keyAttachedLibraryPendingUpdates =
+      'key-attached-library-pending-updates';
+  static const String keyLastAttachedLibraryUpdateCheck =
+      'key-last-attached-library-update-check';
   static const String keyEnableHtmlLinks = 'key-enable-html-links';
   static const String keyPersonalNotesCollapsedByDefault =
       'key-personal-notes-collapsed';
@@ -268,6 +272,8 @@ class SettingsRepository {
     keyMergeUserBooksIntoLibrary,
     keyAttachedLibraries,
     keyAttachedLibraryFolders,
+    keyAttachedLibraryPendingUpdates,
+    keyLastAttachedLibraryUpdateCheck,
     keyEnableHtmlLinks,
     keyPersonalNotesCollapsedByDefault,
     keyCompactMenuMode,

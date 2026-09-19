@@ -69,6 +69,7 @@ class PluginSettingsAccessPolicy {
     SettingsRepository.keyCustomFolders,
     SettingsRepository.keyAttachedLibraries,
     SettingsRepository.keyAttachedLibraryFolders,
+    SettingsRepository.keyAttachedLibraryPendingUpdates,
     SettingsRepository.keyErrorReportSenderEmail,
   };
 

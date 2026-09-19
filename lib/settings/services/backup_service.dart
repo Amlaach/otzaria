@@ -274,6 +274,7 @@ class BackupService {
     // נתיבים שנגזרים מהמכשיר: שחזור למכשיר אחר מכניס נתיב שאינו קיים בו.
     SettingsRepository.keyDbEffectivePath,
     SettingsRepository.keyAndroidLibraryRoot,
+    SettingsRepository.keyAttachedLibraryPendingUpdates,
     // חותמות זמן ומזהים תפעוליים: שחזור ערך ישן מבלבל את התזמון.
     'key-last-auto-backup',
     _kLastPartialAutoBackupKey,

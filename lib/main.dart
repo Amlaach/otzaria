@@ -31,6 +31,7 @@ import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_bloc.dart';
 import 'package:otzaria/find_ref/repository/find_ref_factory.dart';
 import 'package:otzaria/core/focus_repository.dart';
+import 'package:otzaria/core/netfree_certificates.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/history_repository.dart';
 import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
@@ -1785,19 +1786,7 @@ Future<void>? _loadCertsFuture;
 Future<void> loadCerts() => _loadCertsFuture ??= _loadCerts();
 
 Future<void> _loadCerts() async {
-  // נטפרי עברו לשורש אחיד (גירסה 1 ואז X2), אבל ספקים שטרם הועברו עדיין
-  // חותמים בתעודה הישנה לכל ספק — לכן טוענים את שלוש הקבוצות.
-  final certs = [
-    'assets/ca/netfree_cas.pem',
-    'assets/ca/netfree_root_ca_unified_v1.pem',
-    'assets/ca/netfree_root_ca_x2.pem',
-  ];
-  for (var cert in certs) {
-    final certBytes = await rootBundle.load(cert);
-    SecurityContext.defaultContext.setTrustedCertificatesBytes(
-      certBytes.buffer.asUint8List(),
-    );
-  }
+  trustCertificates(await loadNetfreeCaBytes());
 }
 
 /// Clean up resources when the app is closing

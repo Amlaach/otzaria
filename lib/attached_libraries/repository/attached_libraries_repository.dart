@@ -8,6 +8,7 @@ import 'package:otzaria/attached_libraries/models/attached_library.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_probe.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_store.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_file_swap.dart';
 import 'package:otzaria/core/app_paths.dart';
 import 'package:otzaria/migration/database/journal_mode.dart';
 import 'package:path/path.dart' as p;
@@ -16,6 +17,11 @@ typedef AttachedLibraryProbeFn =
     Future<AttachedLibraryProbeResult> Function(String path);
 
 /// תוצאת צירוף קובץ: [library] בהצלחה, אחרת [problem].
+/// The new database did not pass the post-install checks.
+class AttachedUpdateVerificationFailed implements Exception {
+  const AttachedUpdateVerificationFailed();
+}
+
 class AttachResult {
   final AttachedLibrary? library;
   final AttachedLibraryProblem? problem;
@@ -284,6 +290,61 @@ class AttachedLibrariesRepository {
   /// משחרר את נעילת הקובץ. הוא ייפתח שוב בגישה הבאה לספר ממנו.
   Future<void> release(AttachedLibrary library) =>
       _registry.close(library.slug);
+
+  /// מתקין קובץ מסד מעודכן במקום הקובץ של [library] (עדכון במקום, גם בקישור).
+  ///
+  /// Releases the open handles, swaps [stagedPath] in with a backup, probes the
+  /// new file and keeps it only if [accept] approves; otherwise the backup is
+  /// restored and the error rethrown. Serialized with rescans.
+  Future<AttachedLibrary> installUpdate(
+    AttachedLibrary library,
+    String stagedPath, {
+    required bool Function(AttachedLibraryProbeResult result) accept,
+    AttachedUpdateFileSwap swap = const AttachedUpdateFileSwap(),
+  }) => _serial(() async {
+    final current = _registry.libraries
+        .where((l) => p.equals(l.path, library.path))
+        .firstOrNull;
+    if (current == null) {
+      throw FileSystemException('library is no longer attached', library.path);
+    }
+    await _registry.close(current.slug);
+    await swap.swapIn(current.path, stagedPath);
+    final AttachedLibraryProbeResult result;
+    try {
+      result = await _probe(current.path);
+      if (!result.isOk || !accept(result)) {
+        throw const AttachedUpdateVerificationFailed();
+      }
+    } catch (_) {
+      await _registry.close(current.slug);
+      await swap.restore(current.path);
+      rethrow;
+    }
+    await swap.discardBackup(current.path);
+    final updated = _applyProbe(current, result);
+    await _commit([
+      for (final other in _registry.libraries)
+        p.equals(other.path, current.path) ? updated : other,
+    ]);
+    return updated;
+  });
+
+  /// Restores databases left mid-swap by a crash. Runs before [rescan] at
+  /// startup so the fingerprints are taken from the restored files.
+  Future<void> recoverInterruptedUpdates({
+    AttachedUpdateFileSwap swap = const AttachedUpdateFileSwap(),
+  }) => _serial(() async {
+    for (final library in _registry.libraries) {
+      try {
+        if (await swap.recover(library.path)) {
+          await _registry.close(library.slug);
+        }
+      } catch (e) {
+        debugPrint('[AttachedLibraries] recovery of ${library.path}: $e');
+      }
+    }
+  });
 
   /// סורק את תיקיות המסדים ובודק כל מסד רשום: קובץ שנעלם מסומן "לא זמין",
   /// וקובץ שטביעת האצבע שלו השתנתה נבדק מחדש. מחזיר האם משהו השתנה.

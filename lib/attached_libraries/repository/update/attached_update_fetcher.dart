@@ -22,7 +22,8 @@ class AttachedUpdateCancelToken {
     }
   }
 
-  void Function() _onCancel(void Function() listener) {
+  /// Registers [listener]; returns the function that unregisters it.
+  void Function() onCancel(void Function() listener) {
     _listeners.add(listener);
     return () => _listeners.remove(listener);
   }
@@ -61,6 +62,7 @@ class AttachedUpdateFetcher {
     this.connectTimeout = const Duration(seconds: 15),
     this.readTimeout = const Duration(seconds: 30),
     this.maxRedirects = 5,
+    this.findProxy = HttpClient.findProxyFromEnvironment,
   });
 
   final AttachedUpdateHostPolicy policy;
@@ -69,6 +71,9 @@ class AttachedUpdateFetcher {
   /// זמן מרבי בלי אף בית — לכותרות התגובה ובין נתחי הגוף.
   final Duration readTimeout;
   final int maxRedirects;
+
+  /// Same proxy resolution as the official library updater (`http.Client`).
+  final String Function(Uri uri) findProxy;
 
   static const _userAgent = 'Otzaria-attached-library-updater';
 
@@ -267,7 +272,7 @@ class AttachedUpdateFetcher {
             controller.close();
           },
         );
-        unsubscribe = cancel._onCancel(() {
+        unsubscribe = cancel.onCancel(() {
           subscription?.cancel();
           controller
             ..addError(const AttachedUpdateCancelled())
@@ -294,11 +299,11 @@ class AttachedUpdateFetcher {
       ..idleTimeout = const Duration(seconds: 5)
       ..autoUncompress = false
       ..userAgent = _userAgent
-      ..findProxy = ((_) => 'DIRECT')
+      ..findProxy = findProxy
       ..connectionFactory = _connect;
     // גם המתנה לחיבור או לכותרות נקטעת בביטול, לא רק קריאת הגוף.
     final cancelled = Completer<T>();
-    final unsubscribe = cancel?._onCancel(() {
+    final unsubscribe = cancel?.onCancel(() {
       client.close(force: true);
       if (!cancelled.isCompleted) {
         cancelled.completeError(const AttachedUpdateCancelled());
@@ -330,6 +335,11 @@ class AttachedUpdateFetcher {
     String? proxyHost,
     int? proxyPort,
   ) async {
+    if (proxyHost != null && proxyPort != null) {
+      // The proxy resolves the host; reject only a locally private address.
+      await policy.checkNotPrivate(uri);
+      return Socket.startConnect(proxyHost, proxyPort);
+    }
     final addresses = await policy.resolve(uri);
     Socket? raw;
     Object? lastError;
