@@ -105,4 +105,34 @@ void main() {
       rejected,
     );
   });
+
+  group('through a proxy (proxy resolves the host)', () {
+    final uri = Uri.parse('https://updates.example.org/m.json');
+
+    test('a host that resolves locally to a private address is rejected', () {
+      final policy = AttachedUpdateHostPolicy(
+        lookup: (_) async => [InternetAddress('10.1.2.3')],
+      );
+      expect(
+        policy.checkNotPrivate(uri),
+        throwsA(isA<AttachedUpdateHostRejected>()),
+      );
+    });
+
+    test('a failed local lookup is left to the proxy', () async {
+      final policy = AttachedUpdateHostPolicy(
+        lookup: (_) async => throw const SocketException('no dns'),
+      );
+      await policy.checkNotPrivate(uri);
+    });
+
+    test('the URL rules still apply', () {
+      expect(
+        const AttachedUpdateHostPolicy().checkNotPrivate(
+          Uri.parse('http://updates.example.org/m.json'),
+        ),
+        throwsA(isA<AttachedUpdateHostRejected>()),
+      );
+    });
+  });
 }
