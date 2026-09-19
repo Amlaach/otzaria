@@ -5,6 +5,7 @@ import 'package:otzaria/pdf_book/view/pdf_book_screen.dart';
 import 'package:otzaria/printing/printing_helpers.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/text_book/models/commentator_group.dart';
+import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 
 import '../helpers/memory_settings_cache.dart';
 
@@ -604,6 +605,49 @@ void main() {
       );
       expect(result, isNull);
       expect(pageNumberAccessed, isFalse);
+    });
+  });
+
+  group('העתקת טקסט מסומן בתפריט ההקשר של PDF (issue #1420)', () {
+    // התפריט הזה מחליף את התפריט המובנה של pdfrx, שהציע "העתק" על בחירה.
+    // בלעדיו אין בדסקטופ שום מסלול עכבר להעתקה מתוך PDF.
+    List<AppContextMenuEntry> buildMenu({required bool hasTextSelection}) {
+      return buildPdfContextMenuEntries(
+        commentatorChildren: const [],
+        hasRelevantCommentators: false,
+        canSelectCommentators: false,
+        linksEntry: buildPdfLinksContextMenuEntry(
+          relevantLinks: const [],
+          showOpenLinksPaneEntry: false,
+          onOpenLinksPane: () {},
+          onOpenLink: (_) {},
+        ),
+        hasTextSelection: hasTextSelection,
+        onSearch: () {},
+        onSearchParallels: () {},
+        onAddBookmark: () {},
+        onAddNote: () {},
+      );
+    }
+
+    AppContextMenuIconAction copyActionOf(List<AppContextMenuEntry> menu) {
+      final iconRow = menu.firstWhere(
+        (entry) => entry.iconRowActions != null,
+        orElse: () =>
+            throw StateError('אין שורת אייקונים בתפריט ההקשר של PDF'),
+      );
+      return iconRow.iconRowActions!.firstWhere(
+        (action) => action.label == 'העתקה',
+        orElse: () => throw StateError('אין פעולת "העתקה" בשורת האייקונים'),
+      );
+    }
+
+    test('יש פעולת "העתקה", והיא פעילה כשיש טקסט מסומן', () {
+      expect(copyActionOf(buildMenu(hasTextSelection: true)).enabled, isTrue);
+    });
+
+    test('פעולת "העתקה" מנוטרלת כשאין טקסט מסומן', () {
+      expect(copyActionOf(buildMenu(hasTextSelection: false)).enabled, isFalse);
     });
   });
 }
