@@ -407,6 +407,26 @@ void main() {
       );
     });
 
+    test('a moved manifest URL is re-pinned, not flagged', () async {
+      final newDb = database(version: '2');
+      final db = sqlite3.sqlite3.open(newDb);
+      db.execute(
+        "UPDATE schema_meta SET value = 'https://moved.example.org/m.json' "
+        "WHERE key = 'update_manifest_url'",
+      );
+      db.close();
+      final (svc, library) = await offered(newDb);
+      await svc.install(library);
+      expect(svc.statusOf(library), const AttachedUpdateInstalled(2));
+      final updated = repository.libraries.single;
+      expect(
+        updated.updateSource!.manifestUrl,
+        'https://moved.example.org/m.json',
+      );
+      expect(updated.updateSourceMismatch, isFalse);
+      expect(AttachedLibraryUpdateService.isEligible(updated), isTrue);
+    });
+
     test('corrupt new file ⇒ old file kept', () async {
       final junk = p.join(temp.path, 'junk.db');
       File(junk).writeAsBytesSync(List.filled(4096, 7));

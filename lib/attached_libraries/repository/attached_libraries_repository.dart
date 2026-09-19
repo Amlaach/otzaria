@@ -322,7 +322,12 @@ class AttachedLibrariesRepository {
       rethrow;
     }
     await swap.discardBackup(current.path);
-    final updated = _applyProbe(current, result);
+    // [accept] checked the key and library_id, so a moved manifest URL is
+    // re-pinned instead of being flagged as a changed source.
+    final updated = _applyProbe(
+      current.copyWith(clearUpdateSource: true),
+      result,
+    );
     await _commit([
       for (final other in _registry.libraries)
         p.equals(other.path, current.path) ? updated : other,
