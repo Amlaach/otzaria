@@ -4,6 +4,7 @@
 
 import 'dart:io';
 
+import 'package:otzaria/attached_libraries/models/attached_library_update_source.dart';
 import 'package:otzaria/attached_libraries/utils/attached_file_path.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/link_types.dart';
@@ -102,6 +103,11 @@ class PersonalDbReport {
   String? libraryId;
   String? displayName;
   String? dbVersion;
+  String? updateManifestUrl;
+  String? updatePublicKey;
+
+  /// שני שדות העדכון קיימים ותקינים, ויש library_id ו-db_version שלם.
+  bool updatesEnabled = false;
   bool isWal = false;
   bool pendingJournal = false;
   bool openedImmutable = false;
@@ -522,7 +528,8 @@ void _readMeta(Database db, _Caps caps, PersonalDbReport report) {
   if (caps.col('schema_meta', 'key') && caps.col('schema_meta', 'value')) {
     final rows = db.select(
       'SELECT key, value FROM schema_meta '
-      "WHERE key IN ('library_id', 'library_name', 'db_version')",
+      "WHERE key IN ('library_id', 'library_name', 'db_version', "
+      "'update_manifest_url', 'update_public_key')",
     );
     for (final row in rows) {
       final value = row['value']?.toString().trim();
@@ -535,6 +542,9 @@ void _readMeta(Database db, _Caps caps, PersonalDbReport report) {
   report.libraryId = meta['library_id'];
   report.displayName = meta['library_name'] ?? baseName;
   report.dbVersion = meta['db_version'];
+  report.updateManifestUrl = meta['update_manifest_url'];
+  report.updatePublicKey = meta['update_public_key'];
+  _checkUpdateSource(report);
   report.slug = validatorSlugFor(
     libraryId: report.libraryId,
     fileName: baseName,
@@ -562,6 +572,40 @@ void _readMeta(Database db, _Caps caps, PersonalDbReport report) {
       'No schema_meta.db_version — changes are detected by size and date only.',
     );
   }
+}
+
+void _checkUpdateSource(PersonalDbReport report) {
+  final url = report.updateManifestUrl;
+  final key = report.updatePublicKey;
+  if (url == null && key == null) {
+    report._add(
+      Severity.info,
+      'no_update_source',
+      'No update_manifest_url / update_public_key — this database never '
+          'receives updates (see docs/personal_databases.md).',
+    );
+    return;
+  }
+  final problems = [
+    if (url == null) 'update_manifest_url is missing',
+    if (url != null && !AttachedLibraryUpdateSource.isValidManifestUrl(url))
+      'update_manifest_url must be an https URL without credentials or '
+          'fragment',
+    if (key == null) 'update_public_key is missing',
+    if (key != null && AttachedLibraryUpdateSource.decodePublicKey(key) == null)
+      'update_public_key must be a base64 ed25519 public key (32 bytes)',
+    if (report.libraryId == null) 'updates require schema_meta.library_id',
+    if (int.tryParse(report.dbVersion ?? '') == null)
+      'updates require an integer schema_meta.db_version',
+  ];
+  for (final problem in problems) {
+    report._add(
+      Severity.warning,
+      'update_source_invalid',
+      '$problem — updates are disabled.',
+    );
+  }
+  report.updatesEnabled = problems.isEmpty;
 }
 
 void _checkFilePaths(
@@ -725,6 +769,10 @@ String formatReport(PersonalDbReport report) {
     ..writeln('  library_id:    ${report.libraryId ?? '-'}')
     ..writeln('  display name:  ${report.displayName ?? '-'}')
     ..writeln('  db_version:    ${report.dbVersion ?? '-'}')
+    ..writeln(
+      '  updates:       ${report.updatesEnabled ? 'signed, from '
+                '${Uri.parse(report.updateManifestUrl!).host}' : 'none'}',
+    )
     ..writeln(
       '  journal:       ${report.isWal ? 'WAL' : 'rollback'}'
       '${report.openedImmutable ? ' (opened immutable)' : ''}',

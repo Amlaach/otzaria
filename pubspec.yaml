@@ -80,6 +80,8 @@ dependencies:
     git:
       url: https://github.com/palmoni5/otzaria-ashurit.git
       path: package
+  # ed25519 לאימות עדכוני מסדים מצורפים — Dart טהור, בלי תלויות.
+  pinenacl: ^0.6.0
   path: ^1.9.1
   http: ^1.6.0
   zstandard: ^1.5.0
