@@ -882,6 +882,8 @@ dart format lib/file.dart    # Format ONLY files you modified
 | גיבוי ושחזור רשימת המסדים ותיקיותיהם (קובץ חסר ⇒ 'לא זמין') | `test/settings/services/backup_service_test.dart` |
 | תוכן ספר אינו מפעיל פעולות `otzaria://`; מפרש ממסד מצורף בלי 'דווח על טעות' | `test/utils/text/html_link_handler_test.dart`, `test/utils/context_menu_optional_bloc_test.dart` |
 | חיפוש הספרייה: כינויים ודור לפי מקור, דירוג אחרי רשמי ואישי | `test/data/repository/book_search_fuzzy_match_test.dart` |
+| עדכוני מסד מצורף — נעיצת המקור (TOFU) וסטייה, מניפסט, חתימת ed25519, מדיניות רשת, הורדת חלקים ובנייה | `test/attached_libraries/update/` |
+| כלי המפרסם `tool/personal_db_update.dart` (keygen/pack/sign/verify, הלוך-חזור עם zstd) ודיווח המאמת על שדות העדכון | `test/tool/personal_db_update_tool_test.dart` |
 
 **Search**
 | Area | Test File |

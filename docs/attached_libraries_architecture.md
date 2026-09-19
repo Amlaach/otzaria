@@ -79,3 +79,13 @@ timeout), מוגן ב-`WindowRole.isSecondary` לעבודה ברמת מחשב, �
 - קישורים בטקסט הספר — ניווט בלבד.
 - `book.filePath` — יחסי לתיקיית המסד בלבד; נדחים נתיב מוחלט, אות כונן, UNC, `..`,
   רכיב של נקודות/רווחים בלבד, `:`, NUL.
+
+## עדכונים (שלב U1: מודל, אימות ורשת)
+
+- **נעיצה (TOFU):** `AttachedLibraryProbe` קורא `update_manifest_url`/`update_public_key` עם `library_id` ל-`AttachedLibraryUpdateSource`. `_applyProbe` נועץ אותו ב-`AttachedLibrary.updateSource` בצירוף. בבדיקה חוזרת של אותו slug הנעוץ נשמר, וכל סטייה (גם הסרה) מסמנת `updateSourceMismatch` — בלי רשת. slug אחר הוא מסד אחר ונעוץ מחדש. `updateSourceProbed` גורם למסד שצורף לפני התכונה להיבדק שוב פעם אחת.
+- **מניפסט:** `models/attached_update_manifest.dart` — פענוח קפדני אחרי אימות החתימה בלבד. `checkApplicable` דוחה `library_id` שונה ו-`db_version` שאינו גדול מהמותקן (או מותקן שאינו מספר שלם).
+- **חתימה:** `repository/update/attached_update_signature.dart` — ed25519 דרך `pinenacl` (Dart טהור, בלי תלויות). נבדקת תמיד מול המפתח הנעוץ, לעולם לא מול מפתח מקובץ שהורד.
+- **רשת:** `AttachedUpdateHostPolicy` (https, שם מארח ולא IP, בלי שמות מקומיים, כל כתובות ה-DNS ציבוריות) ו-`AttachedUpdateFetcher`: `connectionFactory` מתחבר לכתובות שהמדיניות אישרה ומקים TLS מול שם המארח (אין תרגום DNS שני), הפניות מטופלות ידנית ונבדקות, `findProxy` = DIRECT, timeouts לחיבור ולכל נתח. תעודות נטפרי מגיעות מה-SecurityContext הגלובלי שנטען בעלייה. dart:io בלבד — אפשר להריץ ב-isolate.
+- **הורדה ובנייה:** `downloadParts` משרשר את החלקים לקובץ אחד עם sha256 לכל חלק, ממשיך ב-Range אחרי אימות מה שכבר בדיסק, וחלק פגום נחתך. `AttachedUpdateArtifactBuilder` פורס zstd בזרם דרך `ZstdStreamExtractor` (אותו FFI של עדכון הספרייה) ובודק גודל ו-sha256.
+- **delta:** מפוענח בלבד. ה-`PatchApplier` של seforim_library_updater מקבל נתיב מסד, אבל קשור לרשימת הטבלאות ולגיבוב הלוגי של הספרייה הרשמית ולקובצי patch שמיוצרים ב-SeforimLibrary — אין למפרסם אישי דרך לייצר אותם. נדחה ל-v2.
+- **לבדיקות:** `AttachedUpdateHostPolicy.allowLoopbackForTesting` מתיר http ל-127.0.0.1 בפורטים שנמסרו בלבד; מדיניות הייצור אינה משתנה.

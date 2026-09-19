@@ -201,3 +201,68 @@ dart run tool/validate_personal_db.dart <path-to-db>
 | הפירוש לא מופיע בחלונית המפרשים של הספר הרשמי | `connectionType` צריך להיות `'SOURCE'`; ודאו ש-`targetTitle`/`targetRef` תואמים ושהטבלה בגבול 5,000,000 השורות. |
 | PDF לא נפתח | `filePath` חייב להיות יחסי לתיקיית המסד, בלי `..`. |
 | סטטוס "לא זמין" | הכונן מנותק או שהמסד לא ענה בזמן. חברו מחדש והפעילו סריקה ידנית. |
+
+## עדכונים למסד (למפרסמים)
+
+מסד יכול להצהיר על מקור עדכונים. אוצריא מעדכנת אותו רק באישור המשתמש, ורק כשהמניפסט חתום במפתח שנעוץ אצלה.
+
+### השדות ב-`schema_meta`
+
+| מפתח | ערך |
+|---|---|
+| `library_id` | חובה לעדכונים. זהה בכל הגרסאות. |
+| `db_version` | מספר שלם, עולה בכל גרסה. |
+| `update_manifest_url` | כתובת `https://` של `manifest.json`. |
+| `update_public_key` | המפתח הציבורי (ed25519, base64) מ-`keygen`. |
+
+מסד שחסר בו אחד מהם — או שערכו פגום — אינו מתעדכן לעולם. `validate_personal_db` מדווח על כך.
+
+המפתח והכתובת **נעוצים** בפעם הראשונה שאוצריא רואה את המסד. גרסה שמצהירה על מפתח אחר, כתובת אחרת או `library_id` אחר נדחית. אין החלפת מפתח: מפתח שאבד או הוחלף מחייב כל משתמש להסיר את המסד ולצרף אותו מחדש. שמרו את המפתח הפרטי בגיבוי ובסוד.
+
+### תהליך הפרסום
+
+```bash
+# פעם אחת:
+dart run tool/personal_db_update.dart keygen --out my-lib.key
+# מכניסים למסד את update_public_key ואת update_manifest_url שהפקודה מדפיסה.
+
+# בכל גרסה: מעלים את db_version במסד, ואז
+dart run tool/personal_db_update.dart pack my-lib.db --out release \
+    --url-prefix https://github.com/<owner>/<repo>/releases/download/v5
+dart run tool/personal_db_update.dart sign release/manifest.json --key my-lib.key
+dart run tool/personal_db_update.dart verify release/manifest.json --db my-lib.db --parts release
+```
+
+`pack` דוחס ב-zstd (נדרשת תוכנת `zstd` בנתיב, או `--zstd <path>`; `--compression none` בלי דחיסה) ומחשב sha256 לכל חלק ולמסד כולו.
+
+מעלים את קובצי החלקים לכתובות שבמניפסט, ואת `manifest.json` ו-`manifest.json.sig` לכתובת שב-`update_manifest_url` (החתימה בדיוק באותה כתובת עם `.sig`). אחרי החתימה אסור לשנות אף בית במניפסט — גם לא רווח.
+
+### מסד גדול מ-2GB, ואחסון בכל שרת
+
+- `--part-size <bytes>` מפצל את הקובץ הדחוס לחלקים (`.001`, `.002`...). ברירת המחדל, 1900MiB, מתחת למגבלת הקובץ של GitHub Releases. החלקים משורשרים לפי הסדר ואז נפרסים.
+- כל שרת `https` מתאים: GitHub Releases, אחסון קבצים או שרת פרטי. `--url-prefix` הוא התיקייה שבה החלקים יישבו. המניפסט והחלקים יכולים לשבת בשרתים שונים.
+- אוצריא מסרבת ל-`http`, לכתובת IP, ל-`localhost` ולשמות ברשת מקומית, גם אחרי הפניה (redirect).
+
+### מבנה המניפסט
+
+```json
+{
+  "format": 1,
+  "library_id": "my-lib",
+  "db_version": 5,
+  "release_notes": "Plain text, shown as-is.",
+  "full": {
+    "compression": "zstd",
+    "size": 3221225472,
+    "sha256": "<sha256 of the final .db>",
+    "parts": [
+      {"url": "https://host/v5/my-lib-5.db.zst.001", "size": 1992294400, "sha256": "<sha256>"},
+      {"url": "https://host/v5/my-lib-5.db.zst.002", "size": 704643072, "sha256": "<sha256>"}
+    ]
+  }
+}
+```
+
+`db_version` חייב להיות גדול מזה של המסד המותקן — אין חזרה לגרסה ישנה. שדות לא מוכרים מתעלמים מהם. המניפסט עד 1MB, והמסד עד 64GB.
+
+השדה האופציונלי `delta` שמור לתיקונים בין גרסאות: `[{"from_db_version", "from_sha256", "compression", "size", "sha256", "parts"}]`. הגרסה הנוכחית מאמתת אותו אך מורידה תמיד את `full`.
