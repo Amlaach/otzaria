@@ -1380,5 +1380,43 @@ void main() {
         expect(AttachedLibrariesRepository.instance.folders, [folder]);
       },
     );
+
+    test('a pinned update key in the archive is not trusted', () async {
+      final missingPath = p.join(tempDir.path, 'gone', 'lib.db');
+      await Settings.setValue<String>(
+        SettingsRepository.keyAttachedLibraries,
+        jsonEncode([
+          {
+            'slug': 'lib-a',
+            'displayName': 'lib-a',
+            'path': missingPath,
+            'status': 'ok',
+            'updateSource': {
+              'libraryId': 'lib-a',
+              'manifestUrl': 'https://updates.example.com/m.json',
+              'publicKey': base64.encode(List.filled(32, 7)),
+            },
+            'updateSourceProbed': true,
+          },
+        ]),
+      );
+      await registry.reset();
+      expect(registry.libraries.single.updateSource, isNotNull);
+
+      final backup = await BackupService.createBackup(
+        includeSettings: true,
+        includeBookmarks: false,
+        includeHistory: false,
+        includeNotes: false,
+        includeWorkspaces: false,
+        includeShamorZachor: false,
+        includePlugins: false,
+      );
+      await BackupService.restoreFromBackup(backup.path);
+
+      final restored = AttachedLibrariesRepository.instance.libraries.single;
+      expect(restored.updateSource, isNull);
+      expect(restored.updateSourceProbed, isFalse);
+    });
   });
 }

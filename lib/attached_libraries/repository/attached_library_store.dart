@@ -33,6 +33,21 @@ class AttachedLibraryStore {
     return libraries;
   }
 
+  /// שוכח את מקורות העדכונים הנעוצים, כך שהסריקה הבאה נועצת מחדש מהקובץ
+  /// עצמו. לרשימה שהגיעה מארכיון גיבוי — ארכיון אינו מקור מהימן למפתח.
+  Future<void> forgetUpdatePins() async {
+    final libraries = loadLibrariesOrNull();
+    if (libraries == null) return;
+    await saveLibraries([
+      for (final library in libraries)
+        library.copyWith(
+          clearUpdateSource: true,
+          updateSourceMismatch: false,
+          updateSourceProbed: false,
+        ),
+    ]);
+  }
+
   Future<void> saveLibraries(List<AttachedLibrary> libraries) =>
       Settings.setValue<String>(
         SettingsRepository.keyAttachedLibraries,

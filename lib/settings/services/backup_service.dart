@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:otzaria/app_report/services/app_report_service.dart';
 import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
+import 'package:otzaria/attached_libraries/repository/attached_library_store.dart';
 import 'package:otzaria/settings/services/custom_folders/custom_folder.dart';
 import 'package:otzaria/shortcuts/shortcut_validator.dart';
 import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
@@ -745,7 +746,11 @@ class BackupService {
       // והתיקיות המותאמות מתארים את המכשיר שממנו הגיע הקובץ, לא את זה.
       if (!isMerge) {
         await _restoreSettings(settings);
-        await _refreshAttachedLibrariesAfterRestore();
+        await _refreshAttachedLibrariesAfterRestore(
+          forgetPins: settings.containsKey(
+            SettingsRepository.keyAttachedLibraries,
+          ),
+        );
         missingCustomFolders.addAll(await findMissingCustomFolders());
         hasLegacyPartialSettings = isPartialSettingsSection(
           settings,
@@ -981,8 +986,11 @@ class BackupService {
 
   /// הרשימה המשוחזרת נושאת את מצב המכשיר שגובה — מסד שקובצו חסר כאן מסומן
   /// 'לא זמין' ונשאר ברשימה, כך שאפשר לצרפו מחדש.
-  static Future<void> _refreshAttachedLibrariesAfterRestore() async {
+  static Future<void> _refreshAttachedLibrariesAfterRestore({
+    required bool forgetPins,
+  }) async {
     try {
+      if (forgetPins) await const AttachedLibraryStore().forgetUpdatePins();
       await AttachedLibraryRegistry.instance.reset();
       await AttachedLibrariesRepository.instance.rescan();
     } catch (e) {
