@@ -14,8 +14,14 @@ class AttachedUpdateArtifactMismatch implements Exception {
   String toString() => 'AttachedUpdateArtifactMismatch: $message';
 }
 
+/// Stops once the output exceeds [maxOutputBytes] ([ZstdOutputLimitExceeded]):
+/// a check afterwards would let a small archive fill the disk first.
 typedef AttachedUpdateDecompressor =
-    Future<void> Function(String archivePath, String outputPath);
+    Future<void> Function(
+      String archivePath,
+      String outputPath,
+      int maxOutputBytes,
+    );
 
 /// בונה את קובץ ה-.db מהחלקים המשורשרים (פלט [AttachedUpdateFetcher.downloadParts]):
 /// פריסת zstd בזרם — אותו מסלול FFI של עדכון הספרייה הרשמי, בלי טעינה ל-RAM —
@@ -27,8 +33,8 @@ class AttachedUpdateArtifactBuilder {
 
   final AttachedUpdateDecompressor decompress;
 
-  static Future<void> _zstdStream(String archive, String output) =>
-      ZstdStreamExtractor.extractToFile(archive, output);
+  static Future<void> _zstdStream(String archive, String output, int max) =>
+      ZstdStreamExtractor.extractToFile(archive, output, maxOutputBytes: max);
 
   /// [combinedPath] נמחק בהצלחה; בכשל הפלט נמחק ו-[combinedPath] נשאר
   /// (ההורדה אינה חוזרת על עצמה בניסיון הבא).
@@ -41,7 +47,13 @@ class AttachedUpdateArtifactBuilder {
     try {
       switch (artifact.compression) {
         case AttachedUpdateCompression.zstd:
-          await decompress(combinedPath, outputPath);
+          try {
+            await decompress(combinedPath, outputPath, artifact.size);
+          } on ZstdOutputLimitExceeded {
+            throw AttachedUpdateArtifactMismatch(
+              'decompressed output exceeds ${artifact.size}',
+            );
+          }
         case AttachedUpdateCompression.none:
           // החלקים כבר אומתו; אי-התאמה כאן היא מניפסט סותר ולא תקלת הורדה.
           await File(combinedPath).rename(outputPath);

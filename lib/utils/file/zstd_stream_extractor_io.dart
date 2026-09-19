@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:otzaria/utils/file/zstd_stream_extractor.dart';
 import 'package:zstandard_native/zstandard_native_bindings.dart';
 
 /// מחלץ את [archivePath] (קובץ `.zst`) אל [outputPath]. רץ ב-isolate נפרד
@@ -18,6 +19,7 @@ Future<void> extractToFile(
   String archivePath,
   String outputPath, {
   void Function(double progress)? onProgress,
+  int? maxOutputBytes,
 }) {
   return _runWithProgress(
     onProgress,
@@ -27,6 +29,7 @@ Future<void> extractToFile(
         outputPath,
         _openZstandardLib(),
         port,
+        maxOutputBytes,
       ),
     ),
   );
@@ -80,8 +83,9 @@ DynamicLibrary _openZstandardLib() {
 void decompressSyncForTest(
   String archivePath,
   String outputPath,
-  DynamicLibrary lib,
-) => _decompressWithLib(archivePath, outputPath, lib, null);
+  DynamicLibrary lib, {
+  int? maxOutputBytes,
+}) => _decompressWithLib(archivePath, outputPath, lib, null, maxOutputBytes);
 
 /// חילוץ ZST streaming דרך ZSTD FFI. בכשל מוחק את קובץ הפלט החלקי, אחרת
 /// קובץ חתוך נשאר ומפיל את פתיחת ה-DB בעלייה הבאה.
@@ -90,9 +94,16 @@ void _decompressWithLib(
   String outputPath,
   DynamicLibrary dylib,
   SendPort? progressPort,
+  int? maxOutputBytes,
 ) {
   try {
-    _decompressCore(archivePath, outputPath, dylib, progressPort);
+    _decompressCore(
+      archivePath,
+      outputPath,
+      dylib,
+      progressPort,
+      maxOutputBytes,
+    );
   } catch (_) {
     try {
       final partial = File(outputPath);
@@ -107,6 +118,7 @@ void _decompressCore(
   String outputPath,
   DynamicLibrary dylib,
   SendPort? progressPort,
+  int? maxOutputBytes,
 ) {
   final bindings = ZstandardNativeBindings(dylib);
 
@@ -191,6 +203,10 @@ void _decompressCore(
               );
             }
 
+            if (maxOutputBytes != null &&
+                totalWritten + outBuf.ref.pos > maxOutputBytes) {
+              throw ZstdOutputLimitExceeded(maxOutputBytes);
+            }
             if (outBuf.ref.pos > 0) {
               outputRaf.writeFromSync(outNative.asTypedList(outBuf.ref.pos));
               totalWritten += outBuf.ref.pos;

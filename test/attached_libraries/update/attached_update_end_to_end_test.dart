@@ -53,8 +53,12 @@ const _manifestUrl = 'https://updates.example.org/lib/manifest.json';
 
 // Top-level so the closure sent to the download isolate captures only a path.
 AttachedUpdateDecompressor _decompressWith(String lib) =>
-    (archive, output) async =>
-        decompressSyncForTest(archive, output, DynamicLibrary.open(lib));
+    (archive, output, max) async => decompressSyncForTest(
+      archive,
+      output,
+      DynamicLibrary.open(lib),
+      maxOutputBytes: max,
+    );
 
 /// The real fetcher, with the published https URLs served from loopback.
 class _LoopbackFetcher extends AttachedUpdateFetcher {
@@ -96,6 +100,63 @@ class _LoopbackFetcher extends AttachedUpdateFetcher {
 }
 
 void main() {
+  test(
+    'zstd output larger than the declared size aborts as corrupt, output deleted',
+    () async {
+      final zstd = _findZstd();
+      if (zstd == null) {
+        markTestSkipped('zstd / libzstd not available');
+        return;
+      }
+      final temp = await Directory.systemTemp.createTemp('otzaria_upd_bomb');
+      try {
+        // 8 MB of zeros packs to a few hundred bytes.
+        final raw = p.join(temp.path, 'raw.db');
+        File(raw).writeAsBytesSync(Uint8List(8 << 20));
+        final archive = p.join(temp.path, 'combined.zst');
+        final packed = Process.runSync(zstd.exe, [
+          '-q',
+          '-f',
+          raw,
+          '-o',
+          archive,
+        ]);
+        expect(packed.exitCode, 0);
+        File(raw).deleteSync();
+        final output = p.join(temp.path, 'out.db');
+        final builder = AttachedUpdateArtifactBuilder(
+          decompress: _decompressWith(zstd.lib),
+        );
+
+        await expectLater(
+          builder.build(
+            AttachedUpdateArtifact(
+              compression: AttachedUpdateCompression.zstd,
+              size: 1000,
+              sha256: '0' * 64,
+              parts: const [],
+            ),
+            archive,
+            output,
+          ),
+          throwsA(
+            // "exceeds" = stopped while streaming, not the size check after.
+            isA<AttachedUpdateArtifactMismatch>().having(
+              (e) => e.message,
+              'message',
+              contains('exceeds'),
+            ),
+          ),
+        );
+        expect(File(output).existsSync(), isFalse);
+      } finally {
+        try {
+          await temp.delete(recursive: true);
+        } catch (_) {}
+      }
+    },
+  );
+
   test(
     'signed, zstd, split manifest: download in the isolate and install',
     () async {

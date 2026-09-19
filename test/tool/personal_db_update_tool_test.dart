@@ -255,8 +255,12 @@ void main() {
       );
       expect(result.manifest.full.parts.length, greaterThan(1));
       final builder = AttachedUpdateArtifactBuilder(
-        decompress: (archive, output) async =>
-            decompressSyncForTest(archive, output, zstd.lib),
+        decompress: (archive, output, max) async => decompressSyncForTest(
+          archive,
+          output,
+          zstd.lib,
+          maxOutputBytes: max,
+        ),
       );
       final output = await downloadAndBuild(result.manifest, builder);
       expect(File(output).readAsBytesSync(), File(db).readAsBytesSync());
