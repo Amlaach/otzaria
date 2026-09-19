@@ -92,6 +92,44 @@ class ReleaseAttachedLibrary extends AttachedLibrariesEvent {
   List<Object?> get props => [library];
 }
 
+/// Manual "check for updates" for one database.
+class CheckAttachedLibraryUpdate extends AttachedLibrariesEvent {
+  final AttachedLibrary library;
+
+  const CheckAttachedLibraryUpdate(this.library);
+
+  @override
+  List<Object?> get props => [library];
+}
+
+/// Installs the update the user just approved in the confirmation dialog.
+class InstallAttachedLibraryUpdate extends AttachedLibrariesEvent {
+  final AttachedLibrary library;
+
+  const InstallAttachedLibraryUpdate(this.library);
+
+  @override
+  List<Object?> get props => [library];
+}
+
+class CancelAttachedLibraryUpdate extends AttachedLibrariesEvent {
+  final AttachedLibrary library;
+
+  const CancelAttachedLibraryUpdate(this.library);
+
+  @override
+  List<Object?> get props => [library];
+}
+
+class _AttachedUpdatesChanged extends AttachedLibrariesEvent {
+  const _AttachedUpdatesChanged(this.updates);
+
+  final Map<String, AttachedUpdateStatus> updates;
+
+  @override
+  List<Object?> get props => [updates];
+}
+
 /// הרשימה השתנתה ב-repository (גם מסריקת רקע) — טוענים מחדש ומרעננים את העץ.
 class _AttachedLibrariesChanged extends AttachedLibrariesEvent {
   const _AttachedLibrariesChanged(this.contentChangedSlugs);

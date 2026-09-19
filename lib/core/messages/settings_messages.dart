@@ -214,6 +214,9 @@ abstract class SettingsMessages {
   static const String attachedLibraryFolderAdded = 'תיקיית המסדים נוספה';
   static const String attachedLibraryFolderRemoved =
       'תיקיית המסדים הוסרה מהספרייה';
+  static const String attachedUpToDate = 'המסד מעודכן לגרסה האחרונה';
+  static String attachedUpdateInstalled(String name, int version) =>
+      'המסד "$name" עודכן לגרסה $version';
   static const String attachedLibrariesRescanned = 'המסדים נבדקו מחדש';
   static String attachedLibraryError(Object error) =>
       'שגיאה בטיפול במסד: $error';

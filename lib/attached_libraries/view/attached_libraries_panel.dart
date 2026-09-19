@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/attached_libraries/bloc/attached_libraries_bloc.dart';
 import 'package:otzaria/attached_libraries/models/attached_library.dart';
+import 'package:otzaria/attached_libraries/models/attached_library_update_status.dart';
 import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
 import 'package:otzaria/attached_libraries/repository/external_link_repository.dart';
+import 'package:otzaria/attached_libraries/view/attached_library_update_view.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
@@ -114,6 +116,16 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
       confirmText: context.settingsText('הסר'),
     );
     if (confirmed == true) bloc.add(RemoveAttachedLibrary(library));
+  }
+
+  Future<void> _install(
+    AttachedLibrary library,
+    AttachedUpdateOffer offer,
+  ) async {
+    final bloc = context.read<AttachedLibrariesBloc>();
+    if (await confirmAttachedUpdate(context, library, offer)) {
+      bloc.add(InstallAttachedLibraryUpdate(library));
+    }
   }
 
   Future<void> _copyPath(String path) async {
@@ -231,6 +243,11 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
           current.notice != null && current.notice != previous.notice,
       listener: (context, state) {
         final notice = state.notice!;
+        final attached = notice.attached;
+        if (attached?.updateSource != null) {
+          showAttachedSummaryDialog(context, attached!);
+          return;
+        }
         notice.isError
             ? UiSnack.showError(notice.text)
             : UiSnack.show(notice.text);
@@ -260,6 +277,14 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
                   libraries[i].slug,
                 ),
                 enabled: !state.isBusy,
+                update: state.updateOf(libraries[i]),
+                onCheckUpdate: () => context.read<AttachedLibrariesBloc>().add(
+                  CheckAttachedLibraryUpdate(libraries[i]),
+                ),
+                onInstallUpdate: (offer) => _install(libraries[i], offer),
+                onCancelUpdate: () => context.read<AttachedLibrariesBloc>().add(
+                  CancelAttachedLibraryUpdate(libraries[i]),
+                ),
                 onPlacementChanged: (placement) => context
                     .read<AttachedLibrariesBloc>()
                     .add(SetAttachedLibraryPlacement(libraries[i], placement)),
@@ -331,6 +356,10 @@ class _AttachedLibraryTile extends StatelessWidget {
     required this.isLoading,
     required this.linksTooLarge,
     required this.enabled,
+    required this.update,
+    required this.onCheckUpdate,
+    required this.onInstallUpdate,
+    required this.onCancelUpdate,
     required this.onPlacementChanged,
     required this.onMenu,
   });
@@ -339,6 +368,10 @@ class _AttachedLibraryTile extends StatelessWidget {
   final bool isLoading;
   final bool linksTooLarge;
   final bool enabled;
+  final AttachedUpdateStatus update;
+  final VoidCallback onCheckUpdate;
+  final void Function(AttachedUpdateOffer offer) onInstallUpdate;
+  final VoidCallback onCancelUpdate;
   final ValueChanged<AttachedLibraryPlacement> onPlacementChanged;
   final void Function(BuildContext anchor) onMenu;
 
@@ -373,11 +406,14 @@ class _AttachedLibraryTile extends StatelessWidget {
             runSpacing: 4,
             children: [
               _statusChip(context),
+              if (library.isOk) AttachedUpdateSourceChip(library: library),
               if (library.isOk)
                 for (final capability in library.capabilities)
-                  _InfoChip(label: _capabilityLabel(context, capability)),
+                  AttachedInfoChip(
+                    label: _capabilityLabel(context, capability),
+                  ),
               if (linksTooLarge)
-                _InfoChip(
+                AttachedInfoChip(
                   label: context.settingsText(
                     'הקישורים החיצוניים לא נטענו — יותר מדי שורות',
                   ),
@@ -386,6 +422,18 @@ class _AttachedLibraryTile extends StatelessWidget {
                 ),
             ],
           ),
+          if (library.isOk &&
+              library.updateSource != null &&
+              !library.updateSourceMismatch) ...[
+            const SizedBox(height: 4),
+            AttachedLibraryUpdateRow(
+              library: library,
+              status: update,
+              onCheck: onCheckUpdate,
+              onInstall: onInstallUpdate,
+              onCancel: onCancelUpdate,
+            ),
+          ],
         ],
       ),
       subtitle: Text(
@@ -456,7 +504,7 @@ class _AttachedLibraryTile extends StatelessWidget {
         cs.onErrorContainer,
       ),
     };
-    return _InfoChip(
+    return AttachedInfoChip(
       label: label,
       background: background,
       foreground: foreground,
@@ -497,32 +545,6 @@ class _AttachedLibraryTile extends StatelessWidget {
       'קישורים לספרים אחרים',
     ),
   };
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, this.background, this.foreground});
-
-  final String label;
-  final Color? background;
-  final Color? foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: background ?? cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: foreground ?? cs.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
 }
 
 /// ברירת המחדל לפי הפלטפורמה: קישור במחשב, העתקה במובייל.

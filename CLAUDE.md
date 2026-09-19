@@ -883,6 +883,9 @@ dart format lib/file.dart    # Format ONLY files you modified
 | תוכן ספר אינו מפעיל פעולות `otzaria://`; מפרש ממסד מצורף בלי 'דווח על טעות' | `test/utils/text/html_link_handler_test.dart`, `test/utils/context_menu_optional_bloc_test.dart` |
 | חיפוש הספרייה: כינויים ודור לפי מקור, דירוג אחרי רשמי ואישי | `test/data/repository/book_search_fuzzy_match_test.dart` |
 | עדכוני מסד מצורף — נעיצת המקור (TOFU) וסטייה, מניפסט, חתימת ed25519, מדיניות רשת, הורדת חלקים ובנייה | `test/attached_libraries/update/` |
+| עדכוני מסדים מצורפים — בדיקה מתוזמנת (שערי הגדרות/לא מקוון/תדירות), בדיקה ידנית, התקנה בקישור ובעותק, שחזור (קובץ פגום / מפתח / library_id / גרסה), שחזור .bak-update אחרי קריסה, ביטול, מקום בדיסק, שחרור נעילה | `test/attached_libraries/update/attached_library_update_service_test.dart` |
+| הורדה והרכבה ב-isolate (HTTP אמיתי, ביטול דרך הפורט) | `test/attached_libraries/update/attached_update_downloader_test.dart` |
+| כרטיס המסדים: צ'יפ מקור העדכונים, שורת העדכון, דיאלוג האישור, סיכום הצירוף | `test/attached_libraries/update/attached_library_update_panel_test.dart` |
 | כלי המפרסם `tool/personal_db_update.dart` (keygen/pack/sign/verify, הלוך-חזור עם zstd) ודיווח המאמת על שדות העדכון | `test/tool/personal_db_update_tool_test.dart` |
 
 **Search**

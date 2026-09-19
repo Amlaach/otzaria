@@ -32,6 +32,7 @@ import 'package:otzaria/find_ref/bloc/find_ref_bloc.dart';
 import 'package:otzaria/find_ref/repository/find_ref_factory.dart';
 import 'package:otzaria/core/focus_repository.dart';
 import 'package:otzaria/core/netfree_certificates.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_library_update_service.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/history_repository.dart';
 import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
@@ -1073,6 +1074,7 @@ Future<void> _runDeferredAttachedLibraries() async {
     // ממשיכים בכל זאת — אחרת מסדים חדשים לא ייקלטו עד סריקה ידנית.
   }
   try {
+    await AttachedLibrariesRepository.instance.recoverInterruptedUpdates();
     await AttachedLibrariesRepository.instance.rescan();
   } catch (error, stackTrace) {
     _logNonFatalInitializationError(
@@ -1082,9 +1084,33 @@ Future<void> _runDeferredAttachedLibraries() async {
     );
   }
   await _syncExternalLinkIndex();
+  unawaited(_runDeferredAttachedLibraryUpdates());
   AttachedLibrariesRepository.instance.changes.listen(
     (_) => unawaited(_syncExternalLinkIndex()),
   );
+}
+
+/// Runs after the attached-library scan so every pinned source is known. The
+/// service itself applies the official gates (offline, updates, cadence).
+Future<void> _runDeferredAttachedLibraryUpdates() async {
+  // Per machine: a second window would contact the same sources again.
+  if (WindowRole.isSecondary) return;
+  try {
+    await _mainWindowRevealedCompleter.future.timeout(
+      const Duration(seconds: 20),
+    );
+  } on TimeoutException {
+    // Continue anyway, or the check never runs.
+  }
+  try {
+    await AttachedLibraryUpdateService.instance.runScheduledCheck();
+  } catch (error, stackTrace) {
+    _logNonFatalInitializationError(
+      'Attached library updates',
+      error,
+      stackTrace,
+    );
+  }
 }
 
 /// אינדקס הקישורים ההפוכים של מסדים מצורפים (cache.db) — נבנה רק למסד שהשתנה.

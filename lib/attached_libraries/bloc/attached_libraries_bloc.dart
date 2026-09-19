@@ -4,7 +4,9 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/attached_libraries/models/attached_library.dart';
+import 'package:otzaria/attached_libraries/models/attached_library_update_status.dart';
 import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_library_update_service.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/cache/generation_cache.dart';
@@ -20,7 +22,9 @@ class AttachedLibrariesBloc
   AttachedLibrariesBloc({
     required this._addLibraryEvent,
     AttachedLibrariesRepository? repository,
+    AttachedLibraryUpdateService? updates,
   }) : _repository = repository ?? AttachedLibrariesRepository.instance,
+       _updates = updates ?? AttachedLibraryUpdateService.instance,
        super(const AttachedLibrariesState()) {
     on<LoadAttachedLibraries>(_onLoad);
     on<_AttachedLibrariesChanged>(_onChanged);
@@ -33,13 +37,22 @@ class AttachedLibrariesBloc
     on<MoveAttachedLibrary>(_onMove);
     on<RescanAttachedLibraries>(_onRescan);
     on<ReleaseAttachedLibrary>(_onRelease);
+    on<CheckAttachedLibraryUpdate>(_onCheckUpdate);
+    on<InstallAttachedLibraryUpdate>(_onInstallUpdate);
+    on<CancelAttachedLibraryUpdate>(_onCancelUpdate);
+    on<_AttachedUpdatesChanged>(_onUpdatesChanged);
     _subscription = _repository.changes.listen(
       (slugs) => add(_AttachedLibrariesChanged(slugs)),
     );
+    _updates.statuses.addListener(_forwardUpdates);
   }
+
+  void _forwardUpdates() =>
+      add(_AttachedUpdatesChanged(_updates.statuses.value));
 
   final void Function(LibraryEvent event) _addLibraryEvent;
   final AttachedLibrariesRepository _repository;
+  final AttachedLibraryUpdateService _updates;
   late final StreamSubscription<void> _subscription;
   int _noticeId = 0;
 
@@ -52,10 +65,13 @@ class AttachedLibrariesBloc
   AttachedLibrariesNotice _notice(String text, {bool isError = false}) =>
       AttachedLibrariesNotice(++_noticeId, text, isError: isError);
 
-  void _onLoad(
+  Future<void> _onLoad(
     LoadAttachedLibraries event,
     Emitter<AttachedLibrariesState> emit,
-  ) => emit(_loaded(state));
+  ) async {
+    emit(_loaded(state).copyWith(updates: _updates.statuses.value));
+    await _updates.restorePending();
+  }
 
   Future<void> _onChanged(
     _AttachedLibrariesChanged event,
@@ -98,8 +114,10 @@ class AttachedLibrariesBloc
   ) => _run(emit, () async {
     final result = await _repository.importFile(event.path);
     if (result.isOk) {
-      return _notice(
+      return AttachedLibrariesNotice(
+        ++_noticeId,
         SettingsMessages.attachedLibraryAdded(result.library!.displayName),
+        attached: result.library,
       );
     }
     return _notice(problemMessage(result.problem!), isError: true);
@@ -170,6 +188,46 @@ class AttachedLibrariesBloc
   });
 
   /// ההודעה למשתמש על מסד שלא צורף.
+  Future<void> _onCheckUpdate(
+    CheckAttachedLibraryUpdate event,
+    Emitter<AttachedLibrariesState> emit,
+  ) async {
+    final status = await _updates.check(event.library);
+    if (status is AttachedUpdateUpToDate) {
+      emit(state.copyWith(notice: _notice(SettingsMessages.attachedUpToDate)));
+    }
+  }
+
+  void _onInstallUpdate(
+    InstallAttachedLibraryUpdate event,
+    Emitter<AttachedLibrariesState> emit,
+  ) => unawaited(_updates.install(event.library));
+
+  void _onCancelUpdate(
+    CancelAttachedLibraryUpdate event,
+    Emitter<AttachedLibrariesState> emit,
+  ) => _updates.cancel(event.library);
+
+  void _onUpdatesChanged(
+    _AttachedUpdatesChanged event,
+    Emitter<AttachedLibrariesState> emit,
+  ) {
+    AttachedLibrariesNotice? notice;
+    for (final library in state.libraries) {
+      final now = event.updates[library.path];
+      if (now is AttachedUpdateInstalled &&
+          state.updateOf(library) is! AttachedUpdateInstalled) {
+        notice = _notice(
+          SettingsMessages.attachedUpdateInstalled(
+            library.displayName,
+            now.dbVersion,
+          ),
+        );
+      }
+    }
+    emit(state.copyWith(updates: event.updates, notice: notice));
+  }
+
   static String problemMessage(
     AttachedLibraryProblem problem,
   ) => switch (problem) {
@@ -191,6 +249,7 @@ class AttachedLibrariesBloc
 
   @override
   Future<void> close() async {
+    _updates.statuses.removeListener(_forwardUpdates);
     await _subscription.cancel();
     return super.close();
   }

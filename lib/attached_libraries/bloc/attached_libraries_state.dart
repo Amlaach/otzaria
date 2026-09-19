@@ -7,10 +7,18 @@ class AttachedLibrariesNotice extends Equatable {
   final String text;
   final bool isError;
 
-  const AttachedLibrariesNotice(this.id, this.text, {this.isError = false});
+  /// Set after a successful attach, for the summary dialog.
+  final AttachedLibrary? attached;
+
+  const AttachedLibrariesNotice(
+    this.id,
+    this.text, {
+    this.isError = false,
+    this.attached,
+  });
 
   @override
-  List<Object?> get props => [id, text, isError];
+  List<Object?> get props => [id, text, isError, attached];
 }
 
 class AttachedLibrariesState extends Equatable {
@@ -19,27 +27,36 @@ class AttachedLibrariesState extends Equatable {
   final bool isBusy;
   final AttachedLibrariesNotice? notice;
 
+  /// Update status per database path.
+  final Map<String, AttachedUpdateStatus> updates;
+
   const AttachedLibrariesState({
     this.libraries = const [],
     this.folders = const [],
     this.isBusy = false,
     this.notice,
+    this.updates = const {},
   });
+
+  AttachedUpdateStatus updateOf(AttachedLibrary library) =>
+      updates[library.path] ?? const AttachedUpdateIdle();
 
   AttachedLibrariesState copyWith({
     List<AttachedLibrary>? libraries,
     List<String>? folders,
     bool? isBusy,
     AttachedLibrariesNotice? notice,
+    Map<String, AttachedUpdateStatus>? updates,
   }) {
     return AttachedLibrariesState(
       libraries: libraries ?? this.libraries,
       folders: folders ?? this.folders,
       isBusy: isBusy ?? this.isBusy,
       notice: notice ?? this.notice,
+      updates: updates ?? this.updates,
     );
   }
 
   @override
-  List<Object?> get props => [libraries, folders, isBusy, notice];
+  List<Object?> get props => [libraries, folders, isBusy, notice, updates];
 }
