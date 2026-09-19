@@ -449,16 +449,25 @@ class AttachedLibraryUpdateService {
     _ => AttachedUpdateError.unknown,
   };
 
-  static AttachedUpdateError _fileError(int? code) => switch (code) {
-    // ENOSPC / ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL
-    28 || 112 || 39 => AttachedUpdateError.noSpace,
-    // ENOENT, ERROR_PATH_NOT_FOUND, ERROR_NOT_READY (drive removed)
-    2 || 3 || 21 => AttachedUpdateError.fileMissing,
-    // EPERM, EACCES, EROFS, ERROR_WRITE_PROTECT
-    1 || 5 || 13 || 30 || 19 => AttachedUpdateError.readOnly,
-    32 || 33 => AttachedUpdateError.fileLocked,
-    _ => AttachedUpdateError.unknown,
-  };
+  // Win32 and errno numbers overlap (21 is ERROR_NOT_READY but EISDIR), so
+  // each table applies only on its own platform.
+  static AttachedUpdateError _fileError(int? code) => Platform.isWindows
+      ? switch (code) {
+          // ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL
+          112 || 39 => AttachedUpdateError.noSpace,
+          // ERROR_FILE/PATH_NOT_FOUND, ERROR_NOT_READY (drive removed)
+          2 || 3 || 21 => AttachedUpdateError.fileMissing,
+          // ERROR_ACCESS_DENIED, ERROR_WRITE_PROTECT
+          5 || 19 => AttachedUpdateError.readOnly,
+          32 || 33 => AttachedUpdateError.fileLocked,
+          _ => AttachedUpdateError.unknown,
+        }
+      : switch (code) {
+          28 => AttachedUpdateError.noSpace, // ENOSPC
+          2 => AttachedUpdateError.fileMissing, // ENOENT
+          1 || 13 || 30 => AttachedUpdateError.readOnly, // EPERM, EACCES, EROFS
+          _ => AttachedUpdateError.unknown,
+        };
 
   AttachedUpdateStatus _set(String path, AttachedUpdateStatus status) {
     _statuses.value = {..._statuses.value, path: status};

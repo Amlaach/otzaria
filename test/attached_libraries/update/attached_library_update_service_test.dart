@@ -548,6 +548,25 @@ void main() {
     });
   });
 
+  test('OS error codes are read by the platform that raised them', () {
+    AttachedUpdateError of(int code) => AttachedLibraryUpdateService.errorOf(
+      FileSystemException('x', 'p', OSError('', code)),
+    );
+    // 21: ERROR_NOT_READY on Windows, EISDIR elsewhere.
+    expect(
+      of(21),
+      Platform.isWindows
+          ? AttachedUpdateError.fileMissing
+          : AttachedUpdateError.unknown,
+    );
+    expect(
+      of(28),
+      Platform.isWindows
+          ? AttachedUpdateError.unknown
+          : AttachedUpdateError.noSpace,
+    );
+  });
+
   test('pending offers are hidden from plugins', () {
     expect(
       PluginSettingsAccessPolicy.isBlocked(
