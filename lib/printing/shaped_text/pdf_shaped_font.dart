@@ -21,7 +21,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/src/pdf/format/array.dart';
 import 'package:pdf/src/pdf/format/dict.dart';
 import 'package:pdf/src/pdf/format/num.dart';
-import 'package:pdf/src/pdf/format/stream.dart';
 import 'package:pdf/src/pdf/format/string.dart';
 import 'package:pdf/src/pdf/obj/object.dart';
 import 'package:pdf/src/pdf/obj/object_stream.dart';

@@ -63,7 +63,7 @@ dependencies:
   multi_split_view: ^3.6.2
   updat: ^1.4.0
   printing: ^5.15.0
-  pdf: ^3.13.0
+  pdf: ^3.13.1
   # OpenType shaping, so nikud and te'amim reach a PDF as vector text
   # rather than as an image of text.
   opentype_shaper: ^0.1.1
