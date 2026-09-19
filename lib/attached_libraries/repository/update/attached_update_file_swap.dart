@@ -60,7 +60,11 @@ class AttachedUpdateFileSwap {
   Future<void> restore(String target) async {
     final backup = backupPathFor(target);
     if (!await File(backup).exists()) return;
+    // Without a new main file, side files still at the target are the old
+    // database's own (a crash before they moved) — deleting them loses data.
+    final swappedIn = await File(target).exists();
     for (final suffix in ['', ...sideSuffixes]) {
+      if (suffix.isNotEmpty && !swappedIn) continue;
       final file = File('$target$suffix');
       if (await file.exists()) await _retry(file.path, file.delete);
     }
@@ -74,7 +78,8 @@ class AttachedUpdateFileSwap {
 
   Future<void> discardBackup(String target) async {
     final backup = backupPathFor(target);
-    for (final suffix in ['', ...sideSuffixes]) {
+    // The main file last: while it exists, [recover] still finds the rest.
+    for (final suffix in [...sideSuffixes, '']) {
       final file = File('$backup$suffix');
       if (await file.exists()) await file.delete();
     }

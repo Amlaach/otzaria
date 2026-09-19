@@ -519,6 +519,19 @@ void main() {
       expect(File(library.path).readAsBytesSync(), before);
     });
 
+    test(
+      'crash before the side files moved ⇒ they stay with the old file',
+      () async {
+        final library = await attach(database());
+        File(library.path).renameSync(
+          AttachedUpdateFileSwap.backupPathFor(library.path),
+        );
+        File('${library.path}-wal').writeAsBytesSync([9]);
+        await repository.recoverInterruptedUpdates();
+        expect(File('${library.path}-wal').readAsBytesSync(), [9]);
+      },
+    );
+
     test('side files of the old database move with the backup', () async {
       final library = await attach(database());
       File('${library.path}-wal').writeAsBytesSync([9]);
