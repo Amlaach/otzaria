@@ -107,8 +107,37 @@ AttachedUpdateOffer _offer() => AttachedUpdateOffer(
       compression: AttachedUpdateCompression.zstd,
       size: 3 * 1024 * 1024,
       sha256: '',
-      parts: [AttachedUpdatePart(url: '', size: 2 * 1024 * 1024, sha256: '')],
+      parts: [
+        AttachedUpdatePart(
+          url: 'https://a.example.net/p1',
+          size: 1024 * 1024,
+          sha256: '',
+        ),
+        AttachedUpdatePart(
+          url: 'https://A.example.net/p2',
+          size: 1024 * 1024,
+          sha256: '',
+        ),
+      ],
     ),
+    deltas: [
+      AttachedUpdateDelta(
+        fromDbVersion: 1,
+        fromSha256: '',
+        artifact: AttachedUpdateArtifact(
+          compression: AttachedUpdateCompression.zstd,
+          size: 1,
+          sha256: '',
+          parts: [
+            AttachedUpdatePart(
+              url: 'https://cdn.example.com/d1',
+              size: 1,
+              sha256: '',
+            ),
+          ],
+        ),
+      ),
+    ],
   ),
   manifestBytes: Uint8List(0),
   signature: Uint8List(0),
@@ -189,6 +218,10 @@ void main() {
       await tester.tap(find.widgetWithText(ActionButton, 'עדכן'));
       await tester.pumpAndSettle();
       expect(find.text('מקור: updates.example.org (חתום)'), findsOneWidget);
+      expect(
+        find.text('הקבצים יורדו מ: a.example.net, cdn.example.com'),
+        findsOneWidget,
+      );
       expect(find.text('גודל ההורדה: 2.0 MB'), findsOneWidget);
       expect(find.text('גרסה: 2'), findsOneWidget);
       expect(find.text('release notes text'), findsOneWidget);

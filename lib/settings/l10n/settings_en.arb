@@ -1241,6 +1241,7 @@
   "עדכון המסד \"{name}\"": "Update database \"{name}\"",
   "גרסה: {version}": "Version: {version}",
   "מקור: {domain} (חתום)": "Source: {domain} (signed)",
+  "הקבצים יורדו מ: {hosts}": "Files will be downloaded from: {hosts}",
   "גודל ההורדה: {size}": "Download size: {size}",
   "מה חדש:": "What's new:",
   "המסד יוחלף במקומו; הגרסה הקודמת נשמרת עד שהעדכון יאומת.": "The database is replaced in place; the previous version is kept until the update is verified.",

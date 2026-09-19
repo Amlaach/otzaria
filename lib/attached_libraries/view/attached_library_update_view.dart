@@ -289,6 +289,12 @@ class _ConfirmContent extends StatelessWidget {
         ),
         Text(
           context.settingsText(
+            'הקבצים יורדו מ: {hosts}',
+            args: {'hosts': offer.manifest.downloadHosts.join(', ')},
+          ),
+        ),
+        Text(
+          context.settingsText(
             'גודל ההורדה: {size}',
             args: {'size': formatUpdateBytes(offer.downloadSize)},
           ),

@@ -468,6 +468,7 @@ const Map<String, Map<String, String>> kSettingsCatalogs = {
     'הצמד לניווט': 'Pin to Navigation',
     'הצמד לסרגל הניווט': 'Pin to the Navigation Bar',
     'הצעה': 'Suggestion',
+    'הקבצים יורדו מ: {hosts}': 'Files will be downloaded from: {hosts}',
     'הקובץ מיועד למחשב Windows': 'The file is meant for a Windows computer',
     'הקובץ שהורד פגום — נסו שוב': 'The downloaded file is corrupt — try again',
     'הקטלוג של אוצר החכמה והיברובוקס חסר במערכת. יש להוריד אותו כדי להציג ולחפש ספרים ממקורות אלו.': 'The Otzar HaChochma and HebrewBooks catalog is not included. Download it to display and search these collections.',

@@ -36,6 +36,12 @@ class AttachedUpdateManifest {
     this.deltas = const [],
   });
 
+  /// השרתים שמהם יורדו הקבצים (חלקי הקובץ המלא והדלתאות), בלי כפילויות.
+  List<String> get downloadHosts => {
+    for (final artifact in [full, for (final delta in deltas) delta.artifact])
+      for (final part in artifact.parts) Uri.parse(part.url).host.toLowerCase(),
+  }.toList();
+
   /// מפענח בקפדנות. זורק [AttachedUpdateManifestException] על כל חריגה.
   static AttachedUpdateManifest parse(List<int> bytes) {
     if (bytes.length > maxManifestBytes) {
