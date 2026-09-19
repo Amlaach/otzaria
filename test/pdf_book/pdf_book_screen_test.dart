@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/models/links.dart';
@@ -611,7 +612,10 @@ void main() {
   group('העתקת טקסט מסומן בתפריט ההקשר של PDF (issue #1420)', () {
     // התפריט הזה מחליף את התפריט המובנה של pdfrx, שהציע "העתק" על בחירה.
     // בלעדיו אין בדסקטופ שום מסלול עכבר להעתקה מתוך PDF.
-    List<AppContextMenuEntry> buildMenu({required bool hasTextSelection}) {
+    List<AppContextMenuEntry> buildMenu({
+      required bool hasTextSelection,
+      VoidCallback? onCopySelection,
+    }) {
       return buildPdfContextMenuEntries(
         commentatorChildren: const [],
         hasRelevantCommentators: false,
@@ -625,6 +629,7 @@ void main() {
         hasTextSelection: hasTextSelection,
         onSearch: () {},
         onSearchParallels: () {},
+        onCopySelection: onCopySelection ?? () {},
         onAddBookmark: () {},
         onAddNote: () {},
       );
@@ -633,8 +638,7 @@ void main() {
     AppContextMenuIconAction copyActionOf(List<AppContextMenuEntry> menu) {
       final iconRow = menu.firstWhere(
         (entry) => entry.iconRowActions != null,
-        orElse: () =>
-            throw StateError('אין שורת אייקונים בתפריט ההקשר של PDF'),
+        orElse: () => throw StateError('אין שורת אייקונים בתפריט ההקשר של PDF'),
       );
       return iconRow.iconRowActions!.firstWhere(
         (action) => action.label == 'העתקה',
@@ -648,6 +652,34 @@ void main() {
 
     test('פעולת "העתקה" מנוטרלת כשאין טקסט מסומן', () {
       expect(copyActionOf(buildMenu(hasTextSelection: false)).enabled, isFalse);
+    });
+
+    test('לחיצה על "העתקה" מפעילה את העתקת הבחירה', () {
+      var copied = false;
+      final menu = buildMenu(
+        hasTextSelection: true,
+        onCopySelection: () => copied = true,
+      );
+
+      copyActionOf(menu).onTap!();
+
+      expect(copied, isTrue);
+    });
+
+    test('"הוסף הערה אישית" נשאר זמין — עבר לשורת האייקונים', () {
+      // שמירה על הפונקציונליות: הפריט לא נמחק מהתפריט, רק שינה מיקום.
+      final menu = buildMenu(hasTextSelection: false);
+      final iconRow = menu.firstWhere((entry) => entry.iconRowActions != null);
+
+      expect(
+        iconRow.iconRowActions!.map((action) => action.label),
+        containsAll(<String>['העתקה', 'מקבילות', 'הערה']),
+      );
+      expect(
+        menu.any((entry) => entry.label == 'הוסף הערה אישית'),
+        isFalse,
+        reason: 'הפריט עבר לשורת האייקונים ואסור שיופיע פעמיים',
+      );
     });
   });
 }

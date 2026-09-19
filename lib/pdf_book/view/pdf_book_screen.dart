@@ -442,20 +442,38 @@ List<AppContextMenuEntry> buildPdfContextMenuEntries({
   required bool hasTextSelection,
   required VoidCallback onSearch,
   required VoidCallback onSearchParallels,
+  required VoidCallback onCopySelection,
   required VoidCallback onAddBookmark,
   required VoidCallback onAddNote,
 }) {
   return [
+    // שורת אייקונים עליונה בסגנון Windows 11, כמו בתצוגת הטקסט.
+    AppContextMenuEntry.iconRow([
+      AppContextMenuIconAction(
+        label: 'העתקה',
+        icon: FluentIcons.copy_24_regular,
+        enabled: hasTextSelection,
+        onTap: onCopySelection,
+      ),
+      AppContextMenuIconAction(
+        label: 'מקבילות',
+        tooltip: 'חפש מקבילות',
+        icon: OtzariaIcons.book_search_24_regular,
+        enabled: hasTextSelection,
+        onTap: onSearchParallels,
+      ),
+      AppContextMenuIconAction(
+        label: 'הערה',
+        tooltip: 'הוסף הערה אישית',
+        icon: FluentIcons.note_add_24_regular,
+        onTap: onAddNote,
+      ),
+    ]),
+    const AppContextMenuEntry.divider(),
     AppContextMenuEntry(
       label: 'חיפוש',
       icon: FluentIcons.search_24_regular,
       onTap: onSearch,
-    ),
-    AppContextMenuEntry(
-      label: 'חפש מקבילות',
-      icon: OtzariaIcons.book_search_24_regular,
-      enabled: hasTextSelection,
-      onTap: onSearchParallels,
     ),
     AppContextMenuEntry(
       label: 'מפרשים',
@@ -471,11 +489,6 @@ List<AppContextMenuEntry> buildPdfContextMenuEntries({
       label: 'הוסף סימניה לעמוד זה',
       icon: FluentIcons.bookmark_add_24_regular,
       onTap: onAddBookmark,
-    ),
-    AppContextMenuEntry(
-      label: 'הוסף הערה אישית',
-      icon: FluentIcons.note_add_24_regular,
-      onTap: onAddNote,
     ),
   ];
 }
@@ -1461,9 +1474,18 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       hasTextSelection: _hasPdfTextSelection(),
       onSearch: _ensureSearchTabIsActive,
       onSearchParallels: _searchParallelsFromSelection,
+      onCopySelection: _copyPdfTextSelection,
       onAddBookmark: () => _handleBookmarkPress(menuContext),
       onAddNote: () => _handleAddNotePress(menuContext),
     );
+  }
+
+  /// העתקת הטקסט המסומן דרך pdfrx — אותו מסלול שמפעיל Ctrl+C, והוא זה
+  /// שמכבד את הרשאת ההעתקה של המסמך.
+  void _copyPdfTextSelection() {
+    final controller = widget.tab.pdfViewerController;
+    if (!controller.isReady) return;
+    controller.textSelectionDelegate.copyTextSelection();
   }
 
   /// פתיחת יעד קישור מתפריט ההקשר. יעד השייך לתלמוד בבלי נפתח כ-PDF
