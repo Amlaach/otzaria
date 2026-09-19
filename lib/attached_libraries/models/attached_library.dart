@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:otzaria/attached_libraries/models/attached_library_update_source.dart';
 import 'package:otzaria/models/book_source.dart';
 
 /// איך המסד מצורף: קישור לקובץ במקומו, או עותק שהתוכנה מנהלת.
@@ -125,6 +126,15 @@ class AttachedLibrary extends Equatable {
   final int bookCount;
   final DateTime addedAt;
 
+  /// מקור העדכונים שנעוץ בפעם הראשונה שנראה (TOFU); null — המסד אינו מתעדכן.
+  final AttachedLibraryUpdateSource? updateSource;
+
+  /// המסד מצהיר כעת על מקור עדכונים אחר מהנעוץ. הנעוץ נשמר; אין פנייה לרשת.
+  final bool updateSourceMismatch;
+
+  /// נבדק כבר עם קריאת שדות העדכון — מסד שצורף לפני כן נבדק שוב פעם אחת.
+  final bool updateSourceProbed;
+
   const AttachedLibrary({
     required this.slug,
     required this.displayName,
@@ -141,6 +151,9 @@ class AttachedLibrary extends Equatable {
     this.capabilities = const {},
     this.bookCount = 0,
     required this.addedAt,
+    this.updateSource,
+    this.updateSourceMismatch = false,
+    this.updateSourceProbed = false,
   });
 
   bool get isImported => folderPath == null;
@@ -158,7 +171,8 @@ class AttachedLibrary extends Equatable {
       ? BookSource.attached(slug) as AttachedBookSource
       : null;
 
-  /// [clearProblem] מאפס את [problem] — `problem: null` לבדו פירושו "אל תשנה".
+  /// [clearProblem] מאפס את [problem] — `problem: null` לבדו פירושו "אל תשנה";
+  /// כך גם [clearUpdateSource].
   AttachedLibrary copyWith({
     String? slug,
     String? displayName,
@@ -174,6 +188,10 @@ class AttachedLibrary extends Equatable {
     bool clearProblem = false,
     Set<AttachedLibraryCapability>? capabilities,
     int? bookCount,
+    AttachedLibraryUpdateSource? updateSource,
+    bool clearUpdateSource = false,
+    bool? updateSourceMismatch,
+    bool? updateSourceProbed,
   }) {
     return AttachedLibrary(
       slug: slug ?? this.slug,
@@ -191,6 +209,11 @@ class AttachedLibrary extends Equatable {
       capabilities: capabilities ?? this.capabilities,
       bookCount: bookCount ?? this.bookCount,
       addedAt: addedAt,
+      updateSource: clearUpdateSource
+          ? null
+          : (updateSource ?? this.updateSource),
+      updateSourceMismatch: updateSourceMismatch ?? this.updateSourceMismatch,
+      updateSourceProbed: updateSourceProbed ?? this.updateSourceProbed,
     );
   }
 
@@ -210,6 +233,9 @@ class AttachedLibrary extends Equatable {
     'capabilities': [for (final c in capabilities) c.name],
     'bookCount': bookCount,
     'addedAt': addedAt.toIso8601String(),
+    if (updateSource != null) 'updateSource': updateSource!.toJson(),
+    if (updateSourceMismatch) 'updateSourceMismatch': true,
+    if (updateSourceProbed) 'updateSourceProbed': true,
   };
 
   /// זורק על רשומה בלי השדות ההכרחיים; ערך לא מוכר בשדה אחר נופל לברירת מחדל.
@@ -242,6 +268,9 @@ class AttachedLibrary extends Equatable {
       addedAt:
           DateTime.tryParse(json['addedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
+      updateSource: AttachedLibraryUpdateSource.fromJson(json['updateSource']),
+      updateSourceMismatch: json['updateSourceMismatch'] == true,
+      updateSourceProbed: json['updateSourceProbed'] == true,
     );
   }
 
@@ -264,5 +293,8 @@ class AttachedLibrary extends Equatable {
     problem,
     capabilities,
     bookCount,
+    updateSource,
+    updateSourceMismatch,
+    updateSourceProbed,
   ];
 }

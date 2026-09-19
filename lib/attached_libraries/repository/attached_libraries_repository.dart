@@ -348,6 +348,7 @@ class AttachedLibrariesRepository {
           modifiedMs: stat.modified.millisecondsSinceEpoch,
         );
     if (unchanged &&
+        library.updateSourceProbed &&
         library.status != AttachedLibraryStatus.unreachable &&
         library.status != AttachedLibraryStatus.invalid) {
       return library;
@@ -465,9 +466,17 @@ class AttachedLibrariesRepository {
         problem: result.problem,
       );
     }
+    final declared = result.updateSource;
+    // נעיצה (TOFU): לאותו slug הנעוץ נשמר, וסטייה רק מסומנת. slug אחר הוא
+    // מסד אחר, ונעוץ מחדש כמו בצירוף.
+    final pinned = library.slug == result.slug ? library.updateSource : null;
     return library.copyWith(
       slug: result.slug,
       displayName: result.displayName,
+      updateSource: pinned ?? declared,
+      clearUpdateSource: pinned == null && declared == null,
+      updateSourceMismatch: pinned != null && pinned != declared,
+      updateSourceProbed: true,
       status: AttachedLibraryStatus.ok,
       clearProblem: true,
       capabilities: result.capabilities,

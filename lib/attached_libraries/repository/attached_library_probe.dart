@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:otzaria/attached_libraries/models/attached_library.dart';
+import 'package:otzaria/attached_libraries/models/attached_library_update_source.dart';
 import 'package:otzaria/data/sqlite/sqlite3_api.dart';
 import 'package:otzaria/migration/database/db_capabilities.dart';
 import 'package:otzaria/migration/database/journal_mode.dart';
@@ -20,6 +21,9 @@ class AttachedLibraryProbeResult {
   final AttachedLibraryFingerprint? fingerprint;
   final bool immutable;
 
+  /// מקור העדכונים שהמסד מצהיר עליו, כשכל שדותיו קיימים ותקינים.
+  final AttachedLibraryUpdateSource? updateSource;
+
   const AttachedLibraryProbeResult({
     this.problem,
     this.slug = '',
@@ -28,6 +32,7 @@ class AttachedLibraryProbeResult {
     this.capabilities = const {},
     this.fingerprint,
     this.immutable = false,
+    this.updateSource,
   });
 
   const AttachedLibraryProbeResult.failure(AttachedLibraryProblem this.problem)
@@ -36,7 +41,8 @@ class AttachedLibraryProbeResult {
       bookCount = 0,
       capabilities = const {},
       fingerprint = null,
-      immutable = false;
+      immutable = false,
+      updateSource = null;
 
   bool get isOk => problem == null;
 }
@@ -113,6 +119,11 @@ abstract final class AttachedLibraryProbe {
           dbVersion: _nonEmpty(meta['db_version']),
         ),
         immutable: immutable,
+        updateSource: AttachedLibraryUpdateSource.fromMeta(
+          libraryId: meta['library_id'],
+          manifestUrl: meta[AttachedLibraryUpdateSource.metaManifestUrlKey],
+          publicKey: meta[AttachedLibraryUpdateSource.metaPublicKeyKey],
+        ),
       );
     } on SqliteException {
       return const AttachedLibraryProbeResult.failure(
@@ -146,7 +157,9 @@ abstract final class AttachedLibraryProbe {
     }
     final rows = db.select(
       'SELECT key, value FROM schema_meta '
-      "WHERE key IN ('library_id', 'library_name', 'db_version')",
+      "WHERE key IN ('library_id', 'library_name', 'db_version', "
+      "'${AttachedLibraryUpdateSource.metaManifestUrlKey}', "
+      "'${AttachedLibraryUpdateSource.metaPublicKeyKey}')",
     );
     return {
       for (final row in rows)
