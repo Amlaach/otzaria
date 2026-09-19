@@ -206,7 +206,14 @@ class AttachedLibraryUpdateService {
         offer.signature,
         source,
       );
-      final installed = int.tryParse(library.fingerprint?.dbVersion ?? '');
+      await _repository.recoverInterruptedUpdates(swap: swap);
+      if (!await File(path).exists()) {
+        throw const _UpdateFailure(AttachedUpdateError.fileMissing);
+      }
+      // The version on disk, not the cached fingerprint: a stale cache
+      // would let an older signed manifest replace a newer file.
+      final onDisk = await _probe(path);
+      final installed = int.tryParse(onDisk.fingerprint?.dbVersion ?? '');
       if (installed == null) {
         throw const _UpdateFailure(AttachedUpdateError.notApplicable);
       }
@@ -214,10 +221,6 @@ class AttachedLibraryUpdateService {
         pinned: source,
         installedDbVersion: '$installed',
       );
-      await _repository.recoverInterruptedUpdates(swap: swap);
-      if (!await File(path).exists()) {
-        throw const _UpdateFailure(AttachedUpdateError.fileMissing);
-      }
       combined = await _combinedPathFor(library, manifest);
       await _ensureWritable(staged);
       await _ensureSpace(manifest.full, staged: staged, combined: combined);

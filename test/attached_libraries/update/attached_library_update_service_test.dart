@@ -392,6 +392,21 @@ void main() {
       expectNoLeftovers(library.path);
     }
 
+    test('the version on disk, not the cached one, blocks a replay', () async {
+      final (svc, library) = await offered(database(version: '2'));
+      final db = sqlite3.sqlite3.open(library.path);
+      db.execute(
+        "UPDATE schema_meta SET value = '3' WHERE key = 'db_version'",
+      );
+      db.close();
+      await svc.install(library);
+      expect(svc.statusOf(library), isA<AttachedUpdateFailed>());
+      expect(
+        AttachedLibraryProbe.probeSync(library.path).fingerprint!.dbVersion,
+        '3',
+      );
+    });
+
     test('corrupt new file ⇒ old file kept', () async {
       final junk = p.join(temp.path, 'junk.db');
       File(junk).writeAsBytesSync(List.filled(4096, 7));
