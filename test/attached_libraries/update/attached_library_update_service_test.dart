@@ -400,7 +400,11 @@ void main() {
       );
       db.close();
       await svc.install(library);
-      expect(svc.statusOf(library), isA<AttachedUpdateFailed>());
+      // Not an error: the stale offer is dropped and nothing is shown.
+      expect(svc.statusOf(library), isA<AttachedUpdateIdle>());
+      final next = service();
+      await next.restorePending();
+      expect(next.statusOf(library), isA<AttachedUpdateIdle>());
       expect(
         AttachedLibraryProbe.probeSync(library.path).fingerprint!.dbVersion,
         '3',

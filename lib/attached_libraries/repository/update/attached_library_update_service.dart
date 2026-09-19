@@ -217,6 +217,12 @@ class AttachedLibraryUpdateService {
       if (installed == null) {
         throw const _UpdateFailure(AttachedUpdateError.notApplicable);
       }
+      // Already installed (e.g. the file was replaced by hand): nothing to offer.
+      if (installed >= verified.manifest.dbVersion) {
+        await _savePending(path, null);
+        _set(path, const AttachedUpdateIdle());
+        return;
+      }
       verified.manifest.checkApplicable(
         pinned: source,
         installedDbVersion: '$installed',
