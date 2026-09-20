@@ -53,6 +53,7 @@ class _FakeDownloader extends AttachedUpdateDownloader {
   final artifacts = <AttachedUpdateArtifact>[];
   final basePaths = <String?>[];
   bool failDelta = false;
+  bool ignoreCancel = false;
   Object deltaFailure = const AttachedUpdateArtifactMismatch(
     'patch does not apply',
   );
@@ -80,7 +81,12 @@ class _FakeDownloader extends AttachedUpdateDownloader {
       await File(combinedPath).writeAsBytes([1, 2, 3]);
       started.complete();
       cancel?.onCancel(() {
-        if (!gate.isCompleted) {
+        if (gate.isCompleted) return;
+        // ignoreCancel mimics the delta apply, which runs to the end once
+        // it started and hands back a finished staged file.
+        if (ignoreCancel) {
+          gate.complete();
+        } else {
           gate.completeError(const AttachedUpdateCancelled());
         }
       });
@@ -752,6 +758,22 @@ void main() {
       // download of the patch stays for a resume.
       expect(downloader.calls, 1);
       expect(Directory(p.join(temp.path, 'work')).listSync(), isNotEmpty);
+    });
+
+    test('cancel while the patch is applied leaves nothing staged', () async {
+      final (svc, library) = await offered();
+      downloader.hold = Completer<void>();
+      downloader.ignoreCancel = true;
+      final running = svc.install(library);
+      await downloader.started.future;
+      svc.cancel(library);
+      await running;
+      expect(svc.statusOf(library), isA<AttachedUpdateAvailable>());
+      expect(
+        File(AttachedUpdateFileSwap.stagedPathFor(library.path)).existsSync(),
+        isFalse,
+      );
+      expect(repository.libraries.single.fingerprint!.dbVersion, '1');
     });
   });
 }
