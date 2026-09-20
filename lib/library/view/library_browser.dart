@@ -2277,8 +2277,8 @@ class _LibraryBrowserState extends State<LibraryBrowser>
         fit: BoxFit.contain,
       );
     }
-    return Icon(
-      bookFormatIcon(book),
+    return BookFormatIcon(
+      book: book,
       color: cs.onSecondaryContainer,
       size: iconSize,
     );
