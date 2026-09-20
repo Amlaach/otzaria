@@ -2067,6 +2067,59 @@ void main() {
       await _closeBlocAndAllowDeferredDispose(bloc);
     });
 
+    test(
+      'ClearRecentlyClosedTabs מרוקן את הרשימה ומשחרר אותה (issue #1414)',
+      () async {
+        final bloc = TabsBloc(repository: _FakeTabsRepository());
+        final first = _createTextTab('ספר א', categoryId: 1);
+        final second = _createTextTab('ספר ב', categoryId: 2);
+
+        bloc.add(AddTab(first));
+        bloc.add(AddTab(second));
+        await bloc.stream.firstWhere((s) => s.tabs.length == 2);
+        bloc.add(RemoveTab(first));
+        await bloc.stream.firstWhere((s) => s.tabs.length == 1);
+        bloc.add(RemoveTab(second));
+        await bloc.stream.firstWhere((s) => s.tabs.isEmpty);
+
+        final stored = bloc.recentlyClosedTabs.cast<TextBookTab>().toList();
+        expect(stored, hasLength(2));
+
+        final counterBefore = bloc.state.updateCounter;
+        bloc.add(const ClearRecentlyClosedTabs());
+        await bloc.stream.firstWhere((s) => s.updateCounter != counterBefore);
+
+        expect(bloc.recentlyClosedTabs, isEmpty);
+        expect(bloc.hasRecentlyClosedTabs, isFalse);
+        expect(
+          stored.every((tab) => tab.bloc.isClosed),
+          isTrue,
+          reason: 'הניקוי משחרר את המופעים ששמורים ברשימה ולא רק מנתק אותם',
+        );
+
+        await _closeBlocAndAllowDeferredDispose(bloc);
+      },
+    );
+
+    test('אין מה לשחזר אחרי ניקוי הרשימה (issue #1414)', () async {
+      final bloc = TabsBloc(repository: _FakeTabsRepository());
+      bloc.add(AddTab(_createTextTab('ספר א', categoryId: 1)));
+      await bloc.stream.firstWhere((s) => s.tabs.length == 1);
+      bloc.add(RemoveTab(bloc.state.tabs.single));
+      await bloc.stream.firstWhere((s) => s.tabs.isEmpty);
+
+      final counterBefore = bloc.state.updateCounter;
+      bloc.add(const ClearRecentlyClosedTabs());
+      await bloc.stream.firstWhere((s) => s.updateCounter != counterBefore);
+
+      bloc.add(const RestoreLastClosedTab());
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(bloc.state.tabs, isEmpty);
+
+      await _closeBlocAndAllowDeferredDispose(bloc);
+    });
+
     test('רשימת הנסגרות מוגבלת ל-10 והישנות ביותר נושרות', () async {
       final bloc = TabsBloc(repository: _FakeTabsRepository());
       for (var i = 0; i < 12; i++) {
