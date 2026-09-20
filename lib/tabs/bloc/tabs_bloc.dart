@@ -201,6 +201,10 @@ class TabsBloc extends Bloc<TabsEvent, TabsState> {
       transformer: sequential(),
     );
     on<RestoreClosedTab>(_onRestoreClosedTab, transformer: sequential());
+    on<ClearRecentlyClosedTabs>(
+      _onClearRecentlyClosedTabs,
+      transformer: sequential(),
+    );
     on<SaveTabs>(_onSaveTabs, transformer: sequential());
     on<TogglePinTab>(_onTogglePinTab, transformer: sequential());
     on<CreateCombinedTab>(
@@ -1157,6 +1161,19 @@ class TabsBloc extends Bloc<TabsEvent, TabsState> {
     );
     if (index == -1) return;
     await _restoreClosedEntry(_recentlyClosedTabs.removeAt(index), emit);
+  }
+
+  void _onClearRecentlyClosedTabs(
+    ClearRecentlyClosedTabs event,
+    Emitter<TabsState> emit,
+  ) {
+    if (_recentlyClosedTabs.isEmpty) return;
+    for (final entry in _recentlyClosedTabs) {
+      entry.tab.dispose();
+    }
+    _recentlyClosedTabs.clear();
+    // הרשימה אינה חלק מה-state, ולכן רק forceUpdate מרענן את מי שמציג אותה.
+    emit(state.copyWith(forceUpdate: true));
   }
 
   Future<void> _restoreClosedEntry(

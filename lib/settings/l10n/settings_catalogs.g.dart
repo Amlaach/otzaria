@@ -872,6 +872,7 @@ const Map<String, Map<String, String>> kSettingsCatalogs = {
     'נעילת ההגדרות וסייר הקבצים מושבתת': 'Settings and the file browser are unlocked',
     'נעילת ההגדרות וסייר הקבצים פעילה': 'Settings and the file browser are locked',
     'נקה': 'Clear',
+    'נקה את הרשימה': 'Clear list',
     'נקה את כל ההיסטוריה': 'Clear History',
     'נקה דיווחים': 'Clear Reports',
     'נקה הכל': 'Clear All',
