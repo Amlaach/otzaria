@@ -269,7 +269,21 @@ dart run tool/personal_db_update.dart verify release/manifest.json --db my-lib.d
 
 `db_version` חייב להיות גדול מזה של המסד המותקן — אין חזרה לגרסה ישנה. שדות לא מוכרים מתעלמים מהם. המניפסט עד 1MB, והמסד עד 64GB.
 
-השדה האופציונלי `delta` שמור לתיקונים בין גרסאות: `[{"from_db_version", "from_sha256", "compression", "size", "sha256", "parts"}]`. הגרסה הנוכחית מאמתת אותו אך מורידה תמיד את `full`.
+השדה האופציונלי `delta` מחזיק תיקונים בין גרסאות: `[{"from_db_version", "from_sha256", "compression": "zstd-patch", "size", "sha256", "parts"}]`. `size` ו-`sha256` הם של קובץ ה-`.db` שמתקבל — בדיוק כמו ב-`full`. ערך דלתא שלקוח אינו מבין מדולג, והוא מוריד את `full`; `full` עצמו נבדק בקפדנות ואינו יכול להיות `zstd-patch`.
+
+### תיקוני דלתא (הורדה קטנה בהרבה)
+
+```bash
+dart run tool/personal_db_update.dart pack my-lib.db --out release     --url-prefix https://host/v5 --delta-from my-lib-v4.db --delta-from my-lib-v3.db
+dart run tool/personal_db_update.dart sign release/manifest.json --key my-lib.key
+dart run tool/personal_db_update.dart verify release/manifest.json --db my-lib.db     --parts release --delta-from my-lib-v4.db --delta-from my-lib-v3.db
+```
+
+- `--delta-from <old.db>` חוזר על עצמו עד 4 פעמים, ומקבל מסדים קודמים של אותו `library_id` עם `db_version` נמוך מהחדש (אחרת שגיאה). לכל אחד נוצר תיקון `zstd --patch-from`, מפוצל לחלקים כמו הקובץ המלא.
+- תיקון שאינו קטן מהקובץ המלא נזרק עם אזהרה — אין טעם להוריד אותו.
+- **מגבלת 2GiB:** אוצריא מחילה תיקון רק כשהקובץ המותקן קטן מ-2GiB (תקרת חלון ה-zstd) ורק על מכונת 64 סיביות. מעבר לכך מפרסמים את הקובץ המלא בלבד; התיקון עדיין יכול להיות במניפסט, הלקוח פשוט יתעלם ממנו.
+- `verify --parts` מחיל כל תיקון על ה-`--delta-from` שה-sha256 שלו תואם, באותו קוד שהתוכנה מריצה, ובודק גודל ו-sha256. זה דורש `libzstd` (`--zstd-lib <path>` או `LIBZSTD_PATH` כשאינו בנתיב). בפענוח מומלץ `--memory=2048MB` בבדיקה ידנית עם `zstd` משורת הפקודה.
+- **הלקוח בוחר לבד:** התיקון הקטן ביותר שישים (אותה גרסה מותקנת, אותו sha256, הורדה קטנה מהקובץ המלא) נבחר; כל כשל — מיפוי, פענוח, גודל או sha256 — חוזר בשקט להורדת הקובץ המלא, בלי הודעת שגיאה. הקובץ הסופי נבדק תמיד מול ה-sha256 שבמניפסט החתום.
 
 ### עדכון מסד מצורף (למשתמש)
 
