@@ -101,6 +101,7 @@ void main() {
   }
 
   Future<void> expectFails(AttachedUpdateArtifact artifact) async {
+    final before = sha256.convert(File(path('old.db')).readAsBytesSync());
     final applier = AttachedUpdateDeltaApplier(
       decodePatch: _decodeWith(zstd!.lib),
     );
@@ -114,9 +115,12 @@ void main() {
       throwsA(anything),
     );
     expect(File(path('out.db')).existsSync(), isFalse);
-    // The base file is never touched, and the patch stays for a retry.
-    expect(File(path('old.db')).existsSync(), isTrue);
+    // The base file is byte-identical, and the patch stays for a retry.
+    expect(sha256.convert(File(path('old.db')).readAsBytesSync()), before);
     expect(File(path('patch.zst')).existsSync(), isTrue);
+    // A leaked mapping would keep the base locked and break the later swap.
+    File(path('old.db')).renameSync(path('swapped.db'));
+    File(path('swapped.db')).renameSync(path('old.db'));
   }
 
   test('applies a real zstd --patch-from patch', () async {
@@ -211,5 +215,24 @@ void main() {
       ),
       throwsA(isA<AttachedUpdateArtifactMismatch>()),
     );
+  });
+
+  test('a failure opening the output leaves no open handle behind', () async {
+    if (zstd == null) return markTestSkipped('zstd / libzstd not available');
+    await fixture();
+    // A directory in place of the output file makes openSync throw.
+    Directory(path('out.db')).createSync();
+    expect(
+      () => decodePatchSyncForTest(
+        path('patch.zst'),
+        path('old.db'),
+        path('out.db'),
+        DynamicLibrary.open(zstd!.lib),
+      ),
+      throwsA(anything),
+    );
+    // Both would fail on Windows if the patch handle or the mapping leaked.
+    File(path('patch.zst')).deleteSync();
+    File(path('old.db')).deleteSync();
   });
 }

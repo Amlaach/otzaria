@@ -103,44 +103,47 @@ void _decodeCore(
     final inBuf = malloc<ZSTD_inBuffer_s>();
     final outBuf = malloc<ZSTD_outBuffer_s>();
     try {
-      final inputRaf = File(patchPath).openSync();
       final outFile = File(outputPath);
       if (outFile.existsSync()) outFile.deleteSync();
-      final outputRaf = outFile.openSync(mode: FileMode.writeOnly);
+      final inputRaf = File(patchPath).openSync();
       try {
-        final inView = inNative.asTypedList(inBufSize);
-        var lastRet = 0;
-        var totalWritten = 0;
-        while (true) {
-          final bytesRead = inputRaf.readIntoSync(inView);
-          if (bytesRead == 0) break;
-          inBuf.ref.src = inNative.cast();
-          inBuf.ref.size = bytesRead;
-          inBuf.ref.pos = 0;
-          while (inBuf.ref.pos < inBuf.ref.size) {
-            outBuf.ref.dst = outNative.cast();
-            outBuf.ref.size = outBufSize;
-            outBuf.ref.pos = 0;
-            lastRet = bindings.ZSTD_decompressStream(dctx, outBuf, inBuf);
-            check(lastRet, 'ZSTD_decompressStream');
-            if (maxOutputBytes != null &&
-                totalWritten + outBuf.ref.pos > maxOutputBytes) {
-              throw ZstdOutputLimitExceeded(maxOutputBytes);
-            }
-            if (outBuf.ref.pos > 0) {
-              outputRaf.writeFromSync(outNative.asTypedList(outBuf.ref.pos));
-              totalWritten += outBuf.ref.pos;
+        final outputRaf = outFile.openSync(mode: FileMode.writeOnly);
+        try {
+          final inView = inNative.asTypedList(inBufSize);
+          var lastRet = 0;
+          var totalWritten = 0;
+          while (true) {
+            final bytesRead = inputRaf.readIntoSync(inView);
+            if (bytesRead == 0) break;
+            inBuf.ref.src = inNative.cast();
+            inBuf.ref.size = bytesRead;
+            inBuf.ref.pos = 0;
+            while (inBuf.ref.pos < inBuf.ref.size) {
+              outBuf.ref.dst = outNative.cast();
+              outBuf.ref.size = outBufSize;
+              outBuf.ref.pos = 0;
+              lastRet = bindings.ZSTD_decompressStream(dctx, outBuf, inBuf);
+              check(lastRet, 'ZSTD_decompressStream');
+              if (maxOutputBytes != null &&
+                  totalWritten + outBuf.ref.pos > maxOutputBytes) {
+                throw ZstdOutputLimitExceeded(maxOutputBytes);
+              }
+              if (outBuf.ref.pos > 0) {
+                outputRaf.writeFromSync(outNative.asTypedList(outBuf.ref.pos));
+                totalWritten += outBuf.ref.pos;
+              }
             }
           }
+          if (lastRet != 0) {
+            throw Exception('קובץ התיקון קטוע או פגום: ה-frame לא הושלם');
+          }
+          // flush מפורש כדי לתפוס דיסק מלא (ENOSPC) שנבלע ב-page cache.
+          outputRaf.flushSync();
+        } finally {
+          outputRaf.closeSync();
         }
-        if (lastRet != 0) {
-          throw Exception('קובץ התיקון קטוע או פגום: ה-frame לא הושלם');
-        }
-        // flush מפורש כדי לתפוס דיסק מלא (ENOSPC) שנבלע ב-page cache.
-        outputRaf.flushSync();
       } finally {
         inputRaf.closeSync();
-        outputRaf.closeSync();
       }
     } finally {
       malloc.free(inNative);
