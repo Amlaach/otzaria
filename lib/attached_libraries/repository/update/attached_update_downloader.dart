@@ -115,6 +115,7 @@ class AttachedUpdateDownloader {
           job.combinedPath,
           base,
           job.outputPath,
+          cancel: cancel,
         );
       } else {
         await job.builder.build(job.artifact, job.combinedPath, job.outputPath);

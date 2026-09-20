@@ -55,7 +55,7 @@ const _manifestUrl = 'https://updates.example.org/lib/manifest.json';
 
 // Top-level so the closure sent to the download isolate captures only a path.
 AttachedUpdatePatchDecoder _patchWith(String lib) =>
-    (patch, base, output, max) async => decodePatchSyncForTest(
+    (patch, base, output, max, _) async => decodePatchSyncForTest(
       patch,
       base,
       output,

@@ -12,6 +12,30 @@ import 'package:otzaria/utils/file/zstd_library.dart';
 import 'package:otzaria/utils/file/zstd_stream_extractor.dart';
 import 'package:zstandard_native/zstandard_native_bindings.dart';
 
+/// הפענוח נעצר לבקשת המשתמש; הפלט החלקי נמחק.
+class ZstdDecodeCancelled implements Exception {
+  const ZstdDecodeCancelled();
+
+  @override
+  String toString() => 'ZstdDecodeCancelled';
+}
+
+/// דגל ביטול משותף בין isolates. תא בזיכרון נייטיב ולא פורט, כי לולאת
+/// הפענוח סינכרונית ולא תגיע ללולאת האירועים כדי לקבל הודעה.
+class ZstdCancelFlag {
+  ZstdCancelFlag() : _cell = calloc<Uint8>();
+
+  final Pointer<Uint8> _cell;
+
+  /// לשליחה אל ה-isolate שמפענח.
+  int get address => _cell.address;
+
+  void cancel() => _cell.value = 1;
+
+  /// חובה לקרוא רק אחרי שהפענוח הסתיים.
+  void dispose() => calloc.free(_cell);
+}
+
 /// מחיל את [patchPath] על [basePath] אל [outputPath], ב-isolate נפרד.
 /// חריגה מ-[maxOutputBytes] עוצרת מיד ב-[ZstdOutputLimitExceeded].
 Future<void> decodePatchToFile(
@@ -19,6 +43,7 @@ Future<void> decodePatchToFile(
   String basePath,
   String outputPath, {
   int? maxOutputBytes,
+  int cancelAddress = 0,
 }) => Isolate.run(
   () => _decodeWithLib(
     patchPath,
@@ -26,6 +51,7 @@ Future<void> decodePatchToFile(
     outputPath,
     openZstandardLib(),
     maxOutputBytes,
+    cancelAddress,
   ),
 );
 
@@ -37,7 +63,15 @@ void decodePatchSyncForTest(
   String outputPath,
   DynamicLibrary lib, {
   int? maxOutputBytes,
-}) => _decodeWithLib(patchPath, basePath, outputPath, lib, maxOutputBytes);
+  int cancelAddress = 0,
+}) => _decodeWithLib(
+  patchPath,
+  basePath,
+  outputPath,
+  lib,
+  maxOutputBytes,
+  cancelAddress,
+);
 
 void _decodeWithLib(
   String patchPath,
@@ -45,11 +79,19 @@ void _decodeWithLib(
   String outputPath,
   DynamicLibrary dylib,
   int? maxOutputBytes,
+  int cancelAddress,
 ) {
   try {
     MappedFile.use(
       basePath,
-      (base) => _decodeCore(patchPath, base, outputPath, dylib, maxOutputBytes),
+      (base) => _decodeCore(
+        patchPath,
+        base,
+        outputPath,
+        dylib,
+        maxOutputBytes,
+        cancelAddress,
+      ),
     );
   } catch (_) {
     try {
@@ -66,7 +108,11 @@ void _decodeCore(
   String outputPath,
   DynamicLibrary dylib,
   int? maxOutputBytes,
+  int cancelAddress,
 ) {
+  final cancelCell = cancelAddress == 0
+      ? nullptr
+      : Pointer<Uint8>.fromAddress(cancelAddress);
   final bindings = ZstandardNativeBindings(dylib);
   final inBufSize = bindings.ZSTD_DStreamInSize();
   final outBufSize = bindings.ZSTD_DStreamOutSize();
@@ -119,6 +165,9 @@ void _decodeCore(
             inBuf.ref.size = bytesRead;
             inBuf.ref.pos = 0;
             while (inBuf.ref.pos < inBuf.ref.size) {
+              if (cancelCell != nullptr && cancelCell.value != 0) {
+                throw const ZstdDecodeCancelled();
+              }
               outBuf.ref.dst = outNative.cast();
               outBuf.ref.size = outBufSize;
               outBuf.ref.pos = 0;

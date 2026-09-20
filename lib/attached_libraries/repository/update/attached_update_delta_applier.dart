@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:otzaria/attached_libraries/models/attached_update_manifest.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/utils/file/zstd_patch_decoder.dart';
 import 'package:otzaria/utils/file/zstd_stream_extractor.dart';
 
@@ -14,6 +15,7 @@ typedef AttachedUpdatePatchDecoder =
       String basePath,
       String outputPath,
       int maxOutputBytes,
+      ZstdCancelFlag? cancel,
     );
 
 /// בונה את קובץ ה-.db מתיקון `zstd --patch-from` שהורד בחלקים: הקובץ המותקן
@@ -28,7 +30,14 @@ class AttachedUpdateDeltaApplier {
     String base,
     String output,
     int max,
-  ) => decodePatchToFile(patch, base, output, maxOutputBytes: max);
+    ZstdCancelFlag? cancel,
+  ) => decodePatchToFile(
+    patch,
+    base,
+    output,
+    maxOutputBytes: max,
+    cancelAddress: cancel?.address ?? 0,
+  );
 
   /// [combinedPath] הוא התיקון המשורשר, [basePath] המסד המותקן (אינו נכתב).
   /// בהצלחה [combinedPath] נמחק; בכשל הפלט נמחק ו-[combinedPath] נשאר.
@@ -36,8 +45,9 @@ class AttachedUpdateDeltaApplier {
     AttachedUpdateArtifact artifact,
     String combinedPath,
     String basePath,
-    String outputPath,
-  ) async {
+    String outputPath, {
+    AttachedUpdateCancelToken? cancel,
+  }) async {
     if (artifact.compression != AttachedUpdateCompression.zstdPatch) {
       throw const AttachedUpdateArtifactMismatch(
         'delta artifact must be zstd-patch',
@@ -50,12 +60,26 @@ class AttachedUpdateDeltaApplier {
           'the installed database to patch is missing',
         );
       }
+      final flag = ZstdCancelFlag();
+      final unsubscribe = cancel?.onCancel(flag.cancel);
+      if (cancel?.isCancelled ?? false) flag.cancel();
       try {
-        await decodePatch(combinedPath, basePath, outputPath, artifact.size);
+        await decodePatch(
+          combinedPath,
+          basePath,
+          outputPath,
+          artifact.size,
+          flag,
+        );
       } on ZstdOutputLimitExceeded {
         throw AttachedUpdateArtifactMismatch(
           'patched output exceeds ${artifact.size}',
         );
+      } on ZstdDecodeCancelled {
+        throw const AttachedUpdateCancelled();
+      } finally {
+        unsubscribe?.call();
+        flag.dispose();
       }
       final size = await File(outputPath).length();
       if (size != artifact.size) {

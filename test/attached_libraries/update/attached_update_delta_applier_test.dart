@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/attached_libraries/models/attached_update_manifest.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_delta_applier.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/utils/file/zstd_patch_decoder.dart';
 import 'package:path/path.dart' as p;
 
@@ -37,12 +39,13 @@ import 'package:path/path.dart' as p;
 }
 
 AttachedUpdatePatchDecoder _decodeWith(String lib) =>
-    (patch, base, output, max) async => decodePatchSyncForTest(
+    (patch, base, output, max, cancel) async => decodePatchSyncForTest(
       patch,
       base,
       output,
       DynamicLibrary.open(lib),
       maxOutputBytes: max,
+      cancelAddress: cancel?.address ?? 0,
     );
 
 Uint8List _content(int seed, int length) {
@@ -201,7 +204,7 @@ void main() {
     );
     await expectLater(
       AttachedUpdateDeltaApplier(
-        decodePatch: (_, _, _, _) async => fail('must not decode'),
+        decodePatch: (_, _, _, _, _) async => fail('must not decode'),
       ).apply(
         AttachedUpdateArtifact(
           compression: AttachedUpdateCompression.zstdPatch,
@@ -215,6 +218,39 @@ void main() {
       ),
       throwsA(isA<AttachedUpdateArtifactMismatch>()),
     );
+  });
+
+  test('a cancel raised while applying stops the decode', () async {
+    if (zstd == null) return markTestSkipped('zstd / libzstd not available');
+    final artifact = await fixture();
+    final before = sha256.convert(File(path('old.db')).readAsBytesSync());
+    final cancel = AttachedUpdateCancelToken();
+    final cancelled = Completer<void>();
+    cancel.onCancel(cancelled.complete);
+    final running = Completer<void>();
+    final real = _decodeWith(zstd!.lib);
+    final applier = AttachedUpdateDeltaApplier(
+      decodePatch: (patch, base, output, max, flag) async {
+        // The token is cancelled only once apply() is under way, so the
+        // flag has to reach the decode loop through the subscription.
+        running.complete();
+        await cancelled.future;
+        return real(patch, base, output, max, flag);
+      },
+    );
+    final done = applier.apply(
+      artifact,
+      path('patch.zst'),
+      path('old.db'),
+      path('out.db'),
+      cancel: cancel,
+    );
+    await running.future;
+    cancel.cancel();
+    await expectLater(done, throwsA(isA<AttachedUpdateCancelled>()));
+    // The decode stopped instead of producing the (valid) patched file.
+    expect(File(path('out.db')).existsSync(), isFalse);
+    expect(sha256.convert(File(path('old.db')).readAsBytesSync()), before);
   });
 
   test('a failure opening the output leaves no open handle behind', () async {

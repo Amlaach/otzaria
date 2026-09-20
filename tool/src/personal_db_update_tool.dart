@@ -470,7 +470,7 @@ Future<void> _applyDelta(
     final output = p.join(temp.path, 'patched.db');
     try {
       await AttachedUpdateDeltaApplier(
-        decodePatch: (patch, from, out, max) async => decodePatchSyncForTest(
+        decodePatch: (patch, from, out, max, _) async => decodePatchSyncForTest(
           patch,
           from,
           out,
