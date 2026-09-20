@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
@@ -6,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/utils/file/mapped_file.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   late Directory dir;
@@ -70,5 +72,42 @@ void main() {
       throwsStateError,
     );
     File(path).deleteSync();
+  });
+
+  test('maps a database that is already open read-only', () {
+    final path = p.join(dir.path, 'library.db');
+    sqlite3.open(path)
+      ..execute('CREATE TABLE t(a TEXT)')
+      ..execute("INSERT INTO t VALUES ('x')")
+      ..close();
+    // The same mode the registry uses for an attached database.
+    final reader = sqlite3.open(path, mode: OpenMode.readOnly);
+    try {
+      final header = MappedFile.use(
+        path,
+        (file) => file.data.asTypedList(15).toList(),
+      );
+      expect(utf8.decode(header), 'SQLite format 3');
+    } finally {
+      reader.close();
+    }
+  });
+
+  test('refuses to map a file another handle may write', () {
+    if (!Platform.isWindows) return markTestSkipped('Windows share modes only');
+    final path = p.join(dir.path, 'writable.bin');
+    File(path).writeAsBytesSync([1, 2, 3]);
+    final writer = File(path).openSync(mode: FileMode.append);
+    try {
+      // A writer could truncate the file under the mapping, which on Windows
+      // is an uncatchable in-page fault: the delta is skipped instead.
+      expect(
+        () => MappedFile.open(path),
+        throwsA(isA<MappedFileException>()),
+      );
+    } finally {
+      writer.closeSync();
+    }
+    MappedFile.use(path, (file) => file.length);
   });
 }

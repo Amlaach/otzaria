@@ -64,10 +64,13 @@ class MappedFile {
   static MappedFile _openWindows(String path, int length) {
     final name = path.toNativeUtf16();
     try {
+      // בלי FILE_SHARE_WRITE: קיצור הקובץ בזמן שהוא ממופה מפיל את התהליך
+      // ב-EXCEPTION_IN_PAGE_ERROR שאי אפשר לתפוס. כותב קיים מכשיל את הפתיחה,
+      // וזה בסך הכול מחזיר את העדכון לקובץ המלא.
       final handle = _createFileW(
         name,
         _genericRead,
-        _fileShareRead | _fileShareWrite | _fileShareDelete,
+        _fileShareRead | _fileShareDelete,
         nullptr,
         _openExisting,
         _fileAttributeNormal,
@@ -128,7 +131,6 @@ class MappedFile {
 
 const _genericRead = 0x80000000;
 const _fileShareRead = 0x00000001;
-const _fileShareWrite = 0x00000002;
 const _fileShareDelete = 0x00000004;
 const _openExisting = 3;
 const _fileAttributeNormal = 0x00000080;
