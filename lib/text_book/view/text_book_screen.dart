@@ -1786,7 +1786,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
         submenuItems: [
           ActionButtonData(
             widget: const SizedBox.shrink(),
-            icon: FluentIcons.panel_left_24_regular,
+            icon: FluentIcons.panel_right_24_regular,
             tooltip: 'מפרשים בצד',
             onPressed: () =>
                 _onViewModeSelected(context, state, _viewModeSplit),
@@ -1992,7 +1992,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
         45,
         ActionButtonData(
           widget: const SizedBox.shrink(),
-          icon: FluentIcons.link_24_regular,
+          icon: OtzariaIcons.book_link_24_regular,
           tooltip: state.book.id != null
               ? 'העתק קישור ישיר לספר זה'
               : 'העתק קישור ישיר (לא זמין לספר זה)',
@@ -2014,7 +2014,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
           50,
           ActionButtonData(
             widget: const SizedBox.shrink(),
-            icon: FluentIcons.arrow_export_ltr_24_regular,
+            icon: OtzariaIcons.book_download_24_regular,
             tooltip: 'ייצוא הספר',
             onPressed: () => _exportWholeBook(state),
           ),
@@ -2086,7 +2086,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
               if (!ExportRestrictionService.isRestricted(state.book.title))
                 ActionButtonData(
                   widget: const SizedBox.shrink(),
-                  icon: FluentIcons.arrow_export_ltr_24_regular,
+                  icon: OtzariaIcons.document_download_24_regular,
                   tooltip: 'ייצוא הספר',
                   onPressed: () => _exportWholeBook(state),
                 ),
@@ -2134,7 +2134,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
       return OtzariaIcons.book_open_tzurat_hadaf_24_filled;
     }
     if (state.showSplitView) {
-      return FluentIcons.panel_left_24_regular;
+      return FluentIcons.panel_right_24_regular;
     }
     return FluentIcons.panel_bottom_20_regular;
   }
@@ -2217,8 +2217,8 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
           value: _viewModeSplit,
           label: 'מפרשים בצד',
           icon: isSplit
-              ? FluentIcons.panel_left_24_filled
-              : FluentIcons.panel_left_24_regular,
+              ? FluentIcons.panel_right_24_filled
+              : FluentIcons.panel_right_24_regular,
         ),
         AppMenuEntry(
           value: _viewModeBelow,
@@ -2658,18 +2658,18 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
       return ActionButtonData(
         widget: BarButton.icon(
           tooltip: tooltip,
-          icon: OtzariaIcons.book_pdf_24_regular,
+          icon: FluentIcons.document_pdf_24_regular,
           compact: compact,
           onPressed: () => _openParallelEdition(context, state, primary),
         ),
-        icon: OtzariaIcons.book_pdf_24_regular,
+        icon: FluentIcons.document_pdf_24_regular,
         tooltip: tooltip,
         actionId: ToolbarActionId.parallelEdition,
         onPressed: () => _openParallelEdition(context, state, primary),
       );
     }
     return ActionButtonData.split(
-      icon: OtzariaIcons.book_pdf_24_regular,
+      icon: FluentIcons.document_pdf_24_regular,
       tooltip: tooltip,
       compact: compact,
       actionId: ToolbarActionId.parallelEdition,
@@ -2679,7 +2679,7 @@ class _TextBookViewerBlocState extends State<TextBookViewerBloc>
           ActionButtonData(
             widget: const SizedBox.shrink(),
             icon: edition.isCompanion
-                ? OtzariaIcons.book_pdf_24_regular
+                ? FluentIcons.document_pdf_24_regular
                 : OtzariaIcons.book_24_regular,
             tooltip: edition.isCompanion
                 ? '${edition.book.title} — מהדורה מודפסת (אוצריא)'

@@ -151,7 +151,7 @@ void main() {
       findsNWidgets(3),
     );
     expect(tabWithIcon(OtzariaIcons.book_24_regular), findsOneWidget);
-    expect(tabWithIcon(OtzariaIcons.link_24_regular), findsOneWidget);
+    expect(tabWithIcon(OtzariaIcons.links_24_regular), findsOneWidget);
     expect(tabWithIcon(FluentIcons.note_24_regular), findsOneWidget);
 
     // הלשונית הפעילה היא "מפרשים" — בלי מפרשים נבחרים מוצג מסך הבחירה,
@@ -166,7 +166,7 @@ void main() {
     await tester.tap(find.byType(PanelOpenHandle));
     await tester.pumpAndSettle();
 
-    await tester.tap(tabWithIcon(OtzariaIcons.link_24_regular));
+    await tester.tap(tabWithIcon(OtzariaIcons.links_24_regular));
     await tester.pumpAndSettle();
 
     expect(find.text('לא נמצאו קישורים לקטע הנבחר'), findsOneWidget);
