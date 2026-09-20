@@ -1,4 +1,3 @@
-import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
@@ -64,7 +63,7 @@ class TextDisplayProfileEditor extends StatelessWidget {
         onChanged: (v) => onChanged(profile.copyWith(punctuation: v)),
       ),
       SettingsActionTile.segmentedTile<HolyNameDisplay>(
-        icon: FluentIcons.shield_keyhole_24_regular,
+        icon: OtzariaIcons.alef_lock_24_regular,
         title: t('שם הוי"ה'),
         options: [
           SegmentOption(value: HolyNameDisplay.asIs, label: t('ככתבו')),
@@ -76,7 +75,7 @@ class TextDisplayProfileEditor extends StatelessWidget {
       ),
       if (showAnchorMarkers)
         SettingsActionTile.segmentedTile<MarkVisibility>(
-          icon: FluentIcons.text_footnote_24_regular,
+          icon: OtzariaIcons.alef_1_24_regular,
           title: t('ציוני המפרשים'),
           subtitle: t('אותיות הציון שבגוף הטקסט, למשל (א)'),
           options: showHide,
