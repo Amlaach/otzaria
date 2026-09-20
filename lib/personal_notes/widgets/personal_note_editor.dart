@@ -533,7 +533,7 @@ class _PersonalNoteToolbar extends StatelessWidget {
         ),
         IconButton(
           tooltip: 'הוסף קישור',
-          icon: const Icon(FluentIcons.link_24_regular, size: 18),
+          icon: const Icon(OtzariaIcons.link_24_regular, size: 18),
           onPressed: onInsertLink,
         ),
       ],
