@@ -57,6 +57,10 @@ class AttachedUpdateArtifactBuilder {
         case AttachedUpdateCompression.none:
           // החלקים כבר אומתו; אי-התאמה כאן היא מניפסט סותר ולא תקלת הורדה.
           await File(combinedPath).rename(outputPath);
+        case AttachedUpdateCompression.zstdPatch:
+          throw const AttachedUpdateArtifactMismatch(
+            'a zstd-patch artifact needs AttachedUpdateDeltaApplier',
+          );
       }
       final size = await File(outputPath).length();
       if (size != artifact.size) {

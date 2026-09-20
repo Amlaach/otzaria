@@ -66,23 +66,28 @@ class AttachedUpdateManifest {
       'release_notes',
       maxLength: maxReleaseNotesLength,
     );
+    final dbVersion = _int(root, 'db_version', min: 1);
     final deltaList = root['delta'];
     if (deltaList != null && deltaList is! List) {
       throw const AttachedUpdateManifestException('"delta" must be a list');
     }
-    final deltas = [
-      for (final (i, item) in ((deltaList as List?) ?? const []).indexed)
-        AttachedUpdateDelta._parse(_map(item, 'delta[$i]'), 'delta[$i]'),
-    ];
-    if (deltas.length > maxDeltas) {
+    final rawDeltas = (deltaList as List?) ?? const [];
+    if (rawDeltas.length > maxDeltas) {
       throw const AttachedUpdateManifestException('too many delta entries');
     }
-    final dbVersion = _int(root, 'db_version', min: 1);
-    for (final delta in deltas) {
-      if (delta.fromDbVersion >= dbVersion) {
-        throw const AttachedUpdateManifestException(
-          'delta.from_db_version must be lower than db_version',
+    // ערך דלתא שלא נקרא מדולג ולא מפיל את המניפסט: מפרסם שמוסיף פורמט תיקון
+    // חדש אינו שובר לקוחות קיימים, שימשיכו להוריד את הקובץ המלא.
+    final deltas = <AttachedUpdateDelta>[];
+    for (final (i, item) in rawDeltas.indexed) {
+      try {
+        final delta = AttachedUpdateDelta._parse(
+          _map(item, 'delta[$i]'),
+          'delta[$i]',
         );
+        if (delta.fromDbVersion >= dbVersion) continue;
+        deltas.add(delta);
+      } on AttachedUpdateManifestException {
+        continue;
       }
     }
     return AttachedUpdateManifest(
@@ -129,7 +134,17 @@ class AttachedUpdateManifest {
   };
 }
 
-enum AttachedUpdateCompression { zstd, none }
+/// [wire] הוא הערך שבמניפסט. [zstdPatch] הוא פלט `zstd --patch-from` ולכן
+/// תקף רק בתוך ערך דלתא — ל-`full` אין מסד קודם להחיל עליו.
+enum AttachedUpdateCompression {
+  zstd('zstd'),
+  none('none'),
+  zstdPatch('zstd-patch');
+
+  const AttachedUpdateCompression(this.wire);
+
+  final String wire;
+}
 
 /// קובץ שמורכב מחלקים שמשורשרים לפי הסדר ואז נפרסים לפי [compression].
 class AttachedUpdateArtifact {
@@ -150,11 +165,16 @@ class AttachedUpdateArtifact {
   /// סך הבתים להורדה.
   int get compressedSize => parts.fold(0, (sum, part) => sum + part.size);
 
-  static AttachedUpdateArtifact _parse(Map<String, Object?> map, String at) {
+  static AttachedUpdateArtifact _parse(
+    Map<String, Object?> map,
+    String at, {
+    bool allowPatch = false,
+  }) {
     final compression = AttachedUpdateCompression.values
-        .where((c) => c.name == map['compression'])
+        .where((c) => c.wire == map['compression'])
         .firstOrNull;
-    if (compression == null) {
+    if (compression == null ||
+        (compression == AttachedUpdateCompression.zstdPatch && !allowPatch)) {
       throw AttachedUpdateManifestException(
         '$at.compression must be "zstd" or "none"',
       );
@@ -193,7 +213,7 @@ class AttachedUpdateArtifact {
   }
 
   Map<String, dynamic> toJson() => {
-    'compression': compression.name,
+    'compression': compression.wire,
     'size': size,
     'sha256': sha256,
     'parts': [for (final part in parts) part.toJson()],
@@ -248,7 +268,7 @@ class AttachedUpdateDelta {
       AttachedUpdateDelta(
         fromDbVersion: _int(map, 'from_db_version', min: 1, at: at),
         fromSha256: _sha256(map, 'from_sha256', at: at),
-        artifact: AttachedUpdateArtifact._parse(map, at),
+        artifact: AttachedUpdateArtifact._parse(map, at, allowPatch: true),
       );
 
   Map<String, dynamic> toJson() => {

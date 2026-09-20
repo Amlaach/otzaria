@@ -165,6 +165,10 @@ Future<PackResult> pack({
       }
     case AttachedUpdateCompression.none:
       payload = dbPath;
+    case AttachedUpdateCompression.zstdPatch:
+      throw const UpdateToolException(
+        'zstd-patch is produced by --delta-from, not by the full artifact',
+      );
   }
 
   final partPaths = await _split(

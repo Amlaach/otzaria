@@ -144,9 +144,46 @@ void main() {
     );
 
     ((json['delta'] as List).first as Map)['from_db_version'] = 7;
+    expect(AttachedUpdateManifest.parse(_bytes(json)).deltas, isEmpty);
+  });
+
+  Map<String, Object?> deltaEntry(int fromVersion, {String? compression}) => {
+    'from_db_version': fromVersion,
+    'from_sha256': _sha2,
+    'compression': compression ?? 'zstd',
+    'size': 50,
+    'sha256': _sha,
+    'parts': [
+      {'url': 'https://example.org/p', 'size': 20, 'sha256': _sha},
+    ],
+  };
+
+  test('skips a delta entry it cannot read and keeps the rest', () {
+    final json = _valid()
+      ..['delta'] = [
+        deltaEntry(3, compression: 'brotli-patch-v9'),
+        {'from_db_version': 4, 'shape': 'unknown'},
+        'not an object',
+        deltaEntry(5),
+      ];
+    final m = AttachedUpdateManifest.parse(_bytes(json));
+    expect(m.deltas.single.fromDbVersion, 5);
+  });
+
+  test('accepts zstd-patch in a delta and rejects it in full', () {
+    final json = _valid()
+      ..['delta'] = [deltaEntry(6, compression: 'zstd-patch')];
+    final m = AttachedUpdateManifest.parse(_bytes(json));
+    expect(
+      m.deltas.single.artifact.compression,
+      AttachedUpdateCompression.zstdPatch,
+    );
+    expect(m.deltas.single.toJson()['compression'], 'zstd-patch');
+
+    (json['full'] as Map)['compression'] = 'zstd-patch';
     expect(
       () => AttachedUpdateManifest.parse(_bytes(json)),
-      _rejected('from_db_version'),
+      _rejected('full.compression'),
     );
   });
 
