@@ -105,7 +105,7 @@ await Otzaria.call('reader.addContextMenuItem', {
 
 <!-- BEGIN GENERATED: otzaria-icons — אל תערכו ידנית, ראו "עדכון הרשימה" למטה -->
 
-הספרייה מכילה **135 אייקונים**, ומהם **32** קיימים גם בפלואנט.
+הספרייה מכילה **201 אייקונים**, ומהם **35** קיימים גם בפלואנט.
 
 | שם | גם בפלואנט |
 |-----|:---:|
@@ -114,12 +114,26 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `alef_24_regular` |  |
 | `alef_2_24_regular` |  |
 | `alef_3_24_regular` |  |
+| `alef_addition_24_regular` |  |
+| `alef_alef_24_regular` |  |
 | `alef_behind_alef_24_regular` |  |
+| `alef_copy_24_regular` |  |
+| `alef_crown_24_regular` |  |
 | `alef_deletion_24_regular` |  |
+| `alef_eye_24_regular` |  |
+| `alef_half_filled_24_regular` |  |
+| `alef_latin_a_24_regular` |  |
+| `alef_lips_24_regular` |  |
+| `alef_lock_24_regular` |  |
+| `alef_marker_24_regular` |  |
 | `alef_near_alef_24_regular` |  |
+| `alef_near_alef_rashi_24_regular` |  |
+| `alef_near_alef_stam_24_regular` |  |
 | `alef_rashi_24_regular` |  |
+| `alef_scissors_24_regular` |  |
 | `alef_stam_24_regular` |  |
 | `alef_with_eraser_24_regular` |  |
+| `alef_with_exclamation_24_regular` |  |
 | `alef_with_flavors_24_regular` |  |
 | `alef_with_information_24_regular` |  |
 | `alef_with_punctuation_24_regular` |  |
@@ -129,10 +143,13 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `apps_list_24_regular` | ✔ |
 | `apps_list_detail_24_filled` | ✔ |
 | `apps_list_detail_24_regular` | ✔ |
+| `beit_24_regular` |  |
 | `beit_behind_alef_24_regular` |  |
 | `beit_near_alef_24_regular` |  |
 | `book_24_filled` | ✔ |
 | `book_24_regular` | ✔ |
+| `book_add_24_filled` | ✔ |
+| `book_add_24_regular` | ✔ |
 | `book_alef_24_filled` |  |
 | `book_alef_24_regular` |  |
 | `book_alef_rashi_24_filled` |  |
@@ -141,12 +158,18 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `book_download_24_regular` |  |
 | `book_empty_24_filled` |  |
 | `book_empty_24_regular` |  |
-| `book_hyperlink_24_filled` |  |
-| `book_hyperlink_24_regular` |  |
+| `book_exclamation_24_filled` |  |
+| `book_exclamation_24_regular` |  |
+| `book_fanned_24_filled` |  |
+| `book_fanned_24_regular` |  |
 | `book_information_24_filled` | ✔ |
 | `book_information_24_regular` | ✔ |
 | `book_link_24_filled` |  |
 | `book_link_24_regular` |  |
+| `book_links_24_filled` |  |
+| `book_links_24_regular` |  |
+| `book_md_24_filled` |  |
+| `book_md_24_regular` |  |
 | `book_number_24_filled` | ✔ |
 | `book_number_24_regular` | ✔ |
 | `book_open_large_24_filled` |  |
@@ -155,10 +178,15 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `book_open_large_lines_24_regular` |  |
 | `book_open_large_search_24_filled` |  |
 | `book_open_large_search_24_regular` |  |
+| `book_open_medium_24_filled` |  |
 | `book_open_medium_24_regular` |  |
+| `book_open_medium_line_24_filled` |  |
 | `book_open_medium_line_24_regular` |  |
+| `book_open_medium_search_24_filled` |  |
 | `book_open_medium_search_24_regular` |  |
+| `book_open_small_24_filled` |  |
 | `book_open_small_24_regular` |  |
+| `book_open_small_line_24_filled` |  |
 | `book_open_small_line_24_regular` |  |
 | `book_open_tzurat_hadaf_24_filled` |  |
 | `book_open_tzurat_hadaf_24_regular` |  |
@@ -178,7 +206,9 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `book_zim_24_regular` |  |
 | `booklet_24_regular` |  |
 | `booklet_empty_24_regular` |  |
+| `books_stacked_high_24_filled` |  |
 | `books_stacked_high_24_regular` |  |
+| `books_stacked_low_24_filled` |  |
 | `books_stacked_low_24_regular` |  |
 | `bookshelf_24_filled` |  |
 | `bookshelf_24_regular` |  |
@@ -190,24 +220,50 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `clipboard_text_rtl_24_regular` | ✔ |
 | `clock_add_24_regular` |  |
 | `dependent_library_24_regular` |  |
+| `document_alef_24_filled` |  |
+| `document_alef_24_regular` |  |
 | `document_bullet_list_24_filled` | ✔ |
 | `document_bullet_list_24_regular` | ✔ |
 | `document_column_24_filled` |  |
 | `document_column_24_regular` |  |
+| `document_download_24_filled` |  |
+| `document_download_24_regular` |  |
+| `document_html_24_filled` |  |
+| `document_html_24_regular` |  |
+| `document_md_24_filled` |  |
+| `document_md_24_regular` |  |
+| `document_tet_24_filled` |  |
+| `document_tet_24_regular` |  |
 | `document_word_24_filled` |  |
 | `document_word_24_regular` |  |
 | `group_list_24_filled` | ✔ |
 | `group_list_24_regular` | ✔ |
-| `hyperlink_24_regular` |  |
 | `icon_x_24_regular` |  |
 | `link_24_regular` | ✔ |
+| `link_add_24_regular` | ✔ |
+| `link_alef_24_regular` |  |
+| `link_book_empty_24_regular` |  |
+| `link_book_exclamation_24_regular` |  |
+| `link_copy_24_regular` |  |
+| `link_deletion_24_regular` |  |
+| `link_document_24_regular` |  |
+| `link_eye_24_regular` |  |
+| `link_marker_24_regular` |  |
+| `link_quote_24_regular` |  |
+| `link_scissors_24_regular` |  |
+| `link_with_eraser_24_regular` |  |
+| `link_with_information_24_regular` |  |
+| `links_24_filled` |  |
+| `links_24_regular` |  |
 | `list_24_filled` | ✔ |
 | `list_24_regular` | ✔ |
 | `otzaria_icon_24_filled` |  |
 | `otzaria_icon_24_regular` |  |
 | `otzaria_icon_2_page_24_filled` |  |
 | `otzaria_icon_2_page_24_regular` |  |
+| `otzaria_icon_2_page_line_24_filled` |  |
 | `otzaria_icon_2_page_line_24_regular` |  |
+| `otzaria_icon_empty_24_filled` |  |
 | `otzaria_icon_empty_24_regular` |  |
 | `otzaria_icon_line_24_filled` |  |
 | `otzaria_icon_line_24_regular` |  |
@@ -215,13 +271,23 @@ await Otzaria.call('reader.addContextMenuItem', {
 | `person_24_regular` | ✔ |
 | `search_24_filled` | ✔ |
 | `search_24_regular` | ✔ |
+| `search_in_numbered_list_24_filled` |  |
 | `search_in_numbered_list_24_regular` |  |
+| `search_in_the_book_24_filled` |  |
 | `search_in_the_book_24_regular` |  |
+| `search_in_the_document_24_filled` |  |
 | `search_in_the_document_24_regular` |  |
+| `search_in_the_library_24_filled` |  |
 | `search_in_the_library_24_regular` |  |
+| `search_in_the_person_24_filled` |  |
 | `search_in_the_person_24_regular` |  |
+| `search_in_the_quote_24_filled` |  |
+| `search_in_the_quote_24_regular` |  |
+| `search_in_the_settings_24_filled` |  |
 | `search_in_the_settings_24_regular` |  |
+| `search_in_the_text_24_filled` |  |
 | `search_in_the_text_24_regular` |  |
+| `search_in_titles_24_filled` |  |
 | `search_in_titles_24_regular` |  |
 | `search_not_found_24_filled` |  |
 | `search_not_found_24_regular` |  |
