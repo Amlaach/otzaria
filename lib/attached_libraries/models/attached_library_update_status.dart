@@ -15,15 +15,27 @@ class AttachedUpdateOffer extends Equatable {
   /// Host of the pinned manifest URL, shown in the confirmation dialog.
   final String domain;
 
+  /// גודל ההורדה של הארטיפקט שנבחר בפועל — תיקון דלתא קטן מהקובץ המלא.
+  final int? plannedDownloadSize;
+
   const AttachedUpdateOffer({
     required this.manifest,
     required this.manifestBytes,
     required this.signature,
     required this.domain,
+    this.plannedDownloadSize,
   });
 
+  AttachedUpdateOffer withPlannedDownloadSize(int size) => AttachedUpdateOffer(
+    manifest: manifest,
+    manifestBytes: manifestBytes,
+    signature: signature,
+    domain: domain,
+    plannedDownloadSize: size,
+  );
+
   int get dbVersion => manifest.dbVersion;
-  int get downloadSize => manifest.full.compressedSize;
+  int get downloadSize => plannedDownloadSize ?? manifest.full.compressedSize;
   int get installedSize => manifest.full.size;
   String? get releaseNotes => manifest.releaseNotes;
 

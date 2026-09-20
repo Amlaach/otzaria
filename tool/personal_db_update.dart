@@ -5,9 +5,11 @@
 //   dart run tool/personal_db_update.dart pack <db> --out <dir> --url-prefix <https://...>
 //       [--part-size <bytes>] [--compression zstd|none] [--level <1-22>]
 //       [--zstd <path to zstd>] [--notes <file>] [--library-id <id>] [--db-version <n>]
+//       [--delta-from <old.db>]...
 //   dart run tool/personal_db_update.dart sign <manifest.json> --key <private.key>
 //   dart run tool/personal_db_update.dart verify <manifest.json>
 //       (--public-key <base64> | --db <db>) [--sig <file>] [--parts <dir>]
+//       [--delta-from <old.db>]... [--zstd-lib <path to libzstd>]
 //
 // קוד יציאה: 0 הצלחה, 1 כשל, 64 שימוש שגוי.
 
@@ -24,9 +26,10 @@ Usage: dart run tool/personal_db_update.dart <command> ...
   pack <db> --out <dir> --url-prefix <https://...> [--part-size <bytes>]
        [--compression zstd|none] [--level <1-22>] [--zstd <exe>]
        [--notes <file>] [--library-id <id>] [--db-version <n>]
+       [--delta-from <old.db>]...
   sign <manifest.json> --key <private.key>
   verify <manifest.json> (--public-key <base64> | --db <db>) [--sig <file>]
-       [--parts <dir>]
+       [--parts <dir>] [--delta-from <old.db>]... [--zstd-lib <path>]
 ''';
 
 Future<void> main(List<String> args) async {
@@ -73,13 +76,19 @@ Future<void> main(List<String> args) async {
               : File(notesPath).readAsStringSync().trim(),
           libraryId: options.values['library-id'],
           dbVersion: options.intValue('db-version'),
+          deltaFrom: options.multi('delta-from'),
         );
         for (final warning in result.warnings) {
           stderr.writeln('WARNING: $warning');
         }
         stdout.writeln('Manifest: ${result.manifestPath}');
-        for (final part in result.manifest.full.parts) {
-          stdout.writeln('  ${part.url}  (${part.size} bytes)');
+        for (final artifact in [
+          result.manifest.full,
+          for (final delta in result.manifest.deltas) delta.artifact,
+        ]) {
+          for (final part in artifact.parts) {
+            stdout.writeln('  ${part.url}  (${part.size} bytes)');
+          }
         }
         stdout.writeln(
           'Upload the parts to those URLs, then sign manifest.json and upload '
@@ -104,12 +113,21 @@ Future<void> main(List<String> args) async {
           signaturePath: options.values['sig'],
           expectedLibraryId: meta?.libraryId,
           partsDir: options.values['parts'],
+          deltaFrom: options.multi('delta-from'),
+          zstdLibraryPath: options.values['zstd-lib'],
         );
         stdout.writeln(
           'OK: ${manifest.libraryId} db_version ${manifest.dbVersion}, '
           '${manifest.full.parts.length} part(s), '
           '${manifest.full.compressedSize} bytes to download.',
         );
+        for (final delta in manifest.deltas) {
+          stdout.writeln(
+            '    delta from db_version ${delta.fromDbVersion}: '
+            '${delta.artifact.parts.length} part(s), '
+            '${delta.artifact.compressedSize} bytes.',
+          );
+        }
       default:
         throw const _UsageException();
     }
@@ -135,6 +153,7 @@ class _UsageException implements Exception {
 class _Options {
   final List<String> _positional = [];
   final Map<String, String> values = {};
+  final Map<String, List<String>> _repeated = {};
   final Set<String> flags = {};
 
   static const _flagNames = {'force'};
@@ -151,7 +170,9 @@ class _Options {
       if (_flagNames.contains(name)) {
         options.flags.add(name);
       } else if (i + 1 < args.length) {
-        options.values[name] = args[++i];
+        final value = args[++i];
+        options.values[name] = value;
+        options._repeated.putIfAbsent(name, () => []).add(value);
       } else {
         throw const _UsageException();
       }
@@ -162,6 +183,9 @@ class _Options {
   String positional(int index) => index < _positional.length
       ? _positional[index]
       : throw const _UsageException();
+
+  /// כל המופעים של דגל שחוזר על עצמו, לפי הסדר.
+  List<String> multi(String name) => _repeated[name] ?? const [];
 
   String require(String name) =>
       values[name] ?? (throw const _UsageException());

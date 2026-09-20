@@ -14,6 +14,7 @@ import 'package:otzaria/attached_libraries/models/attached_update_manifest.dart'
 import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_probe.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_planner.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_downloader.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_file_swap.dart';
@@ -50,6 +51,7 @@ class AttachedLibraryUpdateService {
     AttachedLibrariesRepository? repository,
     AttachedUpdateFetcher? fetcher,
     this.downloader = const AttachedUpdateDownloader(),
+    this.planner = const AttachedUpdateArtifactPlanner(),
     Future<AttachedLibraryProbeResult> Function(String path)? probe,
     this.swap = const AttachedUpdateFileSwap(),
     Future<DiskSpaceInfo> Function(String path)? diskSpace,
@@ -73,6 +75,7 @@ class AttachedLibraryUpdateService {
   final AttachedLibrariesRepository? _repositoryOverride;
   final AttachedUpdateFetcher _fetcher;
   final AttachedUpdateDownloader downloader;
+  final AttachedUpdateArtifactPlanner planner;
   final Future<AttachedLibraryProbeResult> Function(String path) _probe;
   final AttachedUpdateFileSwap swap;
   final Future<DiskSpaceInfo> Function(String path) _diskSpace;
@@ -166,7 +169,10 @@ class AttachedLibraryUpdateService {
         return _set(library.path, const AttachedUpdateUpToDate());
       }
       await _savePending(library.path, offer);
-      return _set(library.path, AttachedUpdateAvailable(offer));
+      return _set(
+        library.path,
+        AttachedUpdateAvailable(await _planned(offer, library.path, installed)),
+      );
     } catch (e, st) {
       _log('check ${library.slug}', e, st);
       return _set(library.path, AttachedUpdateFailed(errorOf(e)));
@@ -227,27 +233,50 @@ class AttachedLibraryUpdateService {
         pinned: source,
         installedDbVersion: '$installed',
       );
-      combined = await _combinedPathFor(library, manifest);
       await _ensureWritable(staged);
-      await _ensureSpace(manifest.full, staged: staged, combined: combined);
-
-      await downloader.download(
-        manifest.full,
-        combinedPath: combined,
-        outputPath: staged,
-        cancel: cancel,
-        onProgress: (received, total) => _set(
-          path,
-          AttachedUpdateInProgress(
-            offer,
-            phase: total == 0
-                ? AttachedUpdatePhase.assemble
-                : AttachedUpdatePhase.download,
-            received: received,
-            total: total,
-          ),
+      void report(int received, int total) => _set(
+        path,
+        AttachedUpdateInProgress(
+          offer,
+          phase: total == 0
+              ? AttachedUpdatePhase.assemble
+              : AttachedUpdatePhase.download,
+          received: received,
+          total: total,
         ),
       );
+      final plan = await planner.plan(
+        verified.manifest,
+        installedPath: path,
+        installedDbVersion: installed,
+      );
+      combined = await _combinedPathFor(library, manifest, plan);
+      await _ensureSpace(plan.artifact, staged: staged, combined: combined);
+      try {
+        await downloader.download(
+          plan.artifact,
+          combinedPath: combined,
+          outputPath: staged,
+          basePath: plan.isDelta ? path : null,
+          cancel: cancel,
+          onProgress: report,
+        );
+      } catch (e, st) {
+        // כל כשל בדלתא חוזר לקובץ המלא בשקט; רק ביטול המשתמש עוצר.
+        if (!plan.isDelta || cancel.isCancelled) rethrow;
+        _log('delta ${library.slug}', e, st);
+        await _deleteQuietly(combined);
+        final fallback = AttachedUpdatePlan(manifest.full);
+        combined = await _combinedPathFor(library, manifest, fallback);
+        await _ensureSpace(manifest.full, staged: staged, combined: combined);
+        await downloader.download(
+          manifest.full,
+          combinedPath: combined,
+          outputPath: staged,
+          cancel: cancel,
+          onProgress: report,
+        );
+      }
       if (cancel.isCancelled) throw const AttachedUpdateCancelled();
       _cancelTokens.remove(path);
       _set(
@@ -332,11 +361,18 @@ class AttachedLibraryUpdateService {
           base64.decode(json['signature'] as String),
           library.updateSource!,
         );
+        final installedDbVersion = library.fingerprint?.dbVersion;
         offer.manifest.checkApplicable(
           pinned: library.updateSource!,
-          installedDbVersion: library.fingerprint?.dbVersion,
+          installedDbVersion: installedDbVersion,
         );
-        _set(library.path, AttachedUpdateAvailable(offer));
+        final installed = int.parse(installedDbVersion!.trim());
+        _set(
+          library.path,
+          AttachedUpdateAvailable(
+            await _planned(offer, library.path, installed),
+          ),
+        );
       } catch (e) {
         await _savePending(library.path, null);
       }
@@ -382,18 +418,37 @@ class AttachedLibraryUpdateService {
     );
   }
 
+  /// הדיאלוג מציג את גודל ההורדה של הארטיפקט שייבחר, לא של הקובץ המלא.
+  Future<AttachedUpdateOffer> _planned(
+    AttachedUpdateOffer offer,
+    String installedPath,
+    int installedDbVersion,
+  ) async {
+    final plan = await planner.plan(
+      offer.manifest,
+      installedPath: installedPath,
+      installedDbVersion: installedDbVersion,
+    );
+    return offer.withPlannedDownloadSize(plan.artifact.compressedSize);
+  }
+
   Future<String> _combinedPathFor(
     AttachedLibrary library,
     AttachedUpdateManifest manifest,
+    AttachedUpdatePlan plan,
   ) async {
-    if (manifest.full.compression == AttachedUpdateCompression.none) {
+    if (plan.artifact.compression == AttachedUpdateCompression.none) {
       return AttachedUpdateFileSwap.localDownloadPathFor(library.path);
     }
     final directory = await _workDirectory();
     await Directory(directory).create(recursive: true);
+    // שם נפרד לכל מקור דלתא: הורדה חלקית של תיקון אינה קלט תקף לאחר.
+    final suffix = plan.delta == null
+        ? ''
+        : '-from${plan.delta!.fromDbVersion}';
     return p.join(
       directory,
-      '${library.slug}-${manifest.dbVersion}.download',
+      '${library.slug}-${manifest.dbVersion}$suffix.download',
     );
   }
 

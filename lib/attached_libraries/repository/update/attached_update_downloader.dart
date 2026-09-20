@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:otzaria/attached_libraries/models/attached_update_manifest.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_delta_applier.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/core/netfree_certificates.dart';
 
@@ -20,6 +21,7 @@ class AttachedUpdateDownloader {
   const AttachedUpdateDownloader({
     this.fetcher,
     this.builder = const AttachedUpdateArtifactBuilder(),
+    this.deltaApplier = const AttachedUpdateDeltaApplier(),
     this.certificates = loadNetfreeCaBytes,
     this.progressInterval = const Duration(milliseconds: 200),
   });
@@ -27,15 +29,18 @@ class AttachedUpdateDownloader {
   /// Null means a default [AttachedUpdateFetcher].
   final AttachedUpdateFetcher? fetcher;
   final AttachedUpdateArtifactBuilder builder;
+  final AttachedUpdateDeltaApplier deltaApplier;
   final Future<List<Uint8List>> Function() certificates;
   final Duration progressInterval;
 
   /// Downloads [artifact] into [combinedPath] (resuming a partial file) and
-  /// assembles the verified database at [outputPath].
+  /// assembles the verified database at [outputPath]. A `zstd-patch` artifact
+  /// needs [basePath] — the installed database, which is only read.
   Future<void> download(
     AttachedUpdateArtifact artifact, {
     required String combinedPath,
     required String outputPath,
+    String? basePath,
     AttachedUpdateProgress? onProgress,
     AttachedUpdateCancelToken? cancel,
   }) async {
@@ -56,8 +61,10 @@ class AttachedUpdateDownloader {
       artifact: artifact,
       combinedPath: combinedPath,
       outputPath: outputPath,
+      basePath: basePath,
       fetcher: fetcher ?? AttachedUpdateFetcher(),
       builder: builder,
+      deltaApplier: deltaApplier,
       certificates: certs,
       events: events.sendPort,
       progressInterval: progressInterval,
@@ -96,7 +103,22 @@ class AttachedUpdateDownloader {
       );
       if (cancel.isCancelled) throw const AttachedUpdateCancelled();
       job.events.send((0, 0));
-      await job.builder.build(job.artifact, job.combinedPath, job.outputPath);
+      if (job.artifact.compression == AttachedUpdateCompression.zstdPatch) {
+        final base = job.basePath;
+        if (base == null) {
+          throw const AttachedUpdateArtifactMismatch(
+            'a zstd-patch artifact needs the installed database',
+          );
+        }
+        await job.deltaApplier.apply(
+          job.artifact,
+          job.combinedPath,
+          base,
+          job.outputPath,
+        );
+      } else {
+        await job.builder.build(job.artifact, job.combinedPath, job.outputPath);
+      }
     } finally {
       control.close();
     }
@@ -108,8 +130,10 @@ class _Job {
     required this.artifact,
     required this.combinedPath,
     required this.outputPath,
+    required this.basePath,
     required this.fetcher,
     required this.builder,
+    required this.deltaApplier,
     required this.certificates,
     required this.events,
     required this.progressInterval,
@@ -118,8 +142,10 @@ class _Job {
   final AttachedUpdateArtifact artifact;
   final String combinedPath;
   final String outputPath;
+  final String? basePath;
   final AttachedUpdateFetcher fetcher;
   final AttachedUpdateArtifactBuilder builder;
+  final AttachedUpdateDeltaApplier deltaApplier;
   final List<Uint8List> certificates;
   final SendPort events;
   final Duration progressInterval;

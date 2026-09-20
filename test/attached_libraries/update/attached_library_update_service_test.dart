@@ -13,6 +13,7 @@ import 'package:otzaria/attached_libraries/repository/attached_libraries_reposit
 import 'package:otzaria/attached_libraries/repository/attached_library_probe.dart';
 import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_library_update_service.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_downloader.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_file_swap.dart';
@@ -49,16 +50,27 @@ class _FakeDownloader extends AttachedUpdateDownloader {
   int calls = 0;
   Completer<void>? hold;
   final started = Completer<void>();
+  final artifacts = <AttachedUpdateArtifact>[];
+  final basePaths = <String?>[];
+  bool failDelta = false;
 
   @override
   Future<void> download(
     AttachedUpdateArtifact artifact, {
     required String combinedPath,
     required String outputPath,
+    String? basePath,
     AttachedUpdateProgress? onProgress,
     AttachedUpdateCancelToken? cancel,
   }) async {
     calls++;
+    artifacts.add(artifact);
+    basePaths.add(basePath);
+    if (artifact.compression == AttachedUpdateCompression.zstdPatch &&
+        failDelta) {
+      await File(combinedPath).writeAsBytes([9, 9, 9]);
+      throw const AttachedUpdateArtifactMismatch('patch does not apply');
+    }
     onProgress?.call(1, 2);
     final gate = hold;
     if (gate != null) {
@@ -598,5 +610,126 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  group('delta artifact', () {
+    /// מניפסט עם תיקון דלתא מהקובץ המותקן ל-[newDb].
+    void publishWithDelta(
+      String newDb,
+      String installedPath, {
+      int deltaDownloadSize = 1,
+    }) {
+      final bytes = File(newDb).readAsBytesSync();
+      final digest = sha256.convert(bytes).toString();
+      final installedSha = sha256
+          .convert(File(installedPath).readAsBytesSync())
+          .toString();
+      final manifest = AttachedUpdateManifest(
+        libraryId: 'my-lib',
+        dbVersion: 2,
+        full: AttachedUpdateArtifact(
+          compression: AttachedUpdateCompression.none,
+          size: bytes.length,
+          sha256: digest,
+          parts: [
+            AttachedUpdatePart(
+              url: 'https://updates.example.org/lib/full',
+              size: bytes.length,
+              sha256: digest,
+            ),
+          ],
+        ),
+        deltas: [
+          AttachedUpdateDelta(
+            fromDbVersion: 1,
+            fromSha256: installedSha,
+            artifact: AttachedUpdateArtifact(
+              compression: AttachedUpdateCompression.zstdPatch,
+              size: bytes.length,
+              sha256: digest,
+              parts: [
+                AttachedUpdatePart(
+                  url: 'https://updates.example.org/lib/patch',
+                  size: deltaDownloadSize,
+                  sha256: digest,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+      fetcher.manifest = Uint8List.fromList(
+        utf8.encode(jsonEncode(manifest.toJson())),
+      );
+      fetcher.signature = Uint8List.fromList(
+        ascii.encode(
+          AttachedUpdateSignature.sign(fetcher.manifest, privateKey),
+        ),
+      );
+      downloader.source = newDb;
+    }
+
+    Future<(AttachedLibraryUpdateService, AttachedLibrary)> offered({
+      int deltaDownloadSize = 1,
+    }) async {
+      final library = await attach(database(), mode: AttachedLibraryMode.link);
+      publishWithDelta(
+        database(version: '2'),
+        library.path,
+        deltaDownloadSize: deltaDownloadSize,
+      );
+      final svc = service();
+      final status = await svc.check(library);
+      expect(status, isA<AttachedUpdateAvailable>());
+      return (svc, library);
+    }
+
+    test(
+      'the smaller delta is downloaded against the installed file',
+      () async {
+        final (svc, library) = await offered();
+        expect(svc.statusOf(library).offer!.downloadSize, 1);
+        await svc.install(library);
+        expect(svc.statusOf(library), const AttachedUpdateInstalled(2));
+        expect(downloader.calls, 1);
+        expect(
+          downloader.artifacts.single.compression,
+          AttachedUpdateCompression.zstdPatch,
+        );
+        expect(downloader.basePaths.single, library.path);
+      },
+    );
+
+    test('a delta that is not smaller is not offered', () async {
+      final (svc, library) = await offered(deltaDownloadSize: 1 << 20);
+      expect(
+        svc.statusOf(library).offer!.downloadSize,
+        File(library.path).lengthSync(),
+      );
+      await svc.install(library);
+      expect(
+        downloader.artifacts.single.compression,
+        AttachedUpdateCompression.none,
+      );
+    });
+
+    test('a failed delta falls back to the full artifact', () async {
+      final (svc, library) = await offered();
+      downloader.failDelta = true;
+      await svc.install(library);
+      expect(svc.statusOf(library), const AttachedUpdateInstalled(2));
+      expect(downloader.calls, 2);
+      expect(
+        downloader.artifacts.last.compression,
+        AttachedUpdateCompression.none,
+      );
+      expect(downloader.basePaths.last, isNull);
+      expect(
+        Directory(p.join(temp.path, 'work')).existsSync()
+            ? Directory(p.join(temp.path, 'work')).listSync()
+            : const [],
+        isEmpty,
+      );
+    });
   });
 }

@@ -16,7 +16,7 @@ import '../../tool/src/personal_db_validator.dart';
 import '../helpers/seforim_fixture_db.dart';
 
 /// zstd בשורת הפקודה ו-libzstd לפענוח ב-FFI; null כשאחד חסר (הבדיקה מדלגת).
-({String exe, DynamicLibrary lib})? _findZstd() {
+({String exe, DynamicLibrary lib, String libPath})? _findZstd() {
   final which = Process.runSync(Platform.isWindows ? 'where' : 'which', [
     'zstd',
   ]);
@@ -34,7 +34,11 @@ import '../helpers/seforim_fixture_db.dart';
   ];
   for (final candidate in candidates) {
     try {
-      return (exe: exe, lib: DynamicLibrary.open(candidate));
+      return (
+        exe: exe,
+        lib: DynamicLibrary.open(candidate),
+        libPath: candidate,
+      );
     } catch (_) {}
   }
   return null;
@@ -53,14 +57,19 @@ void main() {
     } catch (_) {}
   });
 
-  String makeDb({required String publicKey, int bytes = 200000}) {
-    final path = p.join(temp.path, 'lib.db');
+  String makeDb({
+    required String publicKey,
+    int bytes = 200000,
+    String name = 'lib.db',
+    String version = '3',
+  }) {
+    final path = p.join(temp.path, name);
     final db = sqlite3.open(path);
     db.execute('CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT)');
     db.execute('CREATE TABLE filler (data BLOB)');
     for (final entry in {
       'library_id': 'my-lib',
-      'db_version': '3',
+      'db_version': version,
       'update_manifest_url': 'https://example.org/lib/manifest.json',
       'update_public_key': publicKey,
     }.entries) {
@@ -353,6 +362,115 @@ void main() {
       ];
       expect(warnings, hasLength(3));
       expect(warnings.every((i) => i.severity == Severity.warning), isTrue);
+    });
+  });
+
+  group('delta artifacts', () {
+    /// עותק של [oldDb] עם db_version חדש ושורה קטנה נוספת — תיקון קטן.
+    String evolve(String oldDb, String version) {
+      final path = p.join(temp.path, 'new-$version.db');
+      File(oldDb).copySync(path);
+      final db = sqlite3.open(path);
+      db.execute('UPDATE schema_meta SET value = ? WHERE key = ?', [
+        version,
+        'db_version',
+      ]);
+      db.execute('INSERT INTO filler VALUES (?)', ['small change']);
+      db.close();
+      return path;
+    }
+
+    test('pack --delta-from + verify applies the patch', () async {
+      final zstd = _findZstd();
+      if (zstd == null) {
+        markTestSkipped('zstd / libzstd not available');
+        return;
+      }
+      final keyPath = p.join(temp.path, 'k.key');
+      final publicKey = keygen(keyPath);
+      final old = makeDb(publicKey: publicKey, version: '2', name: 'old.db');
+      final updated = evolve(old, '3');
+      final out = p.join(temp.path, 'out');
+
+      final result = await pack(
+        dbPath: updated,
+        outDir: out,
+        urlPrefix: 'https://example.org/releases/v3',
+        level: 3,
+        zstdExecutable: zstd.exe,
+        deltaFrom: [old],
+      );
+      expect(result.warnings, isEmpty);
+      final delta = result.manifest.deltas.single;
+      expect(delta.fromDbVersion, 2);
+      expect(delta.artifact.compression, AttachedUpdateCompression.zstdPatch);
+      expect(delta.artifact.size, result.manifest.full.size);
+      expect(delta.artifact.sha256, result.manifest.full.sha256);
+      expect(
+        delta.artifact.compressedSize,
+        lessThan(result.manifest.full.compressedSize),
+      );
+
+      sign(result.manifestPath, keyPath);
+      final verified = await verify(
+        manifestPath: result.manifestPath,
+        publicKey: publicKey,
+        partsDir: out,
+        deltaFrom: [old],
+        zstdLibraryPath: zstd.libPath,
+      );
+      expect(verified.deltas, hasLength(1));
+    });
+
+    test('verify without the matching base fails', () async {
+      final zstd = _findZstd();
+      if (zstd == null) {
+        markTestSkipped('zstd / libzstd not available');
+        return;
+      }
+      final keyPath = p.join(temp.path, 'k.key');
+      final publicKey = keygen(keyPath);
+      final old = makeDb(publicKey: publicKey, version: '2', name: 'old.db');
+      final updated = evolve(old, '3');
+      final out = p.join(temp.path, 'out');
+      final result = await pack(
+        dbPath: updated,
+        outDir: out,
+        urlPrefix: 'https://example.org/releases/v3',
+        level: 3,
+        zstdExecutable: zstd.exe,
+        deltaFrom: [old],
+      );
+      sign(result.manifestPath, keyPath);
+      await expectLater(
+        verify(
+          manifestPath: result.manifestPath,
+          publicKey: publicKey,
+          partsDir: out,
+          zstdLibraryPath: zstd.libPath,
+        ),
+        throwsA(isA<UpdateToolException>()),
+      );
+    });
+
+    test('--delta-from of another library is an error', () async {
+      final publicKey = keygen(p.join(temp.path, 'k.key'));
+      final old = makeDb(publicKey: publicKey, version: '2', name: 'old.db');
+      final db = sqlite3.open(old);
+      db.execute("UPDATE schema_meta SET value = 'other' WHERE key = ?", [
+        'library_id',
+      ]);
+      db.close();
+      await expectLater(
+        pack(
+          dbPath: makeDb(publicKey: publicKey, name: 'new.db'),
+          outDir: p.join(temp.path, 'out'),
+          urlPrefix: 'https://example.org/releases/v3',
+          compression: AttachedUpdateCompression.none,
+          deltaFrom: [old],
+        ),
+        throwsA(isA<UpdateToolException>()),
+      );
     });
   });
 }

@@ -12,10 +12,12 @@ import 'package:otzaria/attached_libraries/repository/attached_library_probe.dar
 import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_library_update_service.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_artifact_builder.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_update_delta_applier.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_downloader.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_fetcher.dart';
 import 'package:otzaria/attached_libraries/repository/update/attached_update_host_policy.dart';
 import 'package:otzaria/utils/file/disk_free_space.dart';
+import 'package:otzaria/utils/file/zstd_patch_decoder.dart';
 import 'package:otzaria/utils/file/zstd_stream_extractor_io.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
@@ -52,6 +54,15 @@ const _manifestUrl = 'https://updates.example.org/lib/manifest.json';
 }
 
 // Top-level so the closure sent to the download isolate captures only a path.
+AttachedUpdatePatchDecoder _patchWith(String lib) =>
+    (patch, base, output, max) async => decodePatchSyncForTest(
+      patch,
+      base,
+      output,
+      DynamicLibrary.open(lib),
+      maxOutputBytes: max,
+    );
+
 AttachedUpdateDecompressor _decompressWith(String lib) =>
     (archive, output, max) async => decompressSyncForTest(
       archive,
@@ -306,6 +317,174 @@ void main() {
         expect(
           File(p.join(p.dirname(installed), 'e2e.db.bak-update')).existsSync(),
           isFalse,
+        );
+      } finally {
+        await server?.close(force: true);
+        await registry.closeAll();
+        try {
+          await temp.delete(recursive: true);
+        } catch (_) {}
+      }
+    },
+  );
+
+  test(
+    'signed manifest with a delta: patch the installed file and install',
+    () async {
+      final zstd = _findZstd();
+      if (zstd == null) {
+        markTestSkipped('zstd / libzstd not available');
+        return;
+      }
+      await Settings.init(cacheProvider: MemoryCacheProvider());
+      final temp = await Directory.systemTemp.createTemp('otzaria_upd_delta');
+      final registry = AttachedLibraryRegistry(idleTimeout: null);
+      HttpServer? server;
+      try {
+        final keyPath = p.join(temp.path, 'publisher.key');
+        final publicKey = keygen(keyPath);
+
+        final installed = p.join(temp.path, 'library', 'delta.db');
+        Directory(p.dirname(installed)).createSync();
+        final source = SeforimFixtureDb.create(
+          Directory(p.join(temp.path, 'v1'))..createSync(),
+          SeforimFixtureVariant.full,
+        );
+        File(source).copySync(installed);
+        final base = sqlite3.sqlite3.open(installed);
+        for (final entry in {
+          'library_id': 'delta-lib',
+          'db_version': '1',
+          'update_manifest_url': _manifestUrl,
+          'update_public_key': publicKey,
+        }.entries) {
+          base.execute('INSERT OR REPLACE INTO schema_meta VALUES (?, ?)', [
+            entry.key,
+            entry.value,
+          ]);
+        }
+        base.execute('CREATE TABLE delta_filler (data BLOB)');
+        base.execute('INSERT INTO delta_filler VALUES (randomblob(200000))');
+        base.close();
+
+        final repository = AttachedLibrariesRepository(
+          registry: registry,
+          probe: (path) async => AttachedLibraryProbe.probeSync(path),
+          copyDirectory: () async => p.join(temp.path, 'copies'),
+          copyByDefault: false,
+        );
+        final attached = await repository.importFile(
+          installed,
+          mode: AttachedLibraryMode.link,
+        );
+        final library = attached.library!;
+
+        // הגרסה החדשה נגזרת מהקובץ המותקן, ולכן התיקון קטן מהקובץ המלא.
+        final updated = p.join(temp.path, 'v2.db');
+        File(installed).copySync(updated);
+        final next = sqlite3.sqlite3.open(updated);
+        next.execute(
+          "UPDATE schema_meta SET value = '2' WHERE key = 'db_version'",
+        );
+        next.execute('CREATE TABLE delta_note (text TEXT)');
+        next.execute("INSERT INTO delta_note VALUES ('v2')");
+        next.close();
+
+        final outDir = p.join(temp.path, 'published');
+        final packed = await pack(
+          dbPath: updated,
+          outDir: outDir,
+          urlPrefix: 'https://updates.example.org/lib',
+          partSize: 8192,
+          level: 3,
+          zstdExecutable: zstd.exe,
+          deltaFrom: [installed],
+        );
+        final delta = packed.manifest.deltas.single;
+        expect(delta.artifact.compression, AttachedUpdateCompression.zstdPatch);
+        expect(
+          delta.artifact.compressedSize,
+          lessThan(packed.manifest.full.compressedSize),
+        );
+        final signaturePath = sign(packed.manifestPath, keyPath);
+
+        final served = <String>[];
+        server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((request) async {
+          final name = request.uri.pathSegments.last;
+          served.add(name);
+          final file = File(switch (name) {
+            'manifest.json' => packed.manifestPath,
+            'manifest.json.sig' => signaturePath,
+            _ => p.join(outDir, name),
+          });
+          if (!file.existsSync()) {
+            request.response.statusCode = HttpStatus.notFound;
+          } else {
+            request.response.contentLength = file.lengthSync();
+            await request.response.addStream(file.openRead());
+          }
+          await request.response.close();
+        });
+
+        final fetcher = _LoopbackFetcher(server.port);
+        final service = AttachedLibraryUpdateService(
+          repository: repository,
+          fetcher: fetcher,
+          downloader: AttachedUpdateDownloader(
+            fetcher: fetcher,
+            deltaApplier: AttachedUpdateDeltaApplier(
+              decodePatch: _patchWith(zstd.lib),
+            ),
+            builder: AttachedUpdateArtifactBuilder(
+              decompress: _decompressWith(zstd.lib),
+            ),
+            certificates: () async => const [],
+          ),
+          probe: (path) async => AttachedLibraryProbe.probeSync(path),
+          diskSpace: (_) async =>
+              DiskSpaceInfo(volumeId: 'V', freeBytes: 1 << 40),
+          workDirectory: () async => p.join(temp.path, 'work'),
+          isOfflineMode: () => false,
+          areUpdatesEnabled: () => true,
+          isAutoCheckDue: () => true,
+          recordCheck: () async {},
+        );
+
+        final found = await service.check(library);
+        expect(found, isA<AttachedUpdateAvailable>());
+        expect(found.offer!.downloadSize, delta.artifact.compressedSize);
+
+        await service.install(library);
+        expect(service.statusOf(library), const AttachedUpdateInstalled(2));
+
+        final deltaNames = [
+          for (final part in delta.artifact.parts)
+            Uri.parse(part.url).pathSegments.last,
+        ];
+        final fullNames = [
+          for (final part in packed.manifest.full.parts)
+            Uri.parse(part.url).pathSegments.last,
+        ];
+        expect(served, containsAll(deltaNames));
+        expect(
+          served.where(fullNames.contains),
+          isEmpty,
+          reason: 'the full artifact must not be downloaded',
+        );
+        expect(
+          await AttachedUpdateArtifactBuilder.sha256OfFile(installed),
+          packed.manifest.full.sha256,
+        );
+        expect(
+          File(
+            p.join(p.dirname(installed), 'delta.db.bak-update'),
+          ).existsSync(),
+          isFalse,
+        );
+        expect(
+          AttachedLibraryProbe.probeSync(installed).fingerprint!.dbVersion,
+          '2',
         );
       } finally {
         await server?.close(force: true);
