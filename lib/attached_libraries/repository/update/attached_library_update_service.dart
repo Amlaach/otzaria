@@ -262,8 +262,14 @@ class AttachedLibraryUpdateService {
           onProgress: report,
         );
       } catch (e, st) {
-        // כל כשל בדלתא חוזר לקובץ המלא בשקט; רק ביטול המשתמש עוצר.
-        if (!plan.isDelta || cancel.isCancelled) rethrow;
+        // כשל בדלתא עצמה חוזר לקובץ המלא בשקט. כשל רשת אינו חוזר: הקובץ
+        // המלא ייכשל גם הוא, וההורדה החלקית של התיקון תישמר להמשך.
+        final reachedHost = switch (errorOf(e)) {
+          AttachedUpdateError.network ||
+          AttachedUpdateError.hostRejected => false,
+          _ => true,
+        };
+        if (!plan.isDelta || cancel.isCancelled || !reachedHost) rethrow;
         _log('delta ${library.slug}', e, st);
         await _deleteQuietly(combined);
         final fallback = AttachedUpdatePlan(manifest.full);

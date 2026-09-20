@@ -53,6 +53,9 @@ class _FakeDownloader extends AttachedUpdateDownloader {
   final artifacts = <AttachedUpdateArtifact>[];
   final basePaths = <String?>[];
   bool failDelta = false;
+  Object deltaFailure = const AttachedUpdateArtifactMismatch(
+    'patch does not apply',
+  );
 
   @override
   Future<void> download(
@@ -69,7 +72,7 @@ class _FakeDownloader extends AttachedUpdateDownloader {
     if (artifact.compression == AttachedUpdateCompression.zstdPatch &&
         failDelta) {
       await File(combinedPath).writeAsBytes([9, 9, 9]);
-      throw const AttachedUpdateArtifactMismatch('patch does not apply');
+      throw deltaFailure;
     }
     onProgress?.call(1, 2);
     final gate = hold;
@@ -730,6 +733,25 @@ void main() {
             : const [],
         isEmpty,
       );
+    });
+
+    test('a network failure is reported once, and keeps the partial', () async {
+      final (svc, library) = await offered();
+      downloader.failDelta = true;
+      downloader.deltaFailure = const AttachedUpdateNetworkException('offline');
+      await svc.install(library);
+      expect(
+        svc.statusOf(library),
+        isA<AttachedUpdateFailed>().having(
+          (s) => s.error,
+          'error',
+          AttachedUpdateError.network,
+        ),
+      );
+      // The full artifact is not retried in the same run, and the partial
+      // download of the patch stays for a resume.
+      expect(downloader.calls, 1);
+      expect(Directory(p.join(temp.path, 'work')).listSync(), isNotEmpty);
     });
   });
 }
