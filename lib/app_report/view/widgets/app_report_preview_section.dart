@@ -67,7 +67,10 @@ class _AppReportPreviewSectionState extends State<AppReportPreviewSection> {
           onChanged: widget.enabled && diagnostics != null
               ? (value) => widget.onDiagnosticsChanged(value ?? false)
               : null,
-          title: const Text('לצרף מידע אבחון על התוכנה והמערכת'),
+          title: _AttachmentTitle(
+            icon: FluentIcons.info_24_regular,
+            label: 'לצרף מידע אבחון על התוכנה והמערכת',
+          ),
           subtitle: diagnostics == null
               ? const Text('לא ניתן היה לאסוף מידע אבחון')
               : null,
@@ -81,7 +84,10 @@ class _AppReportPreviewSectionState extends State<AppReportPreviewSection> {
           onChanged: widget.enabled && (errorLog?.isNotEmpty ?? false)
               ? (value) => widget.onErrorLogChanged(value ?? false)
               : null,
-          title: const Text('לצרף קטע מיומן השגיאות'),
+          title: _AttachmentTitle(
+            icon: FluentIcons.document_bullet_list_24_regular,
+            label: 'לצרף קטע מיומן השגיאות',
+          ),
           subtitle: (errorLog?.isEmpty ?? true)
               ? const Text('אין רשומות ביומן השגיאות')
               : null,
@@ -106,13 +112,56 @@ class _AppReportPreviewSectionState extends State<AppReportPreviewSection> {
           if (errorLog != null && errorLog.isNotEmpty)
             _PreviewBox(title: 'errors.txt', content: errorLog),
         ],
-        const SizedBox(height: 8),
-        Text(
-          AppReportPreviewSection.privacyNote,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        const SizedBox(height: AppTokens.spaceSM),
+        Container(
+          padding: const EdgeInsets.all(AppTokens.spaceSM),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: AppTokens.borderRadiusAll,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                FluentIcons.shield_task_24_regular,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: AppTokens.spaceSM),
+              Expanded(
+                child: Text(
+                  AppReportPreviewSection.privacyNote,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// כותרת של צרופה: אייקון שמזהה את סוג הקובץ, ולצידו מה מצורף.
+class _AttachmentTitle extends StatelessWidget {
+  const _AttachmentTitle({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: AppTokens.spaceSM),
+        Expanded(child: Text(label)),
       ],
     );
   }

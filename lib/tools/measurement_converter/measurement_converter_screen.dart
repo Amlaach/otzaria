@@ -596,10 +596,15 @@ class _MeasurementConverterScreenState
                                     child: child,
                                   ),
                                 ),
+                            // ‏panel_right_expand הוא ה"Pane Open" של
+                            // פלואנט — הפאנל עם חץ שפותח אותו, ולא פאנל
+                            // סתום שאינו אומר מה הלחיצה תעשה. הוא קיים
+                            // בחבילה רק בגודל 20; הגליף נמתח ל-24 כמו כל
+                            // גופן, ולכן הוא מוצג באותו גודל כמו זוגו.
                             child: Icon(
                               sidebarOpen
                                   ? FluentIcons.panel_right_contract_24_regular
-                                  : FluentIcons.panel_right_24_regular,
+                                  : FluentIcons.panel_right_expand_20_regular,
                               key: ValueKey(sidebarOpen),
                               size: 24,
                             ),
