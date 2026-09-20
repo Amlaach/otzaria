@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/tools/dictionary/repository/dictionary_lookup_repository.dart';
@@ -46,7 +47,7 @@ List<AppContextMenuEntry> buildDictionaryContextMenuEntries({
       entries.add(
         AppContextMenuEntry(
           label: 'מילון ארמי-עברי',
-          icon: FluentIcons.translate_24_regular,
+          icon: OtzariaIcons.alef_near_alef_stam_24_regular,
           children: aramaicMatches
               .map<AppContextMenuEntry>(
                 (entry) => AppContextMenuEntry(

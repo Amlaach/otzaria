@@ -261,7 +261,7 @@ class TextSettingsTab extends StatelessWidget {
                 },
               ),
               _FontDropdown(
-                icon: OtzariaIcons.tet_near_tet_24_regular,
+                icon: OtzariaIcons.alef_alef_24_regular,
                 label: context.settingsText('גופן טקסט'),
                 value: state.fontFamily,
                 onChanged: (value) {
