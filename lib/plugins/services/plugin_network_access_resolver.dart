@@ -152,9 +152,20 @@ class PluginNetworkAccessResolver {
         return null;
       }
 
+      // מסנני תוכן (למשל NetFree) לפעמים לא מפילים את הבקשה אלא מחזירים
+      // דף חסימה משלהם בסטטוס 200 ו-Content-Type html. בלי הבדיקה הזו, דף
+      // כזה היה מתפרש כתשובה רשמית תקפה (כמעט ריקה, כי שורות HTML לא
+      // נראות כמו כתובות) — ולפי הכלל ש"רשימה ריקה = חסימת חירום", זה היה
+      // חוסם בטעות גם כתובות שכן מאושרות הלכה למעשה. תגובה תקינה מ-GitHub
+      // (raw.githubusercontent או Contents API) היא תמיד טקסט, לעולם לא html.
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      if (contentType.contains('text/html')) {
+        return null;
+      }
+
       // גם רשימה ריקה היא תשובה רשמית תקפה (למשל השבתת-חירום של כל הגישה).
-      // רק כשל HTTP/רשת מפעיל את הניסיון הבא (Contents API) או את הרשימה
-      // המקומפלת כגיבוי סופי.
+      // רק כשל HTTP/רשת/דף-חסימה מפעיל את הניסיון הבא (Contents API) או את
+      // הרשימה המקומפלת כגיבוי סופי.
       return parsePluginNetworkAllowlistText(response.body);
     } catch (_) {
       return null;

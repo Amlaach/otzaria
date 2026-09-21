@@ -284,6 +284,32 @@ https://other.example.com
     );
 
     test(
+      'דף חסימה של מסנן תוכן (200 + html) נחשב ככשל ונופל ל-Contents API',
+      () async {
+        final client = MockClient((request) async {
+          if (request.url.host == 'raw.githubusercontent.com') {
+            return http.Response(
+              '<html><body>הכתובת חסומה ע"י מדיניות הארגון</body></html>',
+              200,
+              headers: const {'content-type': 'text/html; charset=utf-8'},
+            );
+          }
+          return http.Response('https://api.example.com/root\n', 200);
+        });
+        final resolver = PluginNetworkAccessResolver(client: client);
+
+        final allowed = await resolver.isUriAllowedForPlugin(
+          Uri.parse('https://api.example.com/root/v1/items'),
+          _buildManifest(
+            networkAllowlist: const ['https://api.example.com/root'],
+          ),
+        );
+
+        expect(allowed, isTrue);
+      },
+    );
+
+    test(
       'כתובת ה-Contents API הגיבוי מצביעה על הקובץ הרשמי בענף dev',
       () {
         expect(
