@@ -245,14 +245,55 @@ https://other.example.com
       );
       final uri = Uri.parse('https://blocked.example.com/api/v1/check');
 
+      // כל ניסיון כושל כולל שתי קריאות: raw.githubusercontent ואז Contents
+      // API כגיבוי (שגם הוא נכשל כאן) — לפני נפילה לרשימה המקומפלת.
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
-      expect(fetches, 1);
+      expect(fetches, 2);
 
       now = now.add(const Duration(minutes: 6));
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
-      expect(fetches, 2);
+      expect(fetches, 4);
     });
+
+    test(
+      'raw.githubusercontent חסום — נופל ל-Contents API לפני הרשימה המקומפלת',
+      () async {
+        final client = MockClient((request) async {
+          if (request.url.host == 'raw.githubusercontent.com') {
+            return http.Response('blocked by content filter', 403);
+          }
+          expect(
+            request.url,
+            PluginNetworkAccessResolver.officialAllowlistContentsApiUri,
+          );
+          expect(request.headers['Accept'], 'application/vnd.github.raw');
+          return http.Response('https://api.example.com/root\n', 200);
+        });
+        final resolver = PluginNetworkAccessResolver(client: client);
+
+        final allowed = await resolver.isUriAllowedForPlugin(
+          Uri.parse('https://api.example.com/root/v1/items'),
+          _buildManifest(
+            networkAllowlist: const ['https://api.example.com/root'],
+          ),
+        );
+
+        expect(allowed, isTrue);
+      },
+    );
+
+    test(
+      'כתובת ה-Contents API הגיבוי מצביעה על הקובץ הרשמי בענף dev',
+      () {
+        expect(
+          PluginNetworkAccessResolver.officialAllowlistContentsApiUri
+              .toString(),
+          'https://api.github.com/repos/Otzaria/otzaria/contents/'
+          'plugin_network_allowlist.txt?ref=dev',
+        );
+      },
+    );
 
     test('כתובת הרשימה הרשמית מצביעה על הקובץ שבענף dev', () {
       expect(

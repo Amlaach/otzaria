@@ -48,6 +48,19 @@ class PluginNetworkAccessResolver {
     ],
   );
 
+  /// גיבוי ל-[officialAllowlistUri]: אותו קובץ דרך Contents API של GitHub.
+  ///
+  /// raw.githubusercontent.com נחסם אצל חלק מהמשתמשים ע"י מסנני תוכן (למשל
+  /// NetFree) גם כשהם מאושרים לגלוש ל-github.com/api.github.com עצמם — אז
+  /// הם נופלים לרשימה המקומפלת מה-build שלהם, שיכולה להיות ישנה ולא לכלול
+  /// אישורים חדשים. Contents API אינו נחסם באותו אופן ומגיש את אותו תוכן.
+  static Uri get officialAllowlistContentsApiUri => Uri.https(
+    'api.github.com',
+    '/repos/$_officialOwner/$_officialRepository/contents/'
+        '$_officialAllowlistFile',
+    <String, String>{'ref': _officialBranch},
+  );
+
   /// מאשר URL לתוסף אם הוא גם הוצהר במניפסט וגם אושר ע"י מקור אמון רשמי.
   Future<bool> isUriAllowedForPlugin(Uri uri, PluginManifest manifest) async {
     // שירותי AI מקומיים: כתובת loopback מותרת אם היא תואמת הצהרת loopback
@@ -107,23 +120,44 @@ class PluginNetworkAccessResolver {
   Future<List<String>?> _fetchOfficialAllowlist() async {
     final client = _client ?? http.Client();
     try {
+      final fromRaw = await _tryFetch(client, officialAllowlistUri);
+      if (fromRaw != null) return fromRaw;
+
+      // raw.githubusercontent חסום — ננסה את אותו קובץ דרך Contents API
+      // לפני נפילה לרשימה המקומפלת (ראו תיעוד ב-[officialAllowlistContentsApiUri]).
+      return await _tryFetch(
+        client,
+        officialAllowlistContentsApiUri,
+        headers: const <String, String>{
+          'Accept': 'application/vnd.github.raw',
+        },
+      );
+    } finally {
+      if (_client == null) {
+        client.close();
+      }
+    }
+  }
+
+  Future<List<String>?> _tryFetch(
+    http.Client client,
+    Uri uri, {
+    Map<String, String>? headers,
+  }) async {
+    try {
       final response = await client
-          .get(officialAllowlistUri)
+          .get(uri, headers: headers)
           .timeout(_officialFetchTimeout);
       if (response.statusCode != 200) {
         return null;
       }
 
-      final allowlist = parsePluginNetworkAllowlistText(response.body);
       // גם רשימה ריקה היא תשובה רשמית תקפה (למשל השבתת-חירום של כל הגישה).
-      // רק כשל HTTP/רשת מפעיל את הרשימה המקומפלת כגיבוי.
-      return allowlist;
+      // רק כשל HTTP/רשת מפעיל את הניסיון הבא (Contents API) או את הרשימה
+      // המקומפלת כגיבוי סופי.
+      return parsePluginNetworkAllowlistText(response.body);
     } catch (_) {
       return null;
-    } finally {
-      if (_client == null) {
-        client.close();
-      }
     }
   }
 }
