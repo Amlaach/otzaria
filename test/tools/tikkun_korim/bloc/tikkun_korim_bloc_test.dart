@@ -26,7 +26,7 @@ void main() {
     repository: buildRepository(),
     data: data,
     settingsStore: store,
-    upcomingParasha: (_) => 'נח',
+    upcomingParasha: (_, {required inIsrael}) => 'נח',
     widthModelOf: (_) => fakeWidths,
     measureRoofs: (_) async {},
   );
@@ -38,7 +38,41 @@ void main() {
     store = FakeTikkunSettingsStore();
   });
 
+  test('פרשת השבוע משתמשת בארץ המתאימה למנהג', () {
+    final date = DateTime(2026, 5, 30);
+    expect(
+      defaultUpcomingParashaName(date, inIsrael: true),
+      'בהעלתך',
+    );
+    expect(
+      defaultUpcomingParashaName(date, inIsrael: false),
+      'נשא',
+    );
+  });
+
   group('טעינה ראשונה', () {
+    blocTest<TikkunKorimBloc, TikkunKorimState>(
+      'מעביר את ארץ המנהג לבחירת פרשת השבוע',
+      build: () {
+        store = FakeTikkunSettingsStore(
+          settings: const TikkunSettings(nusachLand: 'diaspora'),
+        );
+        return TikkunKorimBloc(
+          repository: buildRepository(),
+          data: data,
+          settingsStore: store,
+          upcomingParasha: (_, {required inIsrael}) {
+            expect(inIsrael, isFalse);
+            return 'נח';
+          },
+          widthModelOf: (_) => fakeWidths,
+          measureRoofs: (_) async {},
+        );
+      },
+      act: (bloc) => bloc.add(const TikkunStarted()),
+      wait: const Duration(milliseconds: 10),
+    );
+
     blocTest<TikkunKorimBloc, TikkunKorimState>(
       'במצב "פרשת השבוע" נפתח בפרשה שהלוח מחזיר',
       build: buildBloc,

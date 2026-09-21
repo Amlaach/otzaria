@@ -43,6 +43,7 @@ void main() {
   Future<void> pumpScreen(
     WidgetTester tester, {
     Size size = const Size(1400, 900),
+    Map<String, String>? texts,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,14 +51,14 @@ void main() {
       repository: TikkunKorimRepository(
         engine: engine,
         data: data,
-        textLoader: FakeTikkunTextLoader(),
+        textLoader: FakeTikkunTextLoader(texts),
         computeRunner: syncComputeRunner,
       ),
       data: data,
       settingsStore: store,
-      upcomingParasha: (_) => 'נח',
+      upcomingParasha: (_, {required inIsrael}) => 'נח',
       widthModelOf: (_) => fakeWidths,
-        measureRoofs: (_) async {},
+      measureRoofs: (_) async {},
     )..add(const TikkunStarted());
     addTearDown(bloc.close);
 
@@ -78,6 +79,34 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('בחירת הפרק הראשון מחזירה לראש הרשימה הקיימת', (tester) async {
+    store = FakeTikkunSettingsStore(
+      settings: const TikkunSettings(startupMode: 'lastPosition'),
+      navState: const TikkunNavState(
+        section: TikkunSection.neviim,
+        tanachBookId: 'shoftim',
+      ),
+    );
+    await pumpScreen(
+      tester,
+      texts: {'שופטים': List.filled(300, 'מילה').join(' ')},
+    );
+    final bloc = tester
+        .element(find.byType(TikkunKorimView))
+        .read<TikkunKorimBloc>();
+    bloc.add(const TikkunChapterSelected(40));
+    await tester.pumpAndSettle();
+    final reader = tester.widget<ReaderPage>(find.byType(ReaderPage));
+    int firstVisible() => reader.positionsListener!.itemPositions.value
+        .where((p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1)
+        .map((p) => p.index)
+        .reduce((a, b) => a < b ? a : b);
+    expect(firstVisible(), greaterThan(0));
+    bloc.add(const TikkunChapterSelected(1));
+    await tester.pumpAndSettle();
+    expect(firstVisible(), 0);
+  });
 
   testWidgets('המסך מציג את בוררי הסרגל ואת עמוד הקריאה', (tester) async {
     await pumpScreen(tester);

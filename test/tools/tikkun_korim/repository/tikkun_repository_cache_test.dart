@@ -115,7 +115,7 @@ void main() {
         repository: repo,
         data: data,
         settingsStore: FakeTikkunSettingsStore(),
-        upcomingParasha: (_) => 'נח',
+        upcomingParasha: (_, {required inIsrael}) => 'נח',
       );
       await repo.processedTorah(fakeWidths);
       await repo.processedBook('אחד', fakeWidths);

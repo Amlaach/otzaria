@@ -68,6 +68,7 @@ class TikkunKorimRepository {
   final Map<String, List<TikkunPage>> _pagesCache = {};
   final Map<String, ProcessedTorah> _torahByMethod = {};
   String? _widthModelId;
+  int _cacheGeneration = 0;
   TikkunDecalogueTaam _decalogueTaam = TikkunDecalogueTaam.merged;
 
   /// הפריסה נגזרת מגופן הסת"ם — מודל רוחב אחר פוסל את כל המטמון.
@@ -101,6 +102,7 @@ class TikkunKorimRepository {
     String methodId = '',
   }) async {
     _adoptWidthModel(widths);
+    final generation = _cacheGeneration;
     final tradition = TikkunTradition.forMethod(methodId);
     final taam = _decalogueTaam;
     final cached = _torahByMethod[methodId];
@@ -119,7 +121,9 @@ class TikkunKorimRepository {
         methodId: methodId,
       ),
     );
-    _torahByMethod[methodId] = processed;
+    if (generation == _cacheGeneration) {
+      _torahByMethod[methodId] = processed;
+    }
     return processed;
   }
 
@@ -128,12 +132,13 @@ class TikkunKorimRepository {
     StamWidthModel widths,
   ) async {
     _adoptWidthModel(widths);
+    final generation = _cacheGeneration;
     final cached = _pagesCache[methodId];
     if (cached != null) return cached;
     final processed = await processedTorah(widths, methodId: methodId);
     final engine = this.engine;
     final pages = await _run(() => engine.buildPages(processed, methodId));
-    _pagesCache[methodId] = pages;
+    if (generation == _cacheGeneration) _pagesCache[methodId] = pages;
     return pages;
   }
 
@@ -142,6 +147,7 @@ class TikkunKorimRepository {
     StamWidthModel widths,
   ) async {
     _adoptWidthModel(widths);
+    final generation = _cacheGeneration;
     final cached = _bookCache.remove(hebrewBookName);
     if (cached != null) {
       _bookCache[hebrewBookName] = cached;
@@ -158,6 +164,7 @@ class TikkunKorimRepository {
         decalogueTaam: taam,
       ),
     );
+    if (generation != _cacheGeneration) return processed;
     _bookCache[hebrewBookName] = processed;
     while (_bookCache.length > maxCachedBooks) {
       _bookCache.remove(_bookCache.keys.first);
@@ -316,6 +323,7 @@ class TikkunKorimRepository {
   }
 
   void clearCaches() {
+    _cacheGeneration++;
     _bookCache.clear();
     _pagesCache.clear();
     _torahByMethod.clear();

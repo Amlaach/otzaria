@@ -20,13 +20,16 @@ part 'tikkun_korim_event.dart';
 part 'tikkun_korim_state.dart';
 
 /// שם פרשת השבוע הקרובה כפי שהלוח מחזיר אותו (עם ניקוד ואפשר מחובר).
-String defaultUpcomingParashaName(DateTime date) {
+String defaultUpcomingParashaName(
+  DateTime date, {
+  required bool inIsrael,
+}) {
   final daysUntilShabbat = date.weekday == DateTime.saturday
       ? 0
       : (DateTime.saturday - date.weekday) % 7;
   final shabbat = JewishCalendar.fromDateTime(
     date.add(Duration(days: daysUntilShabbat)),
-  );
+  )..inIsrael = inIsrael;
   return (HebrewDateFormatter()..hebrewFormat = true).formatParsha(shabbat);
 }
 
@@ -34,7 +37,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
   final TikkunKorimRepository repository;
   final TikkunDataSource data;
   final TikkunSettingsStore settingsStore;
-  final String Function(DateTime) upcomingParasha;
+  final String Function(DateTime, {required bool inIsrael}) upcomingParasha;
 
   /// מודל הרוחב של גופן הסת"ם — נמדד ב-UI isolate ומוזרק לבדיקות.
   final StamWidthModel Function(String fontFamily) widthModelOf;
@@ -101,7 +104,12 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
     var nav = settingsStore.loadNavState();
     final restore = settings.startupMode == 'lastPosition';
     if (!restore) {
-      final resolved = data.resolveParasha(upcomingParasha(DateTime.now()));
+      final resolved = data.resolveParasha(
+        upcomingParasha(
+          DateTime.now(),
+          inIsrael: settings.nusachLand == 'israel',
+        ),
+      );
       if (resolved != null) {
         nav = nav.copyWith(
           section: TikkunSection.torah,
@@ -129,6 +137,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
     final requestId = ++_requestId;
     repository.useDecalogueTaam(state.settings.decalogueTaam);
     await measureRoofs(state.settings.stamFontFamily);
+    if (requestId != _requestId || emit.isDone) return;
     emit(
       state.copyWith(
         isLoading: true,
@@ -139,17 +148,17 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
     try {
       switch (state.nav.section) {
         case TikkunSection.torah:
-          await _loadTorah(emit, target);
+          await _loadTorah(emit, target, requestId);
         case TikkunSection.neviim:
         case TikkunSection.ketuvim:
-          await _loadTanachBook(emit, target);
+          await _loadTanachBook(emit, target, requestId);
         case TikkunSection.haftarot:
-          await _loadHaftarah(emit, target);
+          await _loadHaftarah(emit, target, requestId);
         case TikkunSection.torahReadings:
-          await _loadReading(emit, target);
+          await _loadReading(emit, target, requestId);
       }
     } catch (error) {
-      if (requestId != _requestId) return;
+      if (requestId != _requestId || emit.isDone) return;
       emit(
         state.copyWith(
           isLoading: false,
@@ -159,15 +168,17 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
       );
       return;
     }
-    if (requestId != _requestId) return;
+    if (requestId != _requestId || emit.isDone) return;
     emit(state.copyWith(isLoading: false));
   }
 
   Future<void> _loadTorah(
     Emitter<TikkunKorimState> emit,
     TikkunPosition? target,
+    int requestId,
   ) async {
     final pages = await repository.torahPages(state.nav.methodId, _widths);
+    if (requestId != _requestId || emit.isDone) return;
     final location =
         (target == null ? null : tikkunLocatePosition(pages, target)) ??
         _findParashaLocation(pages, state.nav.parashaName);
@@ -217,6 +228,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
   Future<void> _loadTanachBook(
     Emitter<TikkunKorimState> emit,
     TikkunPosition? target,
+    int requestId,
   ) async {
     final book = _currentTanachBook();
     if (book == null) {
@@ -225,6 +237,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
       return;
     }
     final processed = await repository.processedBook(book.name, _widths);
+    if (requestId != _requestId || emit.isDone) return;
     final page = TikkunPage(
       startLineIdx: 0,
       endLineIdx: processed.allLines.length,
@@ -261,6 +274,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
   Future<void> _loadHaftarah(
     Emitter<TikkunKorimState> emit,
     TikkunPosition? target,
+    int requestId,
   ) async {
     _position = null;
     final list = haftarotForCurrentLand();
@@ -297,6 +311,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
       state.settings.nusach,
       _widths,
     );
+    if (requestId != _requestId || emit.isDone) return;
     final page = TikkunPage(
       startLineIdx: 0,
       endLineIdx: lines.length,
@@ -323,6 +338,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
   Future<void> _loadReading(
     Emitter<TikkunKorimState> emit,
     TikkunPosition? target,
+    int requestId,
   ) async {
     _position = null;
     final list = _readingsForLand();
@@ -335,6 +351,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
       orElse: () => list.first,
     );
     final lines = await repository.readingLines(reading, _widths);
+    if (requestId != _requestId || emit.isDone) return;
     final segments = repository.engine.computeContinuousSegments(
       reading.aliyot,
     );
@@ -629,10 +646,10 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
     final needsReload =
         previous.stamFontFamily != event.settings.stamFontFamily ||
         previous.decalogueTaam != event.settings.decalogueTaam ||
-        (state.nav.section == TikkunSection.haftarot &&
-            previous.nusach != event.settings.nusach) ||
-        (state.nav.section == TikkunSection.torahReadings &&
-            previous.nusachLand != event.settings.nusachLand);
+        ((state.nav.section == TikkunSection.haftarot ||
+                state.nav.section == TikkunSection.torahReadings) &&
+            (previous.nusach != event.settings.nusach ||
+                previous.nusachLand != event.settings.nusachLand));
     if (needsReload) await _reload(emit);
   }
 
@@ -812,6 +829,7 @@ class TikkunKorimBloc extends Bloc<TikkunKorimEvent, TikkunKorimState> {
   /// סגירת הכרטיסייה משחררת את התורה המעובדת ואת מטמון הספרים.
   @override
   Future<void> close() {
+    _requestId++;
     repository.clearCaches();
     return super.close();
   }

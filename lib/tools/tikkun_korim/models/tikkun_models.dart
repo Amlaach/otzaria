@@ -256,6 +256,16 @@ class TikkunLine {
   int? firstVerseNum;
   int? firstChapterNum;
 
+  /// טווח הפסוקים שמילים מן השורה שייכות אליו. בניגוד למספרי הסמנים,
+  /// הטווח כולל גם פסוק שמתחיל באמצע השורה.
+  int? sourceFromChapter;
+  int? sourceFromVerse;
+  int? sourceToChapter;
+  int? sourceToVerse;
+
+  /// הפסוק הגבוה ביותר מכל פרק שמכוסה בשורה. שורה עשויה לחצות סוף פרק.
+  Map<int, int> sourceVerseMaxByChapter;
+
   /// תווית תחילת עליה ("ראשון", "מפטיר") ואינדקסה ברשימת העליות של הפרשה.
   String? aliyaName;
   int? aliyaIdx;
@@ -315,6 +325,11 @@ class TikkunLine {
     this.startTokenIdx = -1,
     this.firstVerseNum,
     this.firstChapterNum,
+    this.sourceFromChapter,
+    this.sourceFromVerse,
+    this.sourceToChapter,
+    this.sourceToVerse,
+    this.sourceVerseMaxByChapter = const {},
     this.aliyaName,
     this.aliyaIdx,
     this.combinedAliyaName,

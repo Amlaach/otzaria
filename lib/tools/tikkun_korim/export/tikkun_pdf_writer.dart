@@ -114,6 +114,7 @@ class TikkunVectorPdfWriter {
   Future<Uint8List> write(
     List<TikkunVectorPage> pages, {
     required bool unifyScale,
+    void Function()? throwIfCancelled,
   }) async {
     final scales = pages.map(scaleFor).toList();
     if (unifyScale) {
@@ -132,8 +133,14 @@ class TikkunVectorPdfWriter {
     try {
       for (var i = 0; i < pages.length; i++) {
         await yieldToEventLoop();
-        await _writePage(pages[i], scales[i]);
+        throwIfCancelled?.call();
+        await _writePage(
+          pages[i],
+          scales[i],
+          throwIfCancelled: throwIfCancelled,
+        );
       }
+      throwIfCancelled?.call();
       return await _document.save(enableEventLoopBalancing: true);
     } finally {
       for (final font in _fonts.values) {
@@ -143,7 +150,12 @@ class TikkunVectorPdfWriter {
     }
   }
 
-  Future<void> _writePage(TikkunVectorPage page, double scale) async {
+  Future<void> _writePage(
+    TikkunVectorPage page,
+    double scale, {
+    void Function()? throwIfCancelled,
+  }) async {
+    throwIfCancelled?.call();
     final pdfPage = PdfPage(
       _document,
       pageFormat: PdfPageFormat(pageFormat.width, pageFormat.height),
@@ -166,7 +178,9 @@ class TikkunVectorPdfWriter {
 
     TikkunTextOp? previous;
     for (final op in page.texts) {
+      throwIfCancelled?.call();
       final resolved = await _resolve(op);
+      throwIfCancelled?.call();
       if (resolved == null) {
         previous = null;
         continue;

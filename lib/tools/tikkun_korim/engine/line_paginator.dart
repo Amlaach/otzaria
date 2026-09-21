@@ -151,6 +151,70 @@ class _WordMeta {
   const _WordMeta(this.tokenIdx, this.chapterNum, this.verseNum);
 }
 
+Iterable<LayoutWord> _lineWords(TikkunLine line) sync* {
+  yield* line.words;
+  yield* line.rightWords ?? const [];
+  yield* line.leftWords ?? const [];
+  yield* line.centerWords ?? const [];
+  for (final cell in line.manualCells ?? const []) {
+    yield* cell.words;
+  }
+  for (final row in line.cells ?? const []) {
+    yield* row;
+  }
+}
+
+/// מצמיד לכל שורה את טווח המקור שלה. הסמנים מיועדים לתצוגה בלבד: פסוק
+/// שמתחיל באמצע שורה אינו משנה את [TikkunLine.firstVerseNum].
+void _annotateSourceVerseRanges(
+  List<TikkunLine> lines,
+  List<TikkunToken> tokens,
+) {
+  final refs = <int, ({int chapter, int verse})>{};
+  var chapter = 1;
+  var verse = 1;
+  for (var i = 0; i < tokens.length; i++) {
+    final token = tokens[i];
+    switch (token.type) {
+      case TikkunTokenType.chapterBreak:
+        chapter = token.chapterNum!;
+        verse = 1;
+      case TikkunTokenType.verseBreak:
+        verse = token.verseNum!;
+      case TikkunTokenType.word:
+        refs[i] = (chapter: chapter, verse: verse);
+      default:
+        break;
+    }
+  }
+  for (final line in lines) {
+    final wordIndices =
+        _lineWords(line)
+            .map((word) => word.tokenIdx)
+            .whereType<int>()
+            .where(refs.containsKey)
+            .toList()
+          ..sort();
+    if (wordIndices.isEmpty) continue;
+    final from = refs[wordIndices.first]!;
+    final to = refs[wordIndices.last]!;
+    final maxima = <int, int>{};
+    for (final index in wordIndices) {
+      final ref = refs[index]!;
+      final previous = maxima[ref.chapter];
+      if (previous == null || ref.verse > previous) {
+        maxima[ref.chapter] = ref.verse;
+      }
+    }
+    line
+      ..sourceFromChapter = from.chapter
+      ..sourceFromVerse = from.verse
+      ..sourceToChapter = to.chapter
+      ..sourceToVerse = to.verse
+      ..sourceVerseMaxByChapter = maxima;
+  }
+}
+
 /// העודף שיתחלק בין מילות השורה ביישור לרוחב מלא.
 /// תקרת מעברי האיזון — הוא מתכנס תוך מעברים ספורים, והתקרה מונעת לולאה
 /// אינסופית אם שתי הזזות יבטלו זו את זו.
@@ -754,7 +818,9 @@ List<TikkunLine> paginateAllTokens(
       }
       if (currentLineStartTokenIdx < 0) currentLineStartTokenIdx = i;
       currentMeta.add(consumePendingMarkers(i));
-      currentLine.add(LayoutWord(stam: ketivStam, nikud: qere));
+      currentLine.add(
+        LayoutWord(stam: ketivStam, nikud: qere, tokenIdx: i),
+      );
       lineWidth += baseWidth;
       continue;
     }
@@ -785,7 +851,7 @@ List<TikkunLine> paginateAllTokens(
     }
     if (currentLineStartTokenIdx < 0) currentLineStartTokenIdx = i;
     currentMeta.add(consumePendingMarkers(i));
-    currentLine.add(LayoutWord(stam: wordStam, nikud: word));
+    currentLine.add(LayoutWord(stam: wordStam, nikud: word, tokenIdx: i));
     lineWidth += wordWidth;
   }
 
@@ -796,6 +862,8 @@ List<TikkunLine> paginateAllTokens(
   }
 
   balanceRegularLines();
+
+  _annotateSourceVerseRanges(lines, tokens);
 
   return lines;
 }

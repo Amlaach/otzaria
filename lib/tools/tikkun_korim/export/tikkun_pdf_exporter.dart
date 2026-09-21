@@ -220,10 +220,17 @@ List<List<TikkunLine>> _sliceColumnsByVerses(
   for (final column in columns) {
     final kept = <TikkunLine>[];
     for (final line in column) {
-      ch = line.firstChapterNum ?? ch;
-      vs = line.firstVerseNum ?? vs;
-      if (compareVerse(ch, vs, options.fromChapter, options.fromVerse) >= 0 &&
-          compareVerse(ch, vs, options.toChapter, options.toVerse) <= 0) {
+      final fromCh = line.sourceFromChapter ?? line.firstChapterNum ?? ch;
+      final fromVs = line.sourceFromVerse ?? line.firstVerseNum ?? vs;
+      final toCh = line.sourceToChapter ?? fromCh;
+      final toVs = line.sourceToVerse ?? fromVs;
+      ch = toCh;
+      vs = toVs;
+      final startsBeforeEnd =
+          compareVerse(fromCh, fromVs, options.toChapter, options.toVerse) <= 0;
+      final endsAfterStart =
+          compareVerse(toCh, toVs, options.fromChapter, options.fromVerse) >= 0;
+      if (startsBeforeEnd && endsAfterStart) {
         kept.add(line);
       }
     }
@@ -266,8 +273,16 @@ SplayTreeMap<int, int> tikkunVerseDomain(List<List<TikkunLine>> columns) {
   var vs = 1;
   for (final column in columns) {
     for (final line in column) {
-      ch = line.firstChapterNum ?? ch;
-      vs = line.firstVerseNum ?? vs;
+      if (line.sourceVerseMaxByChapter.isNotEmpty) {
+        for (final entry in line.sourceVerseMaxByChapter.entries) {
+          domain[entry.key] = math.max(domain[entry.key] ?? 1, entry.value);
+        }
+        ch = line.sourceToChapter ?? ch;
+        vs = line.sourceToVerse ?? vs;
+        continue;
+      }
+      ch = line.sourceToChapter ?? line.firstChapterNum ?? ch;
+      vs = line.sourceToVerse ?? line.firstVerseNum ?? vs;
       domain[ch] = math.max(domain[ch] ?? 1, vs);
     }
   }
@@ -344,13 +359,16 @@ class TikkunPdfExporter {
   bool _cancelled = false;
 
   TikkunPdfExporter({
-    required this.settings,
+    required TikkunSettings settings,
     required this.options,
     this.lineWidthEm = kTikkunInitialLineWidthEm,
     this.headerTitle,
     this.headerSubtitle,
     this.loadFont = loadTikkunExportFont,
-  });
+  }) : settings = settings.copyWith(
+         hideStam: options.hideStam,
+         hideNikud: options.hideNikud,
+       );
 
   /// עוצר את הייצוא בהזדמנות הבאה; [export] ייכשל ב-[TikkunExportCancelled].
   void cancel() => _cancelled = true;
@@ -401,6 +419,7 @@ class TikkunPdfExporter {
     return writer.write(
       pages,
       unifyScale: options.mode == TikkunExportMode.originalPages,
+      throwIfCancelled: _throwIfCancelled,
     );
   }
 

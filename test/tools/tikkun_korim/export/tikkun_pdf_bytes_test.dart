@@ -21,12 +21,28 @@ String? _findNativeLibrary() {
       : Platform.isMacOS
       ? 'libopentype_shaper.dylib'
       : 'libopentype_shaper.so';
-  for (final candidate in [
-    'build/windows/x64/runner/Debug/$name',
-    'C:/opentype_shaper/rust/target/release/$name',
-    'C:/opentype_shaper/rust/target/debug/$name',
-  ]) {
-    if (File(candidate).existsSync()) return File(candidate).absolute.path;
+  final configFile = File('.dart_tool/package_config.json');
+  if (!configFile.existsSync()) return null;
+
+  final packages =
+      jsonDecode(configFile.readAsStringSync())['packages'] as List;
+  final shaper = packages.cast<Map<String, dynamic>>().firstWhere(
+    (package) => package['name'] == 'opentype_shaper',
+    orElse: () => const {},
+  );
+  final rootUri = shaper['rootUri'] as String?;
+  if (rootUri == null) return null;
+  final packageRoot = Uri.parse(rootUri);
+  final resolvedRoot = packageRoot.hasScheme
+      ? packageRoot
+      : configFile.parent.uri.resolveUri(packageRoot);
+  final packageDirectory = Directory.fromUri(resolvedRoot);
+
+  for (final profile in const ['release', 'debug']) {
+    final candidate = File.fromUri(
+      packageDirectory.uri.resolve('rust/target/$profile/$name'),
+    );
+    if (candidate.existsSync()) return candidate.absolute.path;
   }
   return null;
 }
@@ -199,4 +215,33 @@ void main() {
       throwsA(isA<TikkunExportCancelled>()),
     );
   });
+
+  test('ביטול בזמן כתיבת עמוד מפסיק לפני המשך הציור', () async {
+    var cancelled = false;
+    final writer = TikkunVectorPdfWriter(
+      pageFormat: PdfPageFormat.a4,
+      loadFont: (family, {required bold}) async {
+        cancelled = true;
+        return _loadTestFont(family, bold: bold);
+      },
+      fallbackFamilies: const [],
+    );
+    final page = TikkunVectorPage(
+      texts: [_text('בְּרֵאשִׁית')],
+      rects: const [],
+      width: 400,
+      height: 200,
+    );
+
+    await expectLater(
+      writer.write(
+        [page],
+        unifyScale: false,
+        throwIfCancelled: () {
+          if (cancelled) throw const TikkunExportCancelled();
+        },
+      ),
+      throwsA(isA<TikkunExportCancelled>()),
+    );
+  }, skip: skip);
 }

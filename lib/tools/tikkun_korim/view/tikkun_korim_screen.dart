@@ -137,14 +137,19 @@ class _TikkunKorimViewState extends State<TikkunKorimView> {
   }
 
   void _handleScrollRequest(TikkunKorimState state) {
-    if (state.scrollRequestId == _handledScrollRequest) return;
+    if (!mounted || state.scrollRequestId == _handledScrollRequest) return;
     final line = state.scrollToLine;
     _handledScrollRequest = state.scrollRequestId;
     if (line == null || !_scrollController.isAttached) return;
+    _syncTimer?.cancel();
     _lastReportedLine = line;
-    // רשימה חדשה נפתחת בראשה ממילא; scrollTo לשורה 0 מיישר אותה לקצה
-    // הצג מעל הריפוד העליון, ומזיז את העמוד ברבע שנייה בכל מעבר.
-    if (line == 0) return;
+    // רשימה חדשה כבר בראש; רשימה קיימת חייבת לגלול גם אל הפרק הראשון.
+    if (line == 0 &&
+        _positions.itemPositions.value.any(
+          (p) => p.index == 0 && p.itemLeadingEdge >= 0,
+        )) {
+      return;
+    }
     _scrollController.scrollTo(
       index: line.clamp(0, (state.currentLines.length - 1).clamp(0, 1 << 30)),
       duration: const Duration(milliseconds: 250),

@@ -105,6 +105,33 @@ void main() {
     expect(_withText(pages.single, 'אחת'), hasLength(1));
   });
 
+  testWidgets('אפשרויות הייצוא קובעות גם את רוחב פריסת הטורים', (
+    tester,
+  ) async {
+    final exporter = _exporter(
+      settings: const TikkunSettings(
+        hideStam: true,
+        centerSingleColumn: true,
+      ),
+      columns: TikkunExportColumns.both,
+    );
+    late List<TikkunVectorPage> pages;
+    await tester.runAsync(() async {
+      pages = await exporter.layoutPages([
+        [
+          textLine(['אחת'], chapter: 1, verse: 1),
+        ],
+      ]);
+    });
+
+    final page = pages.single;
+    expect(_withText(page, 'אחת'), hasLength(2));
+    for (final op in page.texts) {
+      expect(op.left, greaterThanOrEqualTo(0));
+      expect(op.right, lessThanOrEqualTo(page.width));
+    }
+  });
+
   testWidgets('נו"ן מנוזרת נאספת כקטע משתקף בגופן שאין בו גליף', (
     tester,
   ) async {
