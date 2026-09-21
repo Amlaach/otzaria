@@ -1,0 +1,237 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:flutter/material.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_books_import.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/settings/l10n/settings_text.dart';
+import 'package:otzaria/settings/search/settings_search_models.dart';
+import 'package:otzaria/settings/view/settings_screen.dart';
+import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
+import 'package:otzaria/widgets/widgets_exports.dart';
+
+/// מסך ניהול הספרים והקטגוריות שהוסתרו מהממשק (issue #1448).
+///
+/// ההסתרה היא של הממשק בלבד: מסד הספרים אינו משתנה, וספר מוסתר עדיין נפתח
+/// מקישור, מהיסטוריה או מסימנייה.
+class HiddenBooksPanel extends StatefulWidget {
+  /// חנות ההסתרות. ניתנת להחלפה בבדיקות.
+  final HiddenLibraryStore store;
+
+  /// לצורכי בדיקה — עוקף את בורר הקבצים של המערכת.
+  final Future<String?> Function()? pickFileOverride;
+
+  /// לצורכי בדיקה — עוקף את טעינת הספרייה.
+  final Future<Library> Function()? libraryLoader;
+
+  const HiddenBooksPanel({
+    super.key,
+    this.store = const HiddenLibraryStore(),
+    this.pickFileOverride,
+    this.libraryLoader,
+  });
+
+  /// פריטי חיפוש בהגדרות. נסרק על-ידי tool/generate_search_index.dart.
+  static const List<SettingsSearchEntry> searchEntries = [
+    SettingsSearchEntry(
+      id: 'library.hidden_books.import',
+      title: 'ייבוא רשימת הסתרות',
+      subtitle: 'הסתרת ספרים מהממשק לפי רשימת שמות בקובץ CSV או JSON',
+      tab: SettingsTab.library,
+      cardId: 'library.hidden_books',
+      keywords: ['הסתרה', 'מוסתר', 'הסתר', 'ייבוא', 'רשימה', 'CSV', 'JSON'],
+    ),
+    SettingsSearchEntry(
+      id: 'library.hidden_books.list',
+      title: 'ספרים מוסתרים',
+      subtitle: 'הצגת הספרים שהוסתרו וביטול ההסתרה',
+      tab: SettingsTab.library,
+      cardId: 'library.hidden_books',
+      keywords: ['הסתרה', 'מוסתר', 'ביטול', 'שחזור', 'ספרים'],
+    ),
+  ];
+
+  @override
+  State<HiddenBooksPanel> createState() => _HiddenBooksPanelState();
+}
+
+class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
+  late HiddenLibrarySelection _hidden = widget.store.load();
+
+  /// מפתח ספר → כותרת להצגה. ספר שאינו בספרייה יוצג לפי המפתח הגולמי, כדי
+  /// שהמשתמש יוכל להסיר גם הסתרה של ספר שנעלם.
+  Map<String, String> _titles = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadTitles());
+  }
+
+  Future<void> _loadTitles() async {
+    if (_hidden.bookKeys.isEmpty) return;
+    try {
+      final library = await _library();
+      if (!mounted) return;
+      setState(() {
+        _titles = {
+          for (final book in library.getAllBooks())
+            PerBookSettings.bookKey(book): book.title,
+        };
+      });
+    } catch (_) {
+      // הספרייה לא נטענה — הרשימה תוצג לפי המפתחות.
+    }
+  }
+
+  Future<Library> _library() =>
+      widget.libraryLoader?.call() ?? DataRepository.instance.library;
+
+  Future<void> _save(HiddenLibrarySelection next) async {
+    await widget.store.save(next);
+    if (!mounted) return;
+    setState(() => _hidden = next);
+  }
+
+  Future<void> _import() async {
+    final path = await (widget.pickFileOverride?.call() ?? _pickFile());
+    if (path == null || !mounted) return;
+
+    final String content;
+    try {
+      content = await File(path).readAsString();
+    } catch (error) {
+      UiSnack.showError('לא ניתן לקרוא את הקובץ: $error');
+      return;
+    }
+
+    final library = await _library();
+    final result = parseHiddenBooksImport(content, library);
+    if (!mounted) return;
+
+    if (result.isEmpty) {
+      UiSnack.showError('הקובץ ריק — לא הוסתר דבר');
+      return;
+    }
+
+    await _save(
+      _hidden.copyWith(
+        bookKeys: {..._hidden.bookKeys, ...result.matchedBookKeys},
+      ),
+    );
+    await _loadTitles();
+    if (!mounted) return;
+
+    UiSnack.show(
+      result.unmatchedNames.isEmpty
+          ? 'הוסתרו ${result.matchedBookKeys.length} ספרים'
+          : 'הוסתרו ${result.matchedBookKeys.length} ספרים; '
+                '${result.unmatchedNames.length} שמות לא נמצאו בספרייה',
+    );
+  }
+
+  Future<String?> _pickFile() async {
+    final result = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['csv', 'json', 'txt'],
+    );
+    return result?.path;
+  }
+
+  Future<void> _unhideBook(String key) async {
+    await _save(
+      _hidden.copyWith(bookKeys: {..._hidden.bookKeys}..remove(key)),
+    );
+  }
+
+  Future<void> _unhideCategory(String path) async {
+    await _save(
+      _hidden.copyWith(categoryPaths: {..._hidden.categoryPaths}..remove(path)),
+    );
+  }
+
+  Future<void> _clearAll() async {
+    final confirmed = await showWarningDialog(
+      context: context,
+      title: 'לבטל את כל ההסתרות?',
+      content: 'כל הספרים והקטגוריות המוסתרים יחזרו להיראות בממשק.',
+      confirmText: 'בטל הכול',
+    );
+    if (confirmed != true) return;
+    await _save(const HiddenLibrarySelection());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = [
+      for (final path in _hidden.categoryPaths.toList()..sort())
+        (
+          label: path,
+          icon: FluentIcons.folder_24_regular,
+          onRemove: () => _unhideCategory(path),
+        ),
+      for (final key in _hidden.bookKeys.toList()..sort())
+        (
+          label: _titles[key] ?? key,
+          icon: FluentIcons.book_24_regular,
+          onRemove: () => _unhideBook(key),
+        ),
+    ];
+
+    return Column(
+      children: [
+        SettingsActionTile.text(
+          icon: FluentIcons.arrow_import_24_regular,
+          title: context.settingsText('ייבוא רשימת הסתרות'),
+          subtitle: context.settingsText(
+            'קובץ CSV עם שם ספר בכל שורה, או JSON עם מערך שמות. שם שלא יימצא בספרייה ידווח',
+          ),
+          actions: [
+            ActionButton.recommended(
+              text: context.settingsText('בחר קובץ'),
+              onPressed: _import,
+            ),
+          ],
+        ),
+        if (entries.isEmpty)
+          SettingsActionTile.text(
+            icon: FluentIcons.eye_24_regular,
+            title: context.settingsText('אין ספרים מוסתרים'),
+            subtitle: context.settingsText(
+              'הסתרה משפיעה על מסך הספרייה, האיתור והחיפוש בלבד — ספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
+            ),
+          )
+        else ...[
+          for (final entry in entries)
+            SettingsActionTile.text(
+              icon: entry.icon,
+              title: entry.label,
+              actions: [
+                ActionButton.ghost(
+                  text: context.settingsText('בטל הסתרה'),
+                  onPressed: entry.onRemove,
+                ),
+              ],
+            ),
+          SettingsActionTile.text(
+            icon: FluentIcons.broom_24_regular,
+            title: context.settingsText('ביטול כל ההסתרות'),
+            actions: [
+              ActionButton.warning(
+                text: context.settingsText('בטל הכול'),
+                onPressed: _clearAll,
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}

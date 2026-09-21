@@ -1,3 +1,7 @@
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_filter.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/hidden/hidden_search_filter.dart';
 import 'dart:async';
 import 'package:otzaria/core/error_log_file.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
@@ -3012,10 +3016,29 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
     );
   }
 
+  /// כותרות המפרשים שהוסתרו מהממשק (issue #1448).
+  Future<Set<String>> _hiddenCommentatorTitles() async {
+    final hidden = const HiddenLibraryStore().load();
+    if (hidden.isEmpty) return const {};
+    final full = await DataRepository.instance.library;
+    return hiddenBookTitles(
+      full: full,
+      visible: filterHiddenFromLibrary(full, hidden),
+    );
+  }
+
   Future<void> _loadCommentatorsInBackground(TextBook book) async {
     try {
       final commentatorsData = await repository.getCommentatorsWithRarity(book);
-      final availableCommentators = commentatorsData.all;
+      // מפרש שהמשתמש הסתיר יורד מרשימות הבחירה ומהתצוגה (issue #1448).
+      // הסינון כאן ולא ב-repository: גשר התוספים קורא לאותה שאילתה, וההסתרה
+      // היא של הממשק בלבד.
+      final hiddenTitles = await _hiddenCommentatorTitles();
+      final availableCommentators = hiddenTitles.isEmpty
+          ? commentatorsData.all
+          : commentatorsData.all
+                .where((title) => !hiddenTitles.contains(title))
+                .toList();
       final rareCommentators = commentatorsData.rare;
       final baseCommentators = await DefaultCommentators.getBaseCommentators(
         book,

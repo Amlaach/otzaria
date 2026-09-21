@@ -544,6 +544,16 @@ class _LibrarySettingsTabState extends State<LibrarySettingsTab> {
                       hebrewBooksPathWidget: hebrewPathWidget,
                     ),
 
+                    kSettingsCardSpacing,
+                    SettingsCard(
+                      cardId: 'library.hidden_books',
+                      title: context.settingsText('ספרים מוסתרים'),
+                      subtitle: context.settingsText(
+                        'הסתרת ספרים מהממשק — מסך הספרייה, האיתור והחיפוש. מסד הספרים אינו משתנה, וספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
+                      ),
+                      children: const [HiddenBooksPanel()],
+                    ),
+
                     // בחירת מיקום אחסון (Android בלבד) — מוצג רק כשקיים
                     // כרטיס SD; הרכיב עצמו מסתיר את עצמו אחרת.
                     if (Platform.isAndroid) const AndroidStorageLocationCard(),

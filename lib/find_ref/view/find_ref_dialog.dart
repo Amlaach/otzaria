@@ -21,6 +21,8 @@ import 'package:otzaria/history/bloc/history_event.dart';
 import 'package:otzaria/core/focus_repository.dart';
 import 'package:otzaria/core/external_uri_router.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_filter.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
@@ -351,7 +353,12 @@ class _FindRefDialogState extends State<FindRefDialog> {
         }
         // pre-resolve של ה-Book עבור כל מפרש כדי שהקליק יהיה סינכרוני.
         // `library` מוחזק בקאש ב-DataRepository.
-        final library = await DataRepository.instance.library;
+        // איתור מקורות הוא מסך משתמש, ולכן מציג את העץ בלי מה שהוסתר
+        // (issue #1448). העץ שב-DataRepository נשאר שלם עבור התוספים.
+        final library = filterHiddenFromLibrary(
+          await DataRepository.instance.library,
+          const HiddenLibraryStore().load(),
+        );
         if (!mounted) return;
         final index = _indexFor(library);
         final entries = <_CommentatorEntry>[
@@ -460,7 +467,10 @@ class _FindRefDialogState extends State<FindRefDialog> {
 
       Library? library;
       try {
-        library = await DataRepository.instance.library;
+        library = filterHiddenFromLibrary(
+          await DataRepository.instance.library,
+          const HiddenLibraryStore().load(),
+        );
       } catch (e) {
         debugPrint('Error loading library: $e');
       }

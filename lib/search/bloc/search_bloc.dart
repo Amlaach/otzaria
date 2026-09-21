@@ -11,6 +11,9 @@ import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/core/messages/library_messages.dart';
 import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_filter.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/hidden/hidden_search_filter.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/search/search_defaults.dart';
@@ -259,6 +262,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       );
 
       final allResults = <SearchResult>[];
+      final hiddenPaths = await _hiddenIndexedFilePaths();
 
       await for (final update in stream) {
         if (requestId != _searchRequestId) {
@@ -300,7 +304,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         if (update.results.isEmpty) {
           continue;
         }
-        allResults.addAll(update.results);
+        // תוצאות של ספרים מוסתרים יורדות כאן (issue #1448). המונה שמגיע
+        // מהמנוע אינו יודע על ההסתרה — ראה hidden_search_filter.
+        allResults.addAll(
+          hiddenPaths.isEmpty
+              ? update.results
+              : update.results.where(
+                  (r) => !isHiddenSearchResult(r.filePath, hiddenPaths),
+                ),
+        );
         emit(
           state.copyWith(
             results: List.from(allResults),
@@ -1274,6 +1286,19 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     if (book == null) return (book: null, isStale: isStableKey);
     if (book.title != indexedTitle) return (book: null, isStale: true);
     return (book: book, isStale: false);
+  }
+
+  /// מפתחות האינדקס של ספרים שהמשתמש הסתיר (issue #1448).
+  Future<Set<String>> _hiddenIndexedFilePaths() async {
+    final hidden = const HiddenLibraryStore().load();
+    if (hidden.isEmpty) return const {};
+    final full = await DataRepository.instance.library;
+    return hiddenIndexedFilePaths(
+      fullIndex: _buildBooksByIndexedFilePath(full),
+      visibleIndex: _buildBooksByIndexedFilePath(
+        filterHiddenFromLibrary(full, hidden),
+      ),
+    );
   }
 
   /// מפת המפתח היציב של האינדקס → ספר, במטמון לכל עוד הספרייה לא הוחלפה.
