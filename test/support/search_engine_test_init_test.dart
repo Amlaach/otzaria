@@ -15,7 +15,11 @@ void main() {
     final copies = Directory('build/test_engine')
         .listSync()
         .whereType<File>()
-        .where((file) => file.uri.pathSegments.last.startsWith('search_engine'))
+        .where(
+          (file) => file.uri.pathSegments.last.startsWith(
+            RegExp(r'(?:lib)?search_engine_'),
+          ),
+        )
         .toList();
 
     expect(
