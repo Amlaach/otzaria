@@ -35,6 +35,7 @@ import 'package:otzaria/navigation/view/main_window_screen.dart';
 import 'package:otzaria/workspaces/bloc/workspace_bloc.dart';
 import 'package:otzaria/find_ref/repository/find_ref_factory.dart';
 import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
+import 'package:otzaria/plugins/bridge/plugin_reference_resolver.dart';
 import 'package:otzaria/utils/navigation/book_open_coordinator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
@@ -349,23 +350,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
         historyBloc: historyBloc,
         navigationBloc: navigationBloc,
       ),
-      resolveReference: (reference) async {
-        final results = await findRefRepository.findRefs(reference);
-        return results
-            .map(
-              (r) => (
-                title: r.title,
-                index: r.segment.toInt(),
-                isPdf: r.isPdf,
-                bookId: r.bookId,
-                reference: r.reference,
-                bookPath: r.bookPath,
-                isSourceLine: r.isSourceLine,
-                source: r.source,
-              ),
-            )
-            .toList();
-      },
+      resolveReference: buildPluginReferenceResolver(findRefRepository),
       resolveRefToLine: (book, ref) =>
           PluginRefLineResolver().resolve(book: book, ref: ref),
       themePayloadBuilder: () {
