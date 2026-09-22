@@ -32,6 +32,10 @@ class RtlTextField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final bool obscureText;
   final Color? cursorColor;
+  final ScrollController? scrollController;
+
+  /// ממלא את הגובה הזמין. מחייב `maxLines: null` ו-`minLines: null`.
+  final bool expands;
 
   const RtlTextField({
     super.key,
@@ -52,6 +56,8 @@ class RtlTextField extends StatefulWidget {
     this.inputFormatters,
     this.obscureText = false,
     this.cursorColor,
+    this.scrollController,
+    this.expands = false,
   });
 
   @override
@@ -179,6 +185,8 @@ class _RtlTextFieldState extends State<RtlTextField> {
 
     Widget textField = TextField(
       controller: _effectiveController,
+      scrollController: widget.scrollController,
+      expands: widget.expands,
       focusNode: _effectiveFocusNode,
       decoration: widget.decoration,
       contextMenuBuilder: (context, editableTextState) =>

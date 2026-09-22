@@ -171,6 +171,7 @@
 | Work/indexing status overlays | `test/widgets/work_status_overlay_test.dart`, `…indexing_status_overlay_test.dart` |
 | App dropdown/search menu | `test/widgets/app_dropdown_field_test.dart`, `…app_search_menu_test.dart` |
 | Search pane base | `test/widgets/search_pane_base_test.dart` |
+| שדות הקלט ב-lib עוברים דרך `RtlTextField`, והחיצים מתהפכים רק בקטע RTL (issue #1470) | `test/widgets/text/bare_text_field_scan_test.dart`, `…rtl_text_field_expands_test.dart`, `…rtl_run_direction_test.dart` |
 | כל `TextPainter` ב-`lib` מקבל `textDirection` (issue #1474) | `test/widgets/text_painter_direction_test.dart` |
 | חיפוש בלשונית חלונית הניווט (אייקון בכותרת, X סוגר ומנקה, חיצים לשורות) | `test/widgets/nav_panel_search_test.dart` |
 | חלונית לא נעוצה מרחפת מעל התוכן; נעיצה אינה בונה מחדש את התוכן | `test/widgets/adaptive_side_pane_test.dart` |

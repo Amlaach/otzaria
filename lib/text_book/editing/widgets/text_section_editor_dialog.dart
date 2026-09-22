@@ -657,7 +657,7 @@ class _TextSectionEditorDialogState extends State<TextSectionEditorDialog>
                         ),
                       ),
                       padding: const EdgeInsets.all(16),
-                      child: TextField(
+                      child: RtlTextField(
                         scrollController: _editorScrollController,
                         controller: _textController,
                         focusNode: _editorFocusNode,
