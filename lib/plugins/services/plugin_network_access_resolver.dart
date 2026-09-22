@@ -29,6 +29,10 @@ class PluginNetworkAccessResolver {
   static const String _officialAllowlistFile = 'plugin_network_allowlist.txt';
   static const Duration _officialFetchTimeout = Duration(seconds: 15);
   static const Duration _officialFailureCacheTtl = Duration(minutes: 5);
+  static const Set<String> _officialAllowlistContentTypes = <String>{
+    'text/plain',
+    'application/vnd.github.raw',
+  };
 
   final http.Client? _client;
   final DateTime Function() _nowProvider;
@@ -123,8 +127,7 @@ class PluginNetworkAccessResolver {
       final fromRaw = await _tryFetch(client, officialAllowlistUri);
       if (fromRaw != null) return fromRaw;
 
-      // raw.githubusercontent חסום — ננסה את אותו קובץ דרך Contents API
-      // לפני נפילה לרשימה המקומפלת (ראו תיעוד ב-[officialAllowlistContentsApiUri]).
+      // גיבוי ל-raw.githubusercontent החסום.
       return await _tryFetch(
         client,
         officialAllowlistContentsApiUri,
@@ -152,21 +155,27 @@ class PluginNetworkAccessResolver {
         return null;
       }
 
-      // מסנני תוכן (למשל NetFree) לפעמים לא מפילים את הבקשה אלא מחזירים
-      // דף חסימה משלהם בסטטוס 200 ו-Content-Type html. בלי הבדיקה הזו, דף
-      // כזה היה מתפרש כתשובה רשמית תקפה (כמעט ריקה, כי שורות HTML לא
-      // נראות כמו כתובות) — ולפי הכלל ש"רשימה ריקה = חסימת חירום", זה היה
-      // חוסם בטעות גם כתובות שכן מאושרות הלכה למעשה. תגובה תקינה מ-GitHub
-      // (raw.githubusercontent או Contents API) היא תמיד טקסט, לעולם לא html.
-      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-      if (contentType.contains('text/html')) {
+      final contentType = response.headers['content-type']
+          ?.split(';')
+          .first
+          .trim()
+          .toLowerCase();
+      if (!_officialAllowlistContentTypes.contains(contentType)) {
         return null;
       }
 
-      // גם רשימה ריקה היא תשובה רשמית תקפה (למשל השבתת-חירום של כל הגישה).
-      // רק כשל HTTP/רשת/דף-חסימה מפעיל את הניסיון הבא (Contents API) או את
-      // הרשימה המקומפלת כגיבוי סופי.
-      return parsePluginNetworkAllowlistText(response.body);
+      final allowlist = parsePluginNetworkAllowlistText(response.body);
+      // רשימה ריקה תקפה לחסימת-חירום; תגובת חסימה טקסטואלית אינה רשימה.
+      if (allowlist.any((entry) {
+        final entryUri = Uri.tryParse(entry);
+        return entryUri == null ||
+            !entryUri.hasScheme ||
+            entryUri.host.isEmpty ||
+            (entryUri.scheme != 'http' && entryUri.scheme != 'https');
+      })) {
+        return null;
+      }
+      return allowlist;
     } catch (_) {
       return null;
     }
