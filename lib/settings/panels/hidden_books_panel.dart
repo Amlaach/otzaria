@@ -247,7 +247,7 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
           title: count == 0
               ? context.settingsText('אין ספרים מוסתרים')
               : context.settingsText(
-                  '{count} פריטים מוסתרים',
+                  'פריטים מוסתרים: {count}',
                   args: {'count': count},
                 ),
           subtitle: context.settingsText(

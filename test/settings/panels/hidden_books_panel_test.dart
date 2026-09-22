@@ -163,7 +163,7 @@ void main() {
       {_key('בראשית')},
       reason: 'רק השם שהותאם נשמר',
     );
-    expect(find.text('1 פריטים מוסתרים'), findsOneWidget);
+    expect(find.text('פריטים מוסתרים: 1'), findsOneWidget);
   });
 
   testWidgets('ספר שהוסתר יורד מאינדקס החיפוש (issue #1448)', (tester) async {
@@ -189,7 +189,7 @@ void main() {
     );
 
     await pump(tester);
-    expect(find.text('1 פריטים מוסתרים'), findsOneWidget);
+    expect(find.text('פריטים מוסתרים: 1'), findsOneWidget);
 
     await tester.tap(find.text('הצג רשימה'));
     await tester.pumpAndSettle();

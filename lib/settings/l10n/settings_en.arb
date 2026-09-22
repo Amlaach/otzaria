@@ -70,7 +70,7 @@
   "כרטיסיות פתוחות": "Open tabs",
   "בחירת ספרים להסתרה": "Choose books to hide",
   "רשימת כל הספרים בספרייה, עם חיפוש וסימון": "The full list of books in the library, with search and checkboxes",
-  "{count} פריטים מוסתרים": "{count} hidden items",
+  "פריטים מוסתרים: {count}": "Hidden items: {count}",
   "פתח רשימה": "Open list",
   "הצג את כל הספרים": "Show all books",
   "הצג רק מוסתרים": "Show hidden only",
