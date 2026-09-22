@@ -2778,6 +2778,75 @@ Future<void> main() async {
       expect(file.existsSync(), isFalse);
     });
 
+    test('fs.deleteFolder מוחקת רק צאצא של התיקייה המאושרת', () async {
+      final adapter = buildAdapter(pickFolder: ({title}) async => tempDir.path);
+      await adapter.execute('ui', 'pickFolder', {});
+      final child = Directory(p.join(tempDir.path, 'old'))
+        ..createSync(recursive: true);
+      File(p.join(child.path, 'data.txt')).writeAsStringSync('למחיקה');
+
+      expect(
+        await adapter.execute('fs', 'deleteFolder', {'path': child.path}),
+        isTrue,
+      );
+      expect(child.existsSync(), isFalse);
+    });
+
+    test('fs.deleteFolder חוסמת מחיקה של שורש התיקייה המאושרת', () async {
+      final granted = Directory(p.join(tempDir.path, 'granted'))
+        ..createSync(recursive: true);
+      final sentinel = File(p.join(granted.path, 'keep.txt'))
+        ..writeAsStringSync('אסור למחוק');
+      final adapter = buildAdapter(pickFolder: ({title}) async => granted.path);
+      await adapter.execute('ui', 'pickFolder', {});
+
+      await expectLater(
+        adapter.execute('fs', 'deleteFolder', {'path': granted.path}),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('error.forbidden'),
+          ),
+        ),
+      );
+      expect(sentinel.existsSync(), isTrue);
+    });
+
+    test('fs.moveEntry מזיזה צאצאים וחוסמת את שורש התיקייה המאושרת', () async {
+      final granted = Directory(p.join(tempDir.path, 'granted'))
+        ..createSync(recursive: true);
+      final source = File(p.join(granted.path, 'old.txt'))
+        ..writeAsStringSync('תוכן');
+      final adapter = buildAdapter(pickFolder: ({title}) async => granted.path);
+      await adapter.execute('ui', 'pickFolder', {});
+
+      final destination = p.join(granted.path, 'nested', 'new.txt');
+      expect(
+        await adapter.execute('fs', 'moveEntry', {
+          'from': source.path,
+          'to': destination,
+        }),
+        isTrue,
+      );
+      expect(File(destination).readAsStringSync(), 'תוכן');
+
+      await expectLater(
+        adapter.execute('fs', 'moveEntry', {
+          'from': granted.path,
+          'to': p.join(tempDir.path, 'elsewhere'),
+        }),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('error.forbidden'),
+          ),
+        ),
+      );
+      expect(Directory(granted.path).existsSync(), isTrue);
+    });
+
     test('ui.pickFolder דוחה תיקייה מוגנת ואינו מעניק הרשאה', () async {
       final protectedFolder = p.dirname(Platform.resolvedExecutable);
       final adapter = buildAdapter(

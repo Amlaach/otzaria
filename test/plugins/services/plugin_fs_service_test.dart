@@ -229,7 +229,9 @@ void main() {
           p.join(tempDir.path, 'dest'),
         ),
         throwsA(
-          predicate((e) => e is Exception && e.toString().contains('error.not_found')),
+          predicate(
+            (e) => e is Exception && e.toString().contains('error.not_found'),
+          ),
         ),
       );
     });
@@ -244,7 +246,8 @@ void main() {
         service.moveEntry(from.path, to.path),
         throwsA(
           predicate(
-            (e) => e is Exception && e.toString().contains('error.invalid_params'),
+            (e) =>
+                e is Exception && e.toString().contains('error.invalid_params'),
           ),
         ),
       );
@@ -252,5 +255,64 @@ void main() {
       expect(to.readAsStringSync(), 'existing content');
       expect(await from.exists(), isTrue);
     });
+
+    test('דוחה יעד שהוא צאצא של תיקיית המקור בלי ליצור אותו', () async {
+      final from = Directory(p.join(tempDir.path, 'source'))
+        ..createSync(recursive: true);
+      File(p.join(from.path, 'data.txt')).writeAsStringSync('נשאר במקום');
+      final to = p.join(from.path, 'child', 'moved');
+
+      await expectLater(
+        service.moveEntry(from.path, to),
+        throwsA(
+          predicate(
+            (e) =>
+                e is Exception && e.toString().contains('error.invalid_params'),
+          ),
+        ),
+      );
+
+      expect(
+        File(p.join(from.path, 'data.txt')).readAsStringSync(),
+        'נשאר במקום',
+      );
+      expect(Directory(to).existsSync(), isFalse);
+    });
+
+    test(
+      'שומרת קישור סמלי בעת מעבר בין כרכים כשנתמכת תיקיית tmpfs',
+      () async {
+        final sharedMemory = Directory('/dev/shm');
+        if (!Platform.isLinux || !sharedMemory.existsSync()) {
+          markTestSkipped('אין בסביבה זו כרך tmpfs נפרד לבדיקת EXDEV');
+          return;
+        }
+
+        final from = Directory(p.join(tempDir.path, 'source'))
+          ..createSync(recursive: true);
+        File(p.join(from.path, 'data.txt')).writeAsStringSync('תוכן');
+        try {
+          Link(p.join(from.path, 'pointer')).createSync('data.txt');
+        } on FileSystemException {
+          markTestSkipped('יצירת symlink אינה נתמכת בסביבה זו');
+          return;
+        }
+
+        final targetRoot = await sharedMemory.createTemp('otzaria_fs_move_');
+        final to = p.join(targetRoot.path, 'moved');
+        try {
+          await service.moveEntry(from.path, to);
+
+          final copiedLink = Link(p.join(to, 'pointer'));
+          expect(await copiedLink.exists(), isTrue);
+          expect(await copiedLink.target(), 'data.txt');
+          expect(File(p.join(to, 'data.txt')).readAsStringSync(), 'תוכן');
+        } finally {
+          if (await targetRoot.exists()) {
+            await targetRoot.delete(recursive: true);
+          }
+        }
+      },
+    );
   });
 }

@@ -197,44 +197,79 @@ class PluginFsService {
   /// `File.rename`/`Directory.rename` יכולים להיכשל בין כרכי דיסק שונים
   /// (למשל תיקייה שנבחרה בדיסק אחר) — נופלת אז להעתקה+מחיקה.
   Future<void> moveEntry(String from, String to) async {
-    final sourceIsDir = await Directory(from).exists();
-    final sourceIsFile = !sourceIsDir && await File(from).exists();
+    final sourcePath = p.normalize(p.absolute(from));
+    final destinationPath = p.normalize(p.absolute(to));
+    final sourceIsDir = await Directory(sourcePath).exists();
+    final sourceIsFile = !sourceIsDir && await File(sourcePath).exists();
     if (!sourceIsDir && !sourceIsFile) {
       throw Exception('error.not_found: source does not exist');
     }
-    if (await Directory(to).exists() || await File(to).exists()) {
+    if (sourceIsDir && p.isWithin(sourcePath, destinationPath)) {
+      throw Exception('error.invalid_params: destination is inside source');
+    }
+    if (await Directory(destinationPath).exists() ||
+        await File(destinationPath).exists()) {
       throw Exception('error.invalid_params: destination already exists');
     }
 
-    final parent = Directory(p.dirname(to));
+    final parent = Directory(p.dirname(destinationPath));
     await parent.create(recursive: true);
 
     try {
       if (sourceIsDir) {
-        await Directory(from).rename(to);
+        await Directory(sourcePath).rename(destinationPath);
       } else {
-        await File(from).rename(to);
+        await File(sourcePath).rename(destinationPath);
+      }
+      return;
+    } on FileSystemException catch (error) {
+      if (!_isCrossDeviceError(error)) rethrow;
+    }
+
+    try {
+      if (sourceIsDir) {
+        await _copyDirectoryRecursive(
+          Directory(sourcePath),
+          Directory(destinationPath),
+        );
+      } else {
+        await File(sourcePath).copy(destinationPath);
       }
     } on FileSystemException {
-      if (sourceIsDir) {
-        await _copyDirectoryRecursive(Directory(from), Directory(to));
-        await Directory(from).delete(recursive: true);
-      } else {
-        await File(from).copy(to);
-        await File(from).delete();
-      }
+      await _deletePartialDestination(destinationPath);
+      rethrow;
+    }
+    if (sourceIsDir) {
+      await Directory(sourcePath).delete(recursive: true);
+    } else {
+      await File(sourcePath).delete();
     }
   }
 
+  bool _isCrossDeviceError(FileSystemException error) =>
+      error.osError?.errorCode == (Platform.isWindows ? 17 : 18);
+
+  Future<void> _deletePartialDestination(String path) async {
+    final directory = Directory(path);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+      return;
+    }
+    final file = File(path);
+    if (await file.exists()) await file.delete();
+  }
+
   /// מעתיקה תיקייה רקורסיבית — גיבוי ל-[moveEntry] כש-`rename` נכשל (בד"כ
-  /// חצייה בין כרכי דיסק, `EXDEV`). symlinks מדולגים, כמו ב-[extractZip].
+  /// חצייה בין כרכי דיסק, `EXDEV`). קישורים סימבוליים משוכפלים כקישור, כדי
+  /// שפעולה מוצלחת לא תאבד רשומות מהמקור.
   Future<void> _copyDirectoryRecursive(Directory src, Directory dst) async {
     await dst.create(recursive: true);
     await for (final entity in src.list(followLinks: false)) {
       final name = p.basename(entity.path);
       final target = p.join(dst.path, name);
-      if (await FileSystemEntity.isLink(entity.path)) continue;
-      if (entity is Directory) {
+      if (entity is Link) {
+        await Link(target).create(await entity.target());
+      } else if (entity is Directory) {
         await _copyDirectoryRecursive(entity, Directory(target));
       } else if (entity is File) {
         await entity.copy(target);
