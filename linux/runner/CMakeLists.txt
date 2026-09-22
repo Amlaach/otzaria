@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME}
   "main.cc"
+  "fractional_scaling.cc"
   "my_application.cc"
   "multi_window.cc"
   "splash_window.cc"
