@@ -13,6 +13,7 @@ import 'package:otzaria/library/hidden/hidden_books_import.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/settings/dialogs/hidden_books_picker_dialog.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
 import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
@@ -105,6 +106,23 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     await widget.store.save(next);
     if (!mounted) return;
     setState(() => _hidden = next);
+  }
+
+  Future<void> _pickBooks() async {
+    final library = await _library();
+    if (!mounted) return;
+
+    final picked = await showHiddenBooksPickerDialog(
+      context: context,
+      books: library.getAllBooks(),
+      hiddenBookKeys: _hidden.bookKeys,
+    );
+    if (picked == null || !mounted) return;
+
+    final added = picked.difference(_hidden.bookKeys);
+    await _save(_hidden.copyWith(bookKeys: picked));
+    await _dropFromIndex(library, added);
+    await _loadTitles();
   }
 
   Future<void> _import() async {
@@ -216,6 +234,19 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
 
     return Column(
       children: [
+        SettingsActionTile.text(
+          icon: FluentIcons.book_24_regular,
+          title: context.settingsText('בחירת ספרים להסתרה'),
+          subtitle: context.settingsText(
+            'רשימת כל הספרים בספרייה, עם חיפוש וסימון. כאן גם מבטלים הסתרה',
+          ),
+          actions: [
+            ActionButton.recommended(
+              text: context.settingsText('פתח רשימה'),
+              onPressed: _pickBooks,
+            ),
+          ],
+        ),
         SettingsActionTile.text(
           icon: FluentIcons.arrow_import_24_regular,
           title: context.settingsText('ייבוא רשימת הסתרות'),

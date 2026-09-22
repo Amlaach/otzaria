@@ -75,6 +75,38 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('בחירת ספר מהרשימה מסתירה אותו (issue #1448)', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('בחירת ספרים להסתרה'), findsWidgets);
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().bookKeys, {_key('בראשית')});
+    expect(droppedFromIndex, ['בראשית']);
+  });
+
+  testWidgets('ביטול בדיאלוג הבחירה אינו משנה דבר (issue #1448)', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ביטול'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(droppedFromIndex, isEmpty);
+  });
+
   testWidgets('אין הסתרות — מוצג הסבר ולא רשימה (issue #1448)', (
     tester,
   ) async {
