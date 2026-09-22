@@ -139,7 +139,11 @@ void main() {
     await pump(tester);
 
     expect(find.text('אין ספרים מוסתרים'), findsOneWidget);
-    expect(find.text('בטל הסתרה'), findsNothing);
+    expect(
+      find.text('הצג רשימה'),
+      findsNothing,
+      reason: 'אין מה להציג, ולכן אין כפתור לחלון',
+    );
   });
 
   testWidgets('ייבוא CSV מסתיר ושומר (issue #1448)', (tester) async {
@@ -159,7 +163,7 @@ void main() {
       {_key('בראשית')},
       reason: 'רק השם שהותאם נשמר',
     );
-    expect(find.text('בראשית'), findsOneWidget);
+    expect(find.text('1 פריטים מוסתרים'), findsOneWidget);
   });
 
   testWidgets('ספר שהוסתר יורד מאינדקס החיפוש (issue #1448)', (tester) async {
@@ -179,29 +183,55 @@ void main() {
     );
   });
 
-  testWidgets('ביטול הסתרה מסיר מהרשימה (issue #1448)', (tester) async {
+  testWidgets('ביטול הסתרה מתוך החלון (issue #1448)', (tester) async {
     await const HiddenLibraryStore().save(
       HiddenLibrarySelection(bookKeys: {_key('שמות')}),
     );
 
     await pump(tester);
+    expect(find.text('1 פריטים מוסתרים'), findsOneWidget);
+
+    await tester.tap(find.text('הצג רשימה'));
+    await tester.pumpAndSettle();
     expect(find.text('שמות'), findsOneWidget);
 
     await tester.tap(find.text('בטל הסתרה').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
     await tester.pumpAndSettle();
 
     expect(const HiddenLibraryStore().load().isEmpty, isTrue);
     expect(find.text('אין ספרים מוסתרים'), findsOneWidget);
   });
 
-  testWidgets('קטגוריה מוסתרת מוצגת לפי הנתיב (issue #1448)', (tester) async {
+  testWidgets('קטגוריה מוסתרת מוצגת בחלון לפי הנתיב (issue #1448)', (
+    tester,
+  ) async {
     await const HiddenLibraryStore().save(
       const HiddenLibrarySelection(categoryPaths: {'/תנ"ך/תורה'}),
     );
 
     await pump(tester);
+    await tester.tap(find.text('הצג רשימה'));
+    await tester.pumpAndSettle();
 
     expect(find.text('/תנ"ך/תורה'), findsOneWidget);
+  });
+
+  testWidgets('הרשימה אינה מוצגת בגוף מסך ההגדרות (issue #1448)', (
+    tester,
+  ) async {
+    await const HiddenLibraryStore().save(
+      HiddenLibrarySelection(bookKeys: {_key('שמות')}),
+    );
+
+    await pump(tester);
+
+    expect(
+      find.text('שמות'),
+      findsNothing,
+      reason: 'מספר ההסתרות אינו חסום — רשימה פנימית הייתה מאריכה את המסך',
+    );
   });
 }
 

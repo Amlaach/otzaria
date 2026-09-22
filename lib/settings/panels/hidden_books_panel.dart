@@ -9,6 +9,7 @@ import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/library/bloc/library_bloc.dart';
 import 'package:otzaria/library/bloc/library_event.dart';
@@ -16,6 +17,7 @@ import 'package:otzaria/library/hidden/hidden_books_import.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/settings/dialogs/hidden_books_list_dialog.dart';
 import 'package:otzaria/settings/dialogs/hidden_books_picker_dialog.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
 import 'package:otzaria/settings/search/settings_search_models.dart';
@@ -114,6 +116,16 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     context.read<LibraryBloc>().add(const HiddenBooksChanged());
   }
 
+  Future<void> _showHiddenList() async {
+    final updated = await showHiddenBooksListDialog(
+      context: context,
+      hidden: _hidden,
+      titles: _titles,
+    );
+    if (updated == null || !mounted) return;
+    await _save(updated);
+  }
+
   Future<void> _pickBooks() async {
     final library = await _library();
     if (!mounted) return;
@@ -198,53 +210,17 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     return result?.path;
   }
 
-  Future<void> _unhideBook(String key) async {
-    await _save(
-      _hidden.copyWith(bookKeys: {..._hidden.bookKeys}..remove(key)),
-    );
-  }
-
-  Future<void> _unhideCategory(String path) async {
-    await _save(
-      _hidden.copyWith(categoryPaths: {..._hidden.categoryPaths}..remove(path)),
-    );
-  }
-
-  Future<void> _clearAll() async {
-    final confirmed = await showWarningDialog(
-      context: context,
-      title: 'לבטל את כל ההסתרות?',
-      content: 'כל הספרים והקטגוריות המוסתרים יחזרו להיראות בממשק.',
-      confirmText: 'בטל הכול',
-    );
-    if (confirmed != true) return;
-    await _save(const HiddenLibrarySelection());
-  }
-
   @override
   Widget build(BuildContext context) {
-    final entries = [
-      for (final path in _hidden.categoryPaths.toList()..sort())
-        (
-          label: path,
-          icon: FluentIcons.folder_24_regular,
-          onRemove: () => _unhideCategory(path),
-        ),
-      for (final key in _hidden.bookKeys.toList()..sort())
-        (
-          label: _titles[key] ?? key,
-          icon: FluentIcons.book_24_regular,
-          onRemove: () => _unhideBook(key),
-        ),
-    ];
+    final count = _hidden.bookKeys.length + _hidden.categoryPaths.length;
 
     return Column(
       children: [
         SettingsActionTile.text(
-          icon: FluentIcons.book_24_regular,
+          icon: OtzariaIcons.book_24_regular,
           title: context.settingsText('בחירת ספרים להסתרה'),
           subtitle: context.settingsText(
-            'רשימת כל הספרים בספרייה, עם חיפוש וסימון. כאן גם מבטלים הסתרה',
+            'רשימת כל הספרים בספרייה, עם חיפוש וסימון',
           ),
           actions: [
             ActionButton.recommended(
@@ -260,43 +236,31 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
             'קובץ CSV עם שם ספר בכל שורה, או JSON עם מערך שמות. שם שלא יימצא בספרייה ידווח',
           ),
           actions: [
-            ActionButton.recommended(
+            ActionButton.neutral(
               text: context.settingsText('בחר קובץ'),
               onPressed: _import,
             ),
           ],
         ),
-        if (entries.isEmpty)
-          SettingsActionTile.text(
-            icon: FluentIcons.eye_24_regular,
-            title: context.settingsText('אין ספרים מוסתרים'),
-            subtitle: context.settingsText(
-              'הסתרה משפיעה על מסך הספרייה, האיתור והחיפוש בלבד — ספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
-            ),
-          )
-        else ...[
-          for (final entry in entries)
-            SettingsActionTile.text(
-              icon: entry.icon,
-              title: entry.label,
-              actions: [
-                ActionButton.ghost(
-                  text: context.settingsText('בטל הסתרה'),
-                  onPressed: entry.onRemove,
+        SettingsActionTile.text(
+          icon: FluentIcons.eye_off_24_regular,
+          title: count == 0
+              ? context.settingsText('אין ספרים מוסתרים')
+              : context.settingsText(
+                  '{count} פריטים מוסתרים',
+                  args: {'count': count},
                 ),
-              ],
-            ),
-          SettingsActionTile.text(
-            icon: FluentIcons.broom_24_regular,
-            title: context.settingsText('ביטול כל ההסתרות'),
-            actions: [
-              ActionButton.warning(
-                text: context.settingsText('בטל הכול'),
-                onPressed: _clearAll,
-              ),
-            ],
+          subtitle: context.settingsText(
+            'הסתרה משפיעה על מסך הספרייה, האיתור והחיפוש בלבד — ספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
           ),
-        ],
+          actions: [
+            if (count > 0)
+              ActionButton.neutral(
+                text: context.settingsText('הצג רשימה'),
+                onPressed: _showHiddenList,
+              ),
+          ],
+        ),
       ],
     );
   }
