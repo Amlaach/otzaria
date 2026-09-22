@@ -4,6 +4,7 @@ import 'package:mockito/mockito.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
 import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart';
@@ -163,7 +164,7 @@ void main() {
     });
 
     test('נתיב מוחלט של ספר אישי אינו נחשף', () async {
-      final book = TextBook(title: 'ספר אישי', isUserBook: true)
+      final book = TextBook(title: 'ספר אישי', source: BookSource.user)
         ..filePath = r'C:\Users\Someone\books\ספר אישי.txt';
       installLibrary([book]);
 
