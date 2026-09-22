@@ -378,6 +378,9 @@ jobs:
           set -euo pipefail
           apt-get update -y
           apt-get install -y ca-certificates curl git jq unzip xz-utils zstd
+          # ה-Flutter SDK מוזרק מה-runner בבעלות משתמש אחר. זהו קונטיינר
+          # חד-פעמי של CI, וכל עץ git בו מגיע מה-workflow עצמו.
+          git config --global --add safe.directory '*'
 
       - name: Checkout code
         uses: actions/checkout@v7.0.1
