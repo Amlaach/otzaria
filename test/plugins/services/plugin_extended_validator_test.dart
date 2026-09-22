@@ -313,6 +313,8 @@ void main() {
       const noManifestPermission = {
         'fs.extractZip',
         'fs.deleteFile',
+        'fs.deleteFolder',
+        'fs.moveEntry',
         'fs.writeFile',
         'fs.readFile',
         'fs.listDir',

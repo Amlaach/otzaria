@@ -233,6 +233,8 @@ if (response.success) {
 | `fs.makeDir` | 0.9.97 |
 | `fs.deleteEntry` | 0.9.97 |
 | `fs.stat` | 0.9.97 |
+| `fs.deleteFolder` | 0.9.98 |
+| `fs.moveEntry` | 0.9.98 |
 | `feedback.sendEmail` | 0.9.89 |
 | `feedback.report` | 0.9.97 |
 | `feedback.hasReporterEmail` | 0.9.97 |
@@ -2613,6 +2615,47 @@ await Otzaria.call('fs.deleteFile', {
 שגיאות אפשריות: `error.forbidden` (נתיב מחוץ לתיקייה מאושרת),
 `error.invalid_params` (פרמטר חסר / הנתיב הוא תיקייה),
 `error.not_found` (קובץ ה-ZIP לחילוץ אינו קיים), `error.internal`.
+
+### `fs.deleteFolder` (מ-0.9.98)
+**הרשאה:** (אין — מגודר ע"י `ui.pickFolder`)
+
+מחיקת תיקייה על כל תוכנה, בתוך תיקייה מאושרת. שורש התיקייה שנבחרה אינו
+ניתן למחיקה. בשונה מ-`fs.deleteFile`, שמוגבל לקבצים בלבד. הפעולה idempotent
+— תיקייה שאינה קיימת מסתיימת בהצלחה.
+
+```javascript
+await Otzaria.call('fs.deleteFolder', {
+  path: folder + '/אוסף-ישן'
+});
+// true
+```
+
+שגיאות אפשריות: `error.forbidden` (נתיב מחוץ לתיקייה מאושרת),
+`error.invalid_params` (הנתיב הוא קובץ), `error.internal`.
+
+### `fs.moveEntry` (מ-0.9.98)
+**הרשאה:** (אין — מגודר ע"י `ui.pickFolder`)
+
+הזזה/שינוי שם של קובץ או תיקייה בתוך תיקייה מאושרת. גם `from` וגם `to`
+חייבים להיות צאצאים של תיקייה מאושרת (לא השורש שנבחר); יעד של תיקייה אינו
+יכול להיות בתוכה. תיקיית האב של `to` נוצרת אם אינה קיימת.
+מיועד למשל לתוסף שצריך לשקף שינוי מבנה (rename/relocate) במקור נתונים
+מרוחק גם בעותק המקומי של המשתמש, בלי להוריד הכל מחדש.
+
+**לא דורס יעד קיים** — אם `to` כבר קיים, נדחית ב-`error.invalid_params`
+(מחקו קודם עם `fs.deleteFolder`/`fs.deleteFile` אם דריסה היא הכוונה).
+
+```javascript
+await Otzaria.call('fs.moveEntry', {
+  from: folder + '/שם-ישן',
+  to: folder + '/שם-חדש'
+});
+// true
+```
+
+שגיאות אפשריות: `error.forbidden` (נתיב מחוץ לתיקייה מאושרת),
+`error.invalid_params` (פרמטר חסר, היעד בתוך המקור, או שהיעד כבר קיים),
+`error.not_found` (המקור אינו קיים), `error.internal`.
 
 ---
 

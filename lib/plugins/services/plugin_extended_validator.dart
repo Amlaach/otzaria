@@ -142,6 +142,8 @@ const Set<String> _knownApiMethods = {
   'ui.setUnsavedChanges',
   'fs.extractZip',
   'fs.deleteFile',
+  'fs.deleteFolder',
+  'fs.moveEntry',
   'fs.pickUserFile',
   'fs.resolveFileUrl',
   'fs.readTextFile',
@@ -535,6 +537,9 @@ const Map<String, String> _methodMinVersion = {
   'workspace.getActive': '0.9.97',
   'workspace.create': '0.9.97',
   'workspace.switch': '0.9.97',
+  // 0.9.98
+  'fs.deleteFolder': '0.9.98',
+  'fs.moveEntry': '0.9.98',
 };
 
 /// שדות שמורים שאינם API methods (כדי שלא ייתפסו ב-shorthand scanner).

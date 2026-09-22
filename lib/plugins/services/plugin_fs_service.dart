@@ -168,6 +168,115 @@ class PluginFsService {
     // הקובץ אינו קיים — אין מה למחוק, פעולה idempotent ללא שגיאה.
   }
 
+  /// מוחקת תיקייה (על כל תוכנה) ב-[path]. בשונה מ-[deleteFile], שמוגבל
+  /// לקבצים בלבד — זו הדרך היחידה בתוך תיקייה מאושרת (`ui.pickFolder`)
+  /// לנקות תיקייה ישנה, למשל אחרי שינוי מבנה במקור נתונים מרוחק (rename).
+  ///
+  /// idempotent — תיקייה שאינה קיימת מסתיימת בשקט. זורקת אם [path] הוא קובץ.
+  Future<void> deleteFolder(String path) async {
+    final dir = Directory(path);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+      return;
+    }
+    if (await File(path).exists()) {
+      throw Exception('error.invalid_params: path is a file');
+    }
+    // התיקייה אינה קיימת — אין מה למחוק, פעולה idempotent ללא שגיאה.
+  }
+
+  /// מזיזה/משנה שם של קובץ או תיקייה מ-[from] אל [to], שניהם בתוך תיקייה
+  /// מאושרת. משמש תוסף שצריך לשקף שינוי מבנה (rename/relocate) במקור נתונים
+  /// מרוחק גם בעותק המקומי של המשתמש, בלי להוריד הכל מחדש.
+  ///
+  /// זורקת `error.not_found` אם [from] אינו קיים, ו-`error.invalid_params`
+  /// אם [to] כבר קיים — כדי לא לדרוס בשקט תוכן קיים ביעד (למשל תיקייה
+  /// שהמשתמש כבר הוריד בנפרד תחת אותו שם). הקורא אחראי למחוק את [to] קודם
+  /// (למשל דרך [deleteFolder]) אם דריסה היא הכוונה.
+  ///
+  /// `File.rename`/`Directory.rename` יכולים להיכשל בין כרכי דיסק שונים
+  /// (למשל תיקייה שנבחרה בדיסק אחר) — נופלת אז להעתקה+מחיקה.
+  Future<void> moveEntry(String from, String to) async {
+    final sourcePath = p.normalize(p.absolute(from));
+    final destinationPath = p.normalize(p.absolute(to));
+    final sourceIsDir = await Directory(sourcePath).exists();
+    final sourceIsFile = !sourceIsDir && await File(sourcePath).exists();
+    if (!sourceIsDir && !sourceIsFile) {
+      throw Exception('error.not_found: source does not exist');
+    }
+    if (sourceIsDir && p.isWithin(sourcePath, destinationPath)) {
+      throw Exception('error.invalid_params: destination is inside source');
+    }
+    if (await Directory(destinationPath).exists() ||
+        await File(destinationPath).exists()) {
+      throw Exception('error.invalid_params: destination already exists');
+    }
+
+    final parent = Directory(p.dirname(destinationPath));
+    await parent.create(recursive: true);
+
+    try {
+      if (sourceIsDir) {
+        await Directory(sourcePath).rename(destinationPath);
+      } else {
+        await File(sourcePath).rename(destinationPath);
+      }
+      return;
+    } on FileSystemException catch (error) {
+      if (!_isCrossDeviceError(error)) rethrow;
+    }
+
+    try {
+      if (sourceIsDir) {
+        await _copyDirectoryRecursive(
+          Directory(sourcePath),
+          Directory(destinationPath),
+        );
+      } else {
+        await File(sourcePath).copy(destinationPath);
+      }
+    } on FileSystemException {
+      await _deletePartialDestination(destinationPath);
+      rethrow;
+    }
+    if (sourceIsDir) {
+      await Directory(sourcePath).delete(recursive: true);
+    } else {
+      await File(sourcePath).delete();
+    }
+  }
+
+  bool _isCrossDeviceError(FileSystemException error) =>
+      error.osError?.errorCode == (Platform.isWindows ? 17 : 18);
+
+  Future<void> _deletePartialDestination(String path) async {
+    final directory = Directory(path);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+      return;
+    }
+    final file = File(path);
+    if (await file.exists()) await file.delete();
+  }
+
+  /// מעתיקה תיקייה רקורסיבית — גיבוי ל-[moveEntry] כש-`rename` נכשל (בד"כ
+  /// חצייה בין כרכי דיסק, `EXDEV`). קישורים סימבוליים משוכפלים כקישור, כדי
+  /// שפעולה מוצלחת לא תאבד רשומות מהמקור.
+  Future<void> _copyDirectoryRecursive(Directory src, Directory dst) async {
+    await dst.create(recursive: true);
+    await for (final entity in src.list(followLinks: false)) {
+      final name = p.basename(entity.path);
+      final target = p.join(dst.path, name);
+      if (entity is Link) {
+        await Link(target).create(await entity.target());
+      } else if (entity is Directory) {
+        await _copyDirectoryRecursive(entity, Directory(target));
+      } else if (entity is File) {
+        await entity.copy(target);
+      }
+    }
+  }
+
   // ================================================================
   // המרחב הפרטי של התוסף
   // ================================================================

@@ -129,6 +129,8 @@ const Set<String> apiCallsWithoutPermission = {
   'network.download',
   'fs.extractZip',
   'fs.deleteFile',
+  'fs.deleteFolder',
+  'fs.moveEntry',
   'fs.writeFile',
   'fs.readFile',
   'fs.listDir',

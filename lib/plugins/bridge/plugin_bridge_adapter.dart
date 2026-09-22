@@ -3706,13 +3706,13 @@ class PluginBridgeAdapter {
   /// המאושרת — כדי לנטרל גם `..` (path-traversal) וגם symlink שמצביע מתוך
   /// תיקייה מאושרת אל מחוץ לה. בלי פתרון ה-symlink בדיקת [p.isWithin] על המחרוזת
   /// בלבד הייתה מאשרת כתיבה/מחיקה מחוץ לתיקייה דרך קישור סימבולי.
-  bool _isPathInGrantedFolder(String targetPath) {
+  bool _isPathInGrantedFolder(String targetPath, {bool allowRoot = true}) {
     final canonicalTarget = canonicalizeNearestExisting(targetPath);
     if (canonicalTarget == null) return false;
     for (final root in _grantedFolders) {
       final canonicalRoot = canonicalizeNearestExisting(root);
       if (canonicalRoot == null) continue;
-      if (p.equals(canonicalTarget, canonicalRoot) ||
+      if ((allowRoot && p.equals(canonicalTarget, canonicalRoot)) ||
           p.isWithin(canonicalRoot, canonicalTarget)) {
         return true;
       }
@@ -3752,6 +3752,32 @@ class PluginBridgeAdapter {
           );
         }
         await _fsService.deleteFile(path);
+        return true;
+      case 'deleteFolder':
+        final folderPath = args['path'] as String?;
+        if (folderPath == null) {
+          throw Exception('error.invalid_params: path required');
+        }
+        if (!_isPathInGrantedFolder(folderPath, allowRoot: false)) {
+          throw Exception(
+            'error.forbidden: path outside a user-selected folder',
+          );
+        }
+        await _fsService.deleteFolder(folderPath);
+        return true;
+      case 'moveEntry':
+        final from = args['from'] as String?;
+        final to = args['to'] as String?;
+        if (from == null || to == null) {
+          throw Exception('error.invalid_params: from and to required');
+        }
+        if (!_isPathInGrantedFolder(from, allowRoot: false) ||
+            !_isPathInGrantedFolder(to, allowRoot: false)) {
+          throw Exception(
+            'error.forbidden: path outside a user-selected folder',
+          );
+        }
+        await _fsService.moveEntry(from, to);
         return true;
       case 'writeFile':
         return await _writeWorkspaceFile(args);
