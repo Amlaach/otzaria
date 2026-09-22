@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/core/app_paths.dart';
+import 'package:otzaria/core/messages/library_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/dialogs/library_setup_dialog.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
@@ -46,7 +47,7 @@ class _LibrarySetupViewState extends State<LibrarySetupView> {
     try {
       await widget.onLibraryLoaded();
     } catch (error) {
-      UiSnack.showError('שגיאה בטעינת הספרייה. נסה שוב.');
+      UiSnack.showError(LibraryMessages.libraryLoadError);
       debugPrint('Failed to refresh library after selection: $error');
     }
   }

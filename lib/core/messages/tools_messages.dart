@@ -73,6 +73,15 @@ abstract class ToolsMessages {
   static const String testNotificationFailed =
       'שליחת התראת הבדיקה נכשלה. בדוק שההתראות עבור אוצריא מאופשרות בהגדרות מערכת ההפעלה.';
   static const String eventTitleRequired = 'יש למלא כותרת לאירוע.';
+  static const String eventDateUnparsable = 'לא הצלחנו לפרש את התאריך.';
+  static const String eventDateOutOfRange = 'התאריך מחוץ לטווח הנתמך.';
+  static const String eventEndTimeBeforeStart =
+      'שעת הסיום חייבת להיות אחרי שעת ההתחלה.';
+  static const String alertAmountMustBePositive = 'יש להזין כמות חיובית.';
+  static const String alertAtMostThreeMonths =
+      'ניתן להגדיר לכל היותר 3 חודשים לפני האירוע.';
+  static const String alertMustPrecedeEvent =
+      'זמן ההתראה חייב להיות לפני מועד האירוע.';
   static const String eventRecurringYearsInvalid =
       'יש להזין מספר שנים חיובי עבור אירוע חוזר.';
   static const String eventEndBeforeStart =
