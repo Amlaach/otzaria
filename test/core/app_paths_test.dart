@@ -1436,6 +1436,110 @@ void main() {
         p.join(defaultLibrary(), 'Otzaria', 'seforim.db'),
       );
     });
+
+    test(
+      'עותק DB פנימי תקף מונע אימוץ ושומר את נתיב הספרייה החיצונית',
+      () async {
+        final externalLibrary = p.join(dataRoot.path, 'ספרייה חיצונית');
+        final internalDb = p.join(dataRoot.path, 'פנימי', 'seforim.db');
+        await Directory(p.dirname(internalDb)).create(recursive: true);
+        await File(internalDb).writeAsString('db');
+        await placeLibraryAt(defaultLibrary());
+        await Settings.setValue(
+          SettingsRepository.keyLibraryPath,
+          externalLibrary,
+        );
+        await Settings.setValue(
+          SettingsRepository.keyDbEffectivePath,
+          internalDb,
+        );
+
+        expect(await AppPaths.adoptLibraryAtDefaultPathIfNeeded(), isFalse);
+        expect(
+          Settings.getValue<String>(SettingsRepository.keyLibraryPath),
+          externalLibrary,
+        );
+        expect(
+          Settings.getValue<String>(SettingsRepository.keyDbEffectivePath),
+          internalDb,
+        );
+        expect(DatabaseConstants.getDatabasePath(), internalDb);
+      },
+    );
+
+    test('עותק DB פנימי חסר מתנקה לפני אימוץ ספריית ברירת המחדל', () async {
+      final missingInternalDb = p.join(dataRoot.path, 'פנימי', 'חסר.db');
+      await placeLibraryAt(defaultLibrary());
+      await Settings.setValue(
+        SettingsRepository.keyLibraryPath,
+        p.join(dataRoot.path, 'כונן שנותק'),
+      );
+      await Settings.setValue(
+        SettingsRepository.keyDbEffectivePath,
+        missingInternalDb,
+      );
+
+      expect(await AppPaths.adoptLibraryAtDefaultPathIfNeeded(), isTrue);
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyLibraryPath),
+        defaultLibrary(),
+      );
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyDbEffectivePath),
+        isEmpty,
+      );
+      expect(
+        DatabaseConstants.getDatabasePath(),
+        p.join(defaultLibrary(), 'seforim.db'),
+      );
+    });
+
+    test('עותק DB פנימי חסר מתנקה גם כשנתיב הספרייה השמור תקף', () async {
+      final chosen = p.join(dataRoot.path, 'ספרייה שלי');
+      await placeLibraryAt(chosen);
+      await Settings.setValue(SettingsRepository.keyLibraryPath, chosen);
+      await Settings.setValue(
+        SettingsRepository.keyLibraryFolderName,
+        'Otzaria',
+      );
+      await Settings.setValue(
+        SettingsRepository.keyDbEffectivePath,
+        p.join(dataRoot.path, 'פנימי', 'חסר.db'),
+      );
+
+      expect(await AppPaths.adoptLibraryAtDefaultPathIfNeeded(), isTrue);
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyDbEffectivePath),
+        isEmpty,
+      );
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyLibraryFolderName),
+        isEmpty,
+      );
+      expect(
+        DatabaseConstants.getDatabasePath(),
+        p.join(chosen, 'seforim.db'),
+      );
+    });
+
+    test('עותק DB פנימי חסר מתנקה גם בלי ספרייה לאימוץ', () async {
+      final broken = p.join(dataRoot.path, 'כונן שנותק');
+      await Settings.setValue(SettingsRepository.keyLibraryPath, broken);
+      await Settings.setValue(
+        SettingsRepository.keyDbEffectivePath,
+        p.join(dataRoot.path, 'פנימי', 'חסר.db'),
+      );
+
+      expect(await AppPaths.adoptLibraryAtDefaultPathIfNeeded(), isTrue);
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyLibraryPath),
+        broken,
+      );
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyDbEffectivePath),
+        isEmpty,
+      );
+    });
   });
 
   group('אנדרואיד: האינדקס נשאר באחסון הפנימי (issue #1126)', () {

@@ -511,6 +511,23 @@ class AppPaths {
   /// מחזיר [bool] — האם ההגדרה עודכנה. נתיב שמור ששבר (כונן שנותק, תיקייה
   /// שנמחקה) מוחלף רק כשבברירת המחדל יש ספרייה אמיתית.
   static Future<bool> adoptLibraryAtDefaultPathIfNeeded() async {
+    // באנדרואיד מסד שנבחר מ-Scoped Storage עשוי להימצא בעותק פנימי, בעוד
+    // keyLibraryPath נשאר הנתיב החיצוני לצורך הקבצים הנלווים. העותק התקף
+    // הוא מקור האמת; אסור להחליף את נתיב הספרייה רק מפני שבדיקת ה-DB החיצוני
+    // נכשלה. לעומת זאת, override שנותר בלי קובץ חייב להימחק, אחרת
+    // DatabaseConstants ימשיך להפנות אליו גם אחרי אימוץ ספרייה תקפה.
+    var settingsChanged = false;
+    final effectiveDbPath =
+        Settings.getValue<String>(
+          SettingsRepository.keyDbEffectivePath,
+        ) ??
+        '';
+    if (effectiveDbPath.isNotEmpty) {
+      if (await File(effectiveDbPath).exists()) return false;
+      await Settings.setValue(SettingsRepository.keyDbEffectivePath, '');
+      settingsChanged = true;
+    }
+
     final currentPath =
         Settings.getValue<String>(SettingsRepository.keyLibraryPath) ?? '';
     if (currentPath.isNotEmpty) {
@@ -518,14 +535,14 @@ class AppPaths {
       // הנתיב תקף, אבל ה-folderName השמור עלול להצביע על תת-תיקייה שאין בה
       // מסד — ואז getDatabasePath מחשב נתיב שבור על ספרייה קיימת.
       if (folderName != null) {
-        return _saveLibraryFolderName(folderName);
+        return (await _saveLibraryFolderName(folderName)) || settingsChanged;
       }
     }
 
     final defaultPath = await getDefaultLibraryPath();
     final folderName = await _libraryDbFolderName(defaultPath);
     if (folderName == null) {
-      return false;
+      return settingsChanged;
     }
 
     await Settings.setValue(SettingsRepository.keyLibraryPath, defaultPath);
