@@ -369,6 +369,8 @@ jobs:
       PKG_CONFIG_PATH: /opt/wpe-sdk/lib/pkgconfig
       LD_LIBRARY_PATH: /opt/wpe-sdk/lib
       LIBRARY_PATH: /opt/wpe-sdk/lib
+      # התוסף jni מפעיל FindJNI בזמן CMake; בקונטיינר אין JAVA_HOME ברירת מחדל.
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
     steps:
       # הפעולה חייבת לרוץ לפני checkout: הקונטיינר המינימלי לא כולל git,
