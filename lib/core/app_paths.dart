@@ -502,6 +502,91 @@ class AppPaths {
     return true;
   }
 
+  /// מאמץ ספרייה שכבר יושבת במיקום ברירת המחדל, כשההגדרה אינה מצביעה על
+  /// ספרייה קיימת — ספרייה שהגיעה למחשב מחוץ לאוצריא (תוכנת העדכון
+  /// האופליינית, העתקה ידנית). בלי האימוץ ההגדרה נשארת ריקה,
+  /// [DatabaseConstants.getDatabasePath] מחזיר נתיב יחסי לתיקיית העבודה,
+  /// וה-DB לא נפתח כלל (issue #1436).
+  ///
+  /// מחזיר [bool] — האם ההגדרה עודכנה. נתיב שמור ששבר (כונן שנותק, תיקייה
+  /// שנמחקה) מוחלף רק כשבברירת המחדל יש ספרייה אמיתית.
+  static Future<bool> adoptLibraryAtDefaultPathIfNeeded() async {
+    // באנדרואיד מסד שנבחר מ-Scoped Storage עשוי להימצא בעותק פנימי, בעוד
+    // keyLibraryPath נשאר הנתיב החיצוני לצורך הקבצים הנלווים. העותק התקף
+    // הוא מקור האמת; אסור להחליף את נתיב הספרייה רק מפני שבדיקת ה-DB החיצוני
+    // נכשלה. לעומת זאת, override שנותר בלי קובץ חייב להימחק, אחרת
+    // DatabaseConstants ימשיך להפנות אליו גם אחרי אימוץ ספרייה תקפה.
+    var settingsChanged = false;
+    final effectiveDbPath =
+        Settings.getValue<String>(
+          SettingsRepository.keyDbEffectivePath,
+        ) ??
+        '';
+    if (effectiveDbPath.isNotEmpty) {
+      if (await File(effectiveDbPath).exists()) return false;
+      await Settings.setValue(SettingsRepository.keyDbEffectivePath, '');
+      settingsChanged = true;
+    }
+
+    final currentPath =
+        Settings.getValue<String>(SettingsRepository.keyLibraryPath) ?? '';
+    if (currentPath.isNotEmpty) {
+      final folderName = await _libraryDbFolderName(currentPath);
+      // הנתיב תקף, אבל ה-folderName השמור עלול להצביע על תת-תיקייה שאין בה
+      // מסד — ואז getDatabasePath מחשב נתיב שבור על ספרייה קיימת.
+      if (folderName != null) {
+        return (await _saveLibraryFolderName(folderName)) || settingsChanged;
+      }
+    }
+
+    final defaultPath = await getDefaultLibraryPath();
+    final folderName = await _libraryDbFolderName(defaultPath);
+    if (folderName == null) {
+      return settingsChanged;
+    }
+
+    await Settings.setValue(SettingsRepository.keyLibraryPath, defaultPath);
+    await _saveLibraryFolderName(folderName);
+    return true;
+  }
+
+  /// שומר את [folderName] כשהוא שונה מהשמור. מחזיר האם ההגדרה נכתבה.
+  static Future<bool> _saveLibraryFolderName(String folderName) async {
+    final saved =
+        Settings.getValue<String>(SettingsRepository.keyLibraryFolderName) ??
+        '';
+    if (saved == folderName) {
+      return false;
+    }
+    await Settings.setValue(
+      SettingsRepository.keyLibraryFolderName,
+      folderName,
+    );
+    return true;
+  }
+
+  /// שם תת-התיקייה שבה יושב `seforim.db` תחת [libraryPath] — מחרוזת ריקה
+  /// כשהוא יושב ישירות תחתיה — או null כשאין שם מסד כלל.
+  ///
+  /// מחקה את חישוב הנתיב ב-[DatabaseConstants.getDatabasePath], שמצרף את
+  /// `keyLibraryFolderName` לנתיב הספרייה.
+  static Future<String?> _libraryDbFolderName(String libraryPath) async {
+    if (libraryPath.isEmpty) return null;
+    final savedFolderName =
+        Settings.getValue<String>(SettingsRepository.keyLibraryFolderName) ??
+        '';
+    for (final folderName in <String>{savedFolderName, ''}) {
+      final dbDir = folderName.isEmpty
+          ? libraryPath
+          : p.join(libraryPath, folderName);
+      final db = File(p.join(dbDir, DatabaseConstants.databaseFileName));
+      if (await db.exists()) {
+        return folderName;
+      }
+    }
+    return null;
+  }
+
   /// Gets the search index path.
   ///
   /// On system-wide desktop installs this remains next to the shared library.
