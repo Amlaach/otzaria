@@ -513,9 +513,13 @@ class AppPaths {
   static Future<bool> adoptLibraryAtDefaultPathIfNeeded() async {
     final currentPath =
         Settings.getValue<String>(SettingsRepository.keyLibraryPath) ?? '';
-    if (currentPath.isNotEmpty &&
-        await _libraryDbFolderName(currentPath) != null) {
-      return false;
+    if (currentPath.isNotEmpty) {
+      final folderName = await _libraryDbFolderName(currentPath);
+      // הנתיב תקף, אבל ה-folderName השמור עלול להצביע על תת-תיקייה שאין בה
+      // מסד — ואז getDatabasePath מחשב נתיב שבור על ספרייה קיימת.
+      if (folderName != null) {
+        return _saveLibraryFolderName(folderName);
+      }
     }
 
     final defaultPath = await getDefaultLibraryPath();
@@ -525,15 +529,22 @@ class AppPaths {
     }
 
     await Settings.setValue(SettingsRepository.keyLibraryPath, defaultPath);
-    final savedFolderName =
+    await _saveLibraryFolderName(folderName);
+    return true;
+  }
+
+  /// שומר את [folderName] כשהוא שונה מהשמור. מחזיר האם ההגדרה נכתבה.
+  static Future<bool> _saveLibraryFolderName(String folderName) async {
+    final saved =
         Settings.getValue<String>(SettingsRepository.keyLibraryFolderName) ??
         '';
-    if (savedFolderName != folderName) {
-      await Settings.setValue(
-        SettingsRepository.keyLibraryFolderName,
-        folderName,
-      );
+    if (saved == folderName) {
+      return false;
     }
+    await Settings.setValue(
+      SettingsRepository.keyLibraryFolderName,
+      folderName,
+    );
     return true;
   }
 

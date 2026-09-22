@@ -1381,6 +1381,26 @@ void main() {
       );
     });
 
+    test('נתיב שמור תקף עם folderName מיושן — ה-folderName מתוקן', () async {
+      final chosen = p.join(dataRoot.path, 'ספרייה שלי');
+      await placeLibraryAt(chosen);
+      await Settings.setValue(SettingsRepository.keyLibraryPath, chosen);
+      await Settings.setValue(
+        SettingsRepository.keyLibraryFolderName,
+        'Otzaria',
+      );
+
+      expect(await AppPaths.adoptLibraryAtDefaultPathIfNeeded(), isTrue);
+      expect(
+        Settings.getValue<String>(SettingsRepository.keyLibraryPath),
+        chosen,
+      );
+      expect(
+        DatabaseConstants.getDatabasePath(),
+        p.join(chosen, 'seforim.db'),
+      );
+    });
+
     test('folderName שנשאר מהגדרה קודמת מתאפס לפי מיקום המסד', () async {
       await Settings.setValue(
         SettingsRepository.keyLibraryFolderName,
