@@ -324,7 +324,7 @@ class TargetLineLinksService {
       removePunctuation: removePunctuation,
       maxFontSize: maxFontSize,
       label: 'קישורים',
-      icon: OtzariaIcons.link_24_regular,
+      icon: OtzariaIcons.links_24_regular,
       emptyLabel: 'אין קישורים על קטע זה',
       select: (data) => data.references,
       groupByEra: false,

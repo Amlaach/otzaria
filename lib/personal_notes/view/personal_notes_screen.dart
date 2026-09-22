@@ -415,9 +415,9 @@ class _PersonalNotesManagerScreenState
             ),
           ],
           center: OtzariaSearchField(
-            icon: OtzariaIcons.search_in_the_document_24_regular,
             controller: _searchController,
             focusNode: _searchFocusNode,
+            icon: OtzariaIcons.search_in_the_document_24_regular,
             hintText: 'חפש בהערות...',
             onSubmitted: (_) => requestKeyboardFocus(),
             onChanged: (value) {
@@ -464,7 +464,7 @@ class _PersonalNotesManagerScreenState
               widget: BarButton.icon(
                 compact: isCompact,
                 tooltip: 'ייצוא לטקסט',
-                icon: FluentIcons.document_text_24_regular,
+                icon: OtzariaIcons.document_download_24_regular,
                 onPressed: _exportNotesToText,
               ),
             ),
@@ -472,7 +472,7 @@ class _PersonalNotesManagerScreenState
               widget: BarButton.icon(
                 compact: isCompact,
                 tooltip: 'ייצוא לוורד',
-                icon: FluentIcons.document_arrow_down_24_regular,
+                icon: OtzariaIcons.document_word_24_regular,
                 onPressed: _exportNotesToWord,
               ),
             ),

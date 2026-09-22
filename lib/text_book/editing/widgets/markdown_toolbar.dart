@@ -122,7 +122,7 @@ class MarkdownToolbar extends StatelessWidget {
 
           // Links and code
           _ToolbarButton(
-            icon: FluentIcons.link_24_regular,
+            icon: OtzariaIcons.link_24_regular,
             tooltip: 'קישור (Ctrl+K)',
             onPressed: onLink,
           ),

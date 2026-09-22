@@ -580,7 +580,7 @@ class ShortcutsSettingsTab extends StatelessWidget {
       _ShortcutTile(
         settingKey: ShortcutValidator.copyBookLinkKey,
         label: context.settingsText('העתק קישור ישיר לספר'),
-        icon: FluentIcons.link_24_regular,
+        icon: OtzariaIcons.link_24_regular,
         allShortcuts: _shortcutsList,
       ),
       _ShortcutTile(

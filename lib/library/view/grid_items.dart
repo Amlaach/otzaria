@@ -88,8 +88,8 @@ Widget _buildBookIconChild(Book book, ColorScheme cs, double iconSize) {
       fit: BoxFit.contain,
     );
   }
-  return Icon(
-    bookFormatIcon(book),
+  return BookFormatIcon(
+    book: book,
     color: cs.onSecondaryContainer,
     size: iconSize,
   );

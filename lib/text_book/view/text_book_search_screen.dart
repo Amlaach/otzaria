@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/widgets/lists/nav_tree_tile.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:otzaria/core/messages/library_messages.dart';
@@ -1080,9 +1081,10 @@ class TextBookSearchViewState extends State<TextBookSearchView>
             onToggle: _toggleWholeWord,
           ),
         OtzariaSearchAction.icon(
+          // חוברת ריקה = החיפוש כבר מצומצם לקטע; חוברת עם תוכן = כל הספר.
           iconData: _limitToSection
-              ? FluentIcons.document_header_20_filled
-              : FluentIcons.document_header_20_regular,
+              ? OtzariaIcons.booklet_empty_24_regular
+              : OtzariaIcons.booklet_24_regular,
           onPressed: _toggleLimitToSection,
           tooltip: _limitToSection
               ? (_activeSection != null

@@ -6,6 +6,7 @@ import 'package:otzaria/theme/app_surfaces.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_bloc.dart';
@@ -770,7 +771,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
                 borderRadius: AppTokens.borderRadiusAll,
               ),
               child: Icon(
-                FluentIcons.book_search_24_filled,
+                OtzariaIcons.book_search_24_filled,
                 size: isShort ? 18 : 22,
                 color: colorScheme.onPrimaryContainer,
               ),
@@ -1320,7 +1321,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
               borderRadius: AppTokens.borderRadiusAll,
             ),
             child: Icon(
-              FluentIcons.book_search_24_filled,
+              OtzariaIcons.book_search_24_filled,
               size: 28,
               color: colorScheme.onSecondaryContainer,
             ),
@@ -1381,7 +1382,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
 
     return _buildCenteredState(
       icon: isDeepLink
-          ? FluentIcons.link_24_regular
+          ? OtzariaIcons.links_24_regular
           : FluentIcons.document_search_24_regular,
       iconColor: colorScheme.onSurfaceVariant,
       title: isDeepLink
@@ -1399,7 +1400,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
           ? ActionButton.recommended(
               text: context.settingsText('פתיחת קישור'),
               onPressed: () => _tryHandleDeepLink(query),
-              icon: FluentIcons.link_24_regular,
+              icon: OtzariaIcons.links_24_regular,
             )
           : ActionButton.recommended(
               text: context.settingsText('פתח חיפוש טקסט'),

@@ -243,7 +243,7 @@ class _GematriaSettingsTabState extends State<GematriaSettingsTab> {
               },
             ),
             SettingsActionTile.switchTile(
-              icon: FluentIcons.add_circle_24_regular,
+              icon: OtzariaIcons.alef_3_24_regular,
               title: context.settingsText('עם הכולל'),
               subtitle: context.settingsText('הוספת מספר האותיות לסכום'),
               value: useWithKolel,

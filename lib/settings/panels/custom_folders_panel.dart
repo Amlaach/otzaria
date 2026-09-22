@@ -620,7 +620,7 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
               ),
             ),
             item(
-              OtzariaIcons.link_24_regular,
+              OtzariaIcons.links_24_regular,
               context.settingsText('דורות, קישורים, כותרות וגרסאות'),
               context.settingsText(
                 'לייבוא נתונים לספרים האישיים השתמש בכפתור "ייבוא נתונים" '

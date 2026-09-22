@@ -193,7 +193,7 @@ class _TabbedCommentaryPanelState extends State<TabbedCommentaryPanel>
                   tabs: isCompact
                       ? [
                           PanelTab(icon: firstTabIconData),
-                          const PanelTab(icon: OtzariaIcons.link_24_regular),
+                          const PanelTab(icon: OtzariaIcons.links_24_regular),
                           const PanelTab(icon: FluentIcons.note_24_regular),
                         ]
                       : [
@@ -204,7 +204,7 @@ class _TabbedCommentaryPanelState extends State<TabbedCommentaryPanel>
                                 : 'סינון מפרשים',
                           ),
                           const PanelTab(
-                            icon: OtzariaIcons.link_24_regular,
+                            icon: OtzariaIcons.links_24_regular,
                             label: 'קישורים',
                           ),
                           const PanelTab(

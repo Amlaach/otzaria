@@ -1378,7 +1378,7 @@ class _CombinedViewState extends State<CombinedView> {
         if (state.book.id != null)
           AppContextMenuIconAction(
             label: 'קישור',
-            icon: FluentIcons.link_24_regular,
+            icon: OtzariaIcons.link_copy_24_regular,
             submenuBuilder: () => buildDirectLinkSubmenuActions(
               bookId: state.book.id!,
               source: state.book.source,
@@ -1405,7 +1405,7 @@ class _CombinedViewState extends State<CombinedView> {
       ),
       AppContextMenuEntry(
         label: 'קישורים',
-        icon: OtzariaIcons.link_24_regular,
+        icon: OtzariaIcons.links_24_regular,
         enabled: paragraphLinks.isNotEmpty,
         childrenBuilder: buildLinkChildren,
       ),
@@ -1757,7 +1757,7 @@ class _CombinedViewState extends State<CombinedView> {
     final hasSelection = selectedText != null && selectedText.trim().isNotEmpty;
     return AppContextMenuEntry(
       label: 'העתק כ...',
-      icon: FluentIcons.text_clear_formatting_24_regular,
+      icon: OtzariaIcons.alef_copy_24_regular,
       enabled: hasSelection,
       children: buildCopyAsMenuEntries(
         base: state.displayProfile(

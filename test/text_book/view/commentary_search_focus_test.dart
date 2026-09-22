@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
-import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/data/data_providers/book_composite_key.dart';
 import 'package:otzaria/data/data_providers/library_provider.dart';
@@ -106,14 +105,14 @@ Future<void> main() async {
 
       // השדה נסגר וחוזרים לשורת הלחצנים (כולל אייקון החיפוש).
       expect(find.byType(TextField), findsNothing);
-      expect(find.byIcon(OtzariaIcons.search_24_regular), findsWidgets);
+      expect(find.byIcon(FluentIcons.search_24_regular), findsWidgets);
       expect(controller.text, isEmpty);
     }, skip: !engineReady);
   });
 }
 
 Future<void> _openInlineSearch(WidgetTester tester) async {
-  await tester.tap(find.byIcon(OtzariaIcons.search_24_regular).first);
+  await tester.tap(find.byIcon(FluentIcons.search_24_regular).first);
   await tester.pumpAndSettle();
 }
 

@@ -175,7 +175,7 @@ class OtzariaSearchDisplayBar extends StatelessWidget {
   const OtzariaSearchDisplayBar({
     super.key,
     required this.child,
-    this.icon = FluentIcons.search_24_regular,
+    this.icon = OtzariaIcons.search_24_regular,
     this.onTap,
     this.tooltip,
     this.slim,
@@ -193,7 +193,7 @@ class OtzariaSearchDisplayBar extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: isSlim ? 18 : 20, color: cs.onSurfaceVariant),
+          Icon(icon, size: isSlim ? 20 : 22, color: cs.onSurfaceVariant),
           const SizedBox(width: AppTokens.spaceSM),
           Flexible(child: child),
         ],
@@ -244,7 +244,8 @@ class OtzariaSearchField extends StatefulWidget {
   final List<Widget>? trailingActions;
 
   /// אייקון החיפוש. עדיף למקד אותו לפי מה שמחפשים בו — למשל
-  /// `search_in_the_library_24_regular` בספרייה. `leading` דוחה אותו.
+  /// `search_in_the_library_24_regular` בספרייה — כשהשדה מחפש בגוף תוכן
+  /// שאינו מוצג על המסך. `leading` דוחה אותו.
   final IconData icon;
 
   /// `null` = יורש אוטומטית מ-compactMenuMode אם זמין.
@@ -384,7 +385,9 @@ class _OtzariaSearchFieldState extends State<OtzariaSearchField> {
     // גובה וגופן — slim (desktop) לעומת touch
     final double effectiveHeight = isSlim ? _ST.heightSlim : _ST.height;
     final double effectiveFontSize = isSlim ? _ST.fontSizeSlim : _ST.fontSize;
-    final double prefixIconSize = isSlim ? 18.0 : 20.0;
+    // גדול ב-2 מאייקון ממשק רגיל: אייקוני `search_in_*` נושאים פרט בתוך
+    // העדשה, והם המקרה הנפוץ כאן. בעדשה החלקה ההפרש אינו מורגש.
+    final double prefixIconSize = isSlim ? 20.0 : 22.0;
 
     // Fill
     final fillColor = _hasFocus && widget.enabled

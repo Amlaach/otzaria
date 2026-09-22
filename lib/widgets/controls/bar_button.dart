@@ -34,6 +34,11 @@ class BarButton extends StatelessWidget {
   final bool compact;
   final bool flipInRtl;
 
+  /// גודל האייקון, כשברירת המחדל של הסרגל (20) אינה מתאימה לו. אייקוני
+  /// אוצריא אינם ממלאים כולם את הקנבס באותה מידה, ואחדים מהם נקראים קטן
+  /// מאייקון פלואנט באותו גודל נומינלי.
+  final double? iconSize;
+
   // ── text ──
   final String text;
   final bool isLoading;
@@ -43,6 +48,7 @@ class BarButton extends StatelessWidget {
     required this.tooltip,
     required IconData this.icon,
     this.iconWidget,
+    this.iconSize,
     required this.onPressed,
     this.selected = false,
     this.label,
@@ -61,6 +67,7 @@ class BarButton extends StatelessWidget {
   }) : _variant = _Variant.text,
        tooltip = '',
        iconWidget = null,
+       iconSize = null,
        selected = false,
        label = null,
        compact = false,
@@ -112,7 +119,7 @@ class BarButton extends StatelessWidget {
         ? theme.disabledColor
         : (selected ? cs.onSecondaryContainer : cs.onSurfaceVariant);
 
-    const double iconSize = 20;
+    final double iconSize = this.iconSize ?? 20;
     final double fontSize = compact ? 12 : 14;
     final double minSize = compact
         ? compactIconButtonSize

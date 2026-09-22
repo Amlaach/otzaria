@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/widgets/navigation/search_pane_base.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/core/messages/text_book_messages.dart';
-import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/search/in_book_search_preferences.dart';
 import 'package:otzaria/text_book/bloc/text_book_bloc.dart';
@@ -144,15 +144,15 @@ Future<void> main() async {
 
     // ההעדפה כבויה — המתג מתחיל במצב "חצאי מילים".
     expect(
-      find.byIcon(FluentIcons.text_whole_word_20_regular),
+      find.byIcon(OtzariaIcons.alef_half_filled_24_regular),
       findsOneWidget,
     );
     final runsBeforeToggle = searchRuns;
 
-    await tester.tap(find.byIcon(FluentIcons.text_whole_word_20_regular));
+    await tester.tap(find.byIcon(OtzariaIcons.alef_half_filled_24_regular));
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(FluentIcons.text_whole_word_20_filled), findsOneWidget);
+    expect(find.byIcon(OtzariaIcons.alef_24_regular), findsOneWidget);
     expect(searchRuns, greaterThan(runsBeforeToggle));
     expect(InBookSearchPreferences.loadWholeWord(), isTrue);
 

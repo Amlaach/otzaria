@@ -359,7 +359,7 @@ AppContextMenuEntry buildPdfLinksContextMenuEntry({
 
   return AppContextMenuEntry(
     label: 'קישורים',
-    icon: OtzariaIcons.link_24_regular,
+    icon: OtzariaIcons.links_24_regular,
     enabled: relevantLinks.isNotEmpty,
     childrenBuilder: buildLinkChildren,
   );
@@ -4989,7 +4989,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
             return _buildLayoutModeDropdown(context, state);
           },
         ),
-        icon: OtzariaIcons.book_open_small_24_regular,
+        icon: OtzariaIcons.book_open_medium_line_24_regular,
         tooltip: 'מצב תצוגה',
         actionId: ToolbarActionId.viewMode,
         onPressed: null,
@@ -5105,7 +5105,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         70,
         ActionButtonData(
           widget: const SizedBox.shrink(),
-          icon: FluentIcons.link_24_regular,
+          icon: OtzariaIcons.link_24_regular,
           tooltip: widget.tab.book.id != null
               ? 'העתק קישור ישיר'
               : 'העתק קישור ישיר (לא זמין לספר זה)',
@@ -5116,7 +5116,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                   return [
                     ActionButtonData(
                       widget: const SizedBox.shrink(),
-                      icon: FluentIcons.link_24_regular,
+                      icon: OtzariaIcons.link_book_empty_24_regular,
                       tooltip: 'העתק קישור ישיר לספר זה',
                       onPressed: () => copyLinkToClipboard(
                         buildPdfBookLink(
@@ -5127,7 +5127,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                     ),
                     ActionButtonData(
                       widget: const SizedBox.shrink(),
-                      icon: FluentIcons.link_multiple_24_regular,
+                      icon: OtzariaIcons.link_document_24_regular,
                       tooltip: 'העתק קישור ישיר לעמוד זה',
                       onPressed: () {
                         final page =
@@ -5528,7 +5528,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   Widget _buildLayoutModeDropdown(BuildContext context, PdfBookLoaded state) {
     final isBookViewMode = state.layoutMode.isBookView;
     final iconData = isBookViewMode
-        ? OtzariaIcons.book_open_small_24_regular
+        ? OtzariaIcons.book_open_medium_line_24_regular
         : OtzariaIcons.book_24_regular;
 
     return AppPopupMenuButton<PdfLayoutMode>(
@@ -5588,7 +5588,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
             // בחירה חוזרת בתצוגת ספר משמרת את כיוון הזוגות שנבחר.
             value: isBookViewMode ? state.layoutMode : PdfLayoutMode.bookView,
             text: 'תצוגת ספר',
-            icon: OtzariaIcons.book_open_small_24_regular,
+            icon: OtzariaIcons.book_open_medium_line_24_regular,
             isSelected: isBookViewMode,
           ),
           if (isBookViewMode)

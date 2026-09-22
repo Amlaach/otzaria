@@ -1119,9 +1119,9 @@
   "העתקה": "Copy",
   "ייצוא והדפסה": "Export & Print",
   "הגדרות נפרדות": "Separate Settings",
-  "לחריץ זה ערכים משלו": "This slot has its own values",
-  "יורש מהחריץ שמעליו: {parent}": "Inherits from the slot above it: {parent}",
-  "זהו החריץ הבסיסי — הוא נערך למעלה": "This is the base slot — edit it above",
+  "לצירוף הזה ערכים משלו": "This combination has its own values",
+  "יורש מהצירוף הכללי יותר: {parent}": "Inherits from the broader combination: {parent}",
+  "זהו הצירוף הבסיסי — הוא נערך למעלה": "This is the base combination — edit it above",
   "איפוס כל ההתאמות הנוספות": "Reset all additional adjustments",
 
   "@@comment_dynamic_shortcuts": "קיצורים דינמיים",

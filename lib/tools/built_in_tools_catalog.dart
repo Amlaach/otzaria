@@ -84,8 +84,8 @@ const List<BuiltInToolMeta> kBuiltInToolsCatalog = [
     toolId: 'builtin.aramaic_dictionary',
     label: 'מילון ארמי-עברי',
     order: 60,
-    icon: OtzariaIcons.beit_behind_alef_24_regular,
-    iconFilled: OtzariaIcons.beit_behind_alef_24_regular,
+    icon: OtzariaIcons.alef_near_alef_stam_24_regular,
+    iconFilled: OtzariaIcons.alef_near_alef_stam_24_regular,
   ),
   BuiltInToolMeta(
     toolId: 'builtin.acronyms_dictionary',

@@ -399,6 +399,10 @@ class _CalendarTimesPanelState extends State<CalendarTimesPanel> {
                 BarButton.icon(
                   tooltip: 'זמנים נוספים',
                   icon: OtzariaIcons.clock_add_24_regular,
+                  // ‏24 ולא 20 כשאר הסרגל: השעון ב-clock_add אינו ממלא את
+                  // הקנבס — הפלוס תופס את הפינה — ולכן הוא נקרא קטן
+                  // משמעותית מאייקון פלואנט באותו גודל נומינלי.
+                  iconSize: 24,
                   compact: true,
                   onPressed: () => showZmanimSettingsDialog(context),
                 ),

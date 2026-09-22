@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:otzaria/theme/app_tokens.dart';
 import 'package:otzaria/theme/app_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -42,7 +41,7 @@ import 'package:otzaria/services/target_line_links_service.dart';
 import 'package:otzaria/utils/navigation/talmud_bavli_open_format.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
 import 'package:otzaria/utils/ui/context_menu_utils.dart';
-import 'package:otzaria/widgets/text/rtl_text_field.dart';
+import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 import 'package:otzaria/widgets/text/rtl_selection_shortcuts.dart';
 import 'package:otzaria/widgets/text/selection_copy_shortcuts.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
@@ -1070,7 +1069,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
               label: 'מפרשים',
             ),
             PanelTab(
-              icon: OtzariaIcons.link_24_regular,
+              icon: OtzariaIcons.links_24_regular,
               label: 'קישורים',
             ),
             PanelTab(
@@ -1210,7 +1209,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
         const SizedBox(width: gap),
         // 4. הפעלת שדה החיפוש
         IconButton(
-          icon: const Icon(OtzariaIcons.search_24_regular),
+          icon: const Icon(FluentIcons.search_24_regular),
           tooltip: 'חיפוש',
           onPressed: _openInlineSearch,
         ),
@@ -1254,62 +1253,46 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
   }
 
   Widget _buildSearchFieldRow() {
-    return RtlTextField(
+    return OtzariaSearchField(
       focusNode: _searchFocusNode,
       controller: _searchController,
-      decoration: InputDecoration(
-        hintText: 'חפש בתוך המפרשים המוצגים...',
-        prefixIcon: const Icon(OtzariaIcons.search_in_the_library_24_regular),
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_searchQuery.isNotEmpty && _totalSearchResults > 0) ...[
-              Text(
-                '${_currentSearchIndex + 1}/$_totalSearchResults',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(FluentIcons.chevron_up_24_regular),
-                iconSize: 20,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                onPressed: _currentSearchIndex > 0
-                    ? () {
-                        setState(() {
-                          _currentSearchIndex--;
-                        });
-                        _scrollToSearchResult();
-                      }
-                    : null,
-              ),
-              IconButton(
-                icon: const Icon(FluentIcons.chevron_down_24_regular),
-                iconSize: 20,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                onPressed: _currentSearchIndex < _totalSearchResults - 1
-                    ? () {
-                        setState(() {
-                          _currentSearchIndex++;
-                        });
-                        _scrollToSearchResult();
-                      }
-                    : null,
-              ),
-            ],
-            IconButton(
-              icon: const Icon(FluentIcons.dismiss_24_regular),
-              tooltip: 'סגור חיפוש',
-              onPressed: _clearSearchAndCloseField,
-            ),
-          ],
+      hintText: 'חפש בתוך המפרשים המוצגים...',
+      icon: OtzariaIcons.search_in_the_library_24_regular,
+      selectAllOnFocus: false,
+      trailingActions: [
+        if (_searchQuery.isNotEmpty && _totalSearchResults > 1) ...[
+          OtzariaSearchAction.resultCounter(
+            current: _currentSearchIndex + 1,
+            total: _totalSearchResults,
+            context: context,
+          ),
+          OtzariaSearchAction.prevResult(
+            onPressed: _currentSearchIndex > 0
+                ? () {
+                    setState(() {
+                      _currentSearchIndex--;
+                    });
+                    _scrollToSearchResult();
+                  }
+                : null,
+          ),
+          OtzariaSearchAction.nextResult(
+            onPressed: _currentSearchIndex < _totalSearchResults - 1
+                ? () {
+                    setState(() {
+                      _currentSearchIndex++;
+                    });
+                    _scrollToSearchResult();
+                  }
+                : null,
+          ),
+        ],
+        OtzariaSearchAction.icon(
+          iconData: FluentIcons.dismiss_24_regular,
+          tooltip: 'סגור חיפוש',
+          onPressed: _clearSearchAndCloseField,
         ),
-        isDense: true,
-        border: OutlineInputBorder(
-          borderRadius: AppTokens.borderRadiusAll,
-        ),
-      ),
+      ],
       onChanged: (value) {
         setState(() {
           _searchQuery = value;
@@ -1393,7 +1376,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
       return Center(
         child: OtzariaEmptyState(
           isCompact: true,
-          icon: OtzariaIcons.link_24_regular,
+          icon: OtzariaIcons.links_24_regular,
           title: hasCommentaryLinks
               ? 'לא נמצאו מפרשים מהנבחרים לדף זה'
               : 'לא נמצאו מפרשים לקטע הנבחר',
