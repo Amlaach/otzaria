@@ -371,10 +371,12 @@ jobs:
       LIBRARY_PATH: /opt/wpe-sdk/lib
       # התוסף jni מפעיל FindJNI בזמן CMake; בקונטיינר אין JAVA_HOME ברירת מחדל.
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-      # WPE וה-runner תומכים גם ב-GCC. שימוש מפורש בו שומר על תאימות
-      # ל-Bookworm ומונע מ-Clang 14 לדחות דגל אזהרה אופציונלי של nlohmann/json.
-      CC: gcc
-      CXX: g++
+      # Flutter בוחר clang++ עבור Linux. Clang 14 של Bookworm אינו מכיר
+      # דגל אזהרה אופציונלי של nlohmann/json, לכן רק diagnostic זה אינו -Werror.
+      CC: clang
+      CXX: clang++
+      CFLAGS: -Wno-error=unknown-warning-option
+      CXXFLAGS: -Wno-error=unknown-warning-option
 
     steps:
       # הפעולה חייבת לרוץ לפני checkout: הקונטיינר המינימלי לא כולל git,
@@ -402,11 +404,13 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update -y
-          apt-get install -y build-essential cmake \
+          apt-get install -y build-essential clang-14 cmake \
             libblkid1 libcurl4-openssl-dev libglib2.0-dev libgtk-3-dev \
             liblzma5 liblzma-dev libsecret-1-dev libsoup-3.0-dev \
             libwebkit2gtk-4.1-dev libxkbcommon-dev ninja-build \
             openjdk-17-jdk-headless pkg-config xvfb xauth
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
 
       - name: Download prebuilt WPE runtime SDK
         env:
