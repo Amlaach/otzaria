@@ -355,7 +355,15 @@ jobs:
   build_linux:
     name: Build (Linux)
     runs-on: ubuntu-24.04
+    # ה-SDK של WPE נבנה ומופץ עבור Debian Bookworm. זהה את סביבת הבנייה
+    # לבדיקת ההפצה: על Ubuntu 24.04 ה-try_compile של WPEPlatform נכשל אף
+    # שה-PC modules נמצאים, ולכן אינו מייצג build נתמך של המוצר.
+    container:
+      image: debian:bookworm-slim
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     env:
       WPE_SDK: /opt/wpe-sdk
       PKG_CONFIG_PATH: /opt/wpe-sdk/lib/pkgconfig
@@ -363,6 +371,14 @@ jobs:
       LIBRARY_PATH: /opt/wpe-sdk/lib
 
     steps:
+      # הפעולה חייבת לרוץ לפני checkout: הקונטיינר המינימלי לא כולל git,
+      # curl, unzip או zstd, הנדרשים ל-actions ול-SDK.
+      - name: Prepare Linux build container
+        run: |
+          set -euo pipefail
+          apt-get update -y
+          apt-get install -y ca-certificates curl git jq unzip xz-utils zstd
+
       - name: Checkout code
         uses: actions/checkout@v7.0.1
 
@@ -375,10 +391,15 @@ jobs:
 
       - name: Install Linux build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl libglib2.0-dev libgtk-3-dev \
-            libsecret-1-dev libsoup-3.0-dev libxkbcommon-dev ninja-build \
-            pkg-config zstd
+          set -euo pipefail
+          apt-get update -y
+          apt-get install -y build-essential clang-14 cmake \
+            libblkid1 libcurl4-openssl-dev libglib2.0-dev libgtk-3-dev \
+            liblzma5 liblzma-dev libsecret-1-dev libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev libxkbcommon-dev ninja-build \
+            openjdk-17-jdk-headless pkg-config xvfb xauth
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
 
       - name: Download prebuilt WPE runtime SDK
         env:
@@ -388,10 +409,10 @@ jobs:
           set -euo pipefail
           asset="wpe-runtime-${WPE_RUNTIME_VERSION}-linux-x86_64.tar.zst"
           base="https://github.com/Otzaria/otzaria-wpe-runtime/releases/download/wpe-2.48.7-print-to-pdf"
-          curl -fSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/$asset" "$base/$asset"
-          printf '%s  %s\n' "$WPE_RUNTIME_SHA256" "$RUNNER_TEMP/$asset" | sha256sum -c -
-          sudo mkdir -p /opt
-          sudo tar -C /opt -I zstd -xf "$RUNNER_TEMP/$asset"
+          curl -fSL --retry 3 --retry-delay 5 -o "/tmp/$asset" "$base/$asset"
+          printf '%s  %s\n' "$WPE_RUNTIME_SHA256" "/tmp/$asset" | sha256sum -c -
+          mkdir -p /opt
+          tar -C /opt -I zstd -xf "/tmp/$asset"
           test -f "$WPE_SDK/lib/pkgconfig/wpe-webkit-2.0.pc"
           pkg-config --print-errors --exists \
             wpe-webkit-2.0 wpe-platform-2.0 wpe-platform-headless-2.0 wpe-1.0
