@@ -259,6 +259,13 @@ class _TabSearchPanelState extends State<TabSearchPanel> {
                           if (closedTabs.isNotEmpty) ...[
                             _SectionHeader(
                               label: context.settingsText('נסגרו לאחרונה'),
+                              actionIcon: FluentIcons.broom_24_regular,
+                              actionTooltip: context.settingsText(
+                                'נקה את הרשימה',
+                              ),
+                              onAction: () => context.read<TabsBloc>().add(
+                                const ClearRecentlyClosedTabs(),
+                              ),
                             ),
                             for (final tab in closedTabs)
                               _TabRow(
@@ -338,20 +345,53 @@ class _HistoryFooter extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String label;
+  final IconData? actionIcon;
+  final String? actionTooltip;
+  final VoidCallback? onAction;
 
-  const _SectionHeader({required this.label});
+  const _SectionHeader({
+    required this.label,
+    this.actionIcon,
+    this.actionTooltip,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.bold,
-        ),
+    final title = Text(
+      label,
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+        fontWeight: FontWeight.bold,
       ),
+    );
+    final hasAction = onAction != null;
+
+    return Padding(
+      padding: EdgeInsetsDirectional.only(
+        start: 16,
+        top: 8,
+        end: hasAction ? 4 : 16,
+        bottom: 2,
+      ),
+      child: hasAction
+          ? Row(
+              children: [
+                Expanded(child: title),
+                IconButton(
+                  icon: Icon(actionIcon, size: 14),
+                  tooltip: actionTooltip,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 28,
+                    minHeight: 28,
+                  ),
+                  onPressed: onAction,
+                ),
+              ],
+            )
+          : title,
     );
   }
 }

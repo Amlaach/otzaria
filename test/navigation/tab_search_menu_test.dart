@@ -28,9 +28,12 @@ void main() {
   late List<OpenedTab> tabs;
   late List<OpenedTab> closedTabs;
 
-  Future<void> openMenu(WidgetTester tester) async {
+  Future<void> openMenu(
+    WidgetTester tester, {
+    List<String> closedTitles = const ['במדבר'],
+  }) async {
     tabs = [_StubTab('בראשית'), _StubTab('שמות'), _StubTab('ויקרא')];
-    closedTabs = [_StubTab('במדבר')];
+    closedTabs = closedTitles.map(_StubTab.new).toList();
     tabsBloc = _TestTabsBloc(TabsState(tabs: tabs, currentTabIndex: 0))
       ..closedTabs = closedTabs;
     historyBloc = _TestHistoryBloc();
@@ -174,6 +177,34 @@ void main() {
         .toList();
     expect(restored.single.tab, same(closedTabs.single));
   });
+
+  testWidgets('כפתור הניקוי מרוקן את רשימת הנסגרות לאחרונה (issue #1414)', (
+    tester,
+  ) async {
+    await openMenu(tester);
+
+    await tester.tap(find.byTooltip('נקה את הרשימה'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tabsBloc.addedEvents.whereType<ClearRecentlyClosedTabs>(),
+      hasLength(1),
+    );
+    expect(find.text('נסגרו לאחרונה'), findsNothing);
+    expect(find.text('במדבר'), findsNothing);
+    // החלונית נשארת פתוחה והכרטיסיות הפתוחות אינן נוגעות בניקוי.
+    expect(find.byType(TabSearchPanel), findsOneWidget);
+    expect(find.text('בראשית'), findsOneWidget);
+  });
+
+  testWidgets('אין כפתור ניקוי כשאין כרטיסיות שנסגרו (issue #1414)', (
+    tester,
+  ) async {
+    await openMenu(tester, closedTitles: const []);
+
+    expect(find.text('נסגרו לאחרונה'), findsNothing);
+    expect(find.byTooltip('נקה את הרשימה'), findsNothing);
+  });
 }
 
 class _TestTabsBloc extends Cubit<TabsState> implements TabsBloc {
@@ -185,8 +216,16 @@ class _TestTabsBloc extends Cubit<TabsState> implements TabsBloc {
   @override
   List<OpenedTab> get recentlyClosedTabs => closedTabs;
 
+  /// הניקוי מדומה כמו ב-bloc האמיתי: הרשימה מתרוקנת, ו-`forceUpdate` הוא
+  /// מה שמרענן את החלונית — הרשימה אינה חלק מה-state.
   @override
-  void add(TabsEvent event) => addedEvents.add(event);
+  void add(TabsEvent event) {
+    addedEvents.add(event);
+    if (event is ClearRecentlyClosedTabs) {
+      closedTabs = const [];
+      emit(state.copyWith(forceUpdate: true));
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

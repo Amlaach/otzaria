@@ -160,6 +160,15 @@ class RestoreClosedTab extends TabsEvent {
   List<Object?> get props => [tab];
 }
 
+/// מנקה את רשימת הכרטיסיות שנסגרו לאחרונה
+/// (`TabsBloc.recentlyClosedTabs`) ומשחרר את המופעים השמורים בה.
+class ClearRecentlyClosedTabs extends TabsEvent {
+  const ClearRecentlyClosedTabs();
+
+  @override
+  List<Object?> get props => [];
+}
+
 class SetCurrentTab extends TabsEvent {
   final int index;
 
