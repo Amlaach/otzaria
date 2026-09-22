@@ -9,6 +9,9 @@ import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/library/bloc/library_bloc.dart';
+import 'package:otzaria/library/bloc/library_event.dart';
 import 'package:otzaria/library/hidden/hidden_books_import.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
@@ -106,6 +109,9 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     await widget.store.save(next);
     if (!mounted) return;
     setState(() => _hidden = next);
+    // בלי זה ההסתרה נכנסת לתוקף רק בהפעלה הבאה: LibraryBloc שומר את העץ
+    // ב-state והמסנן חל רק ברגע הטעינה (issue #1448).
+    context.read<LibraryBloc>().add(const HiddenBooksChanged());
   }
 
   Future<void> _pickBooks() async {

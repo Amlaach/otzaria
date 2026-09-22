@@ -24,6 +24,20 @@ enum RefreshSource {
   attachedLibraries,
 }
 
+/// רשימת ההסתרות השתנתה — בונה מחדש את העץ שהממשק מציג (issue #1448).
+///
+/// בלי האירוע הזה ההסתרה נכנסת לתוקף רק בהפעלה הבאה: [LibraryBloc] טוען את
+/// העץ פעם אחת ושומר אותו ב-state, והמסנן חל רק ברגע הטעינה.
+///
+/// זול מ-[RefreshLibrary]: ה-Future הממוטמן של הקטלוג אינו נדרס, ורק עץ
+/// הקטגוריות נבנה מחדש.
+class HiddenBooksChanged extends LibraryEvent {
+  const HiddenBooksChanged();
+
+  @override
+  List<Object?> get props => [];
+}
+
 class RefreshLibrary extends LibraryEvent {
   /// מפתחות catalogueOrderKey של ספרים שתוכנם השתנה ודורשים אינדוקס מחדש.
   final Set<String> changedBookKeys;

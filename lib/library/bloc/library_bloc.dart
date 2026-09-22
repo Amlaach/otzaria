@@ -57,6 +57,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
     // למסך הספרייה). כך הטעינה הראשונית + תחזוקת הרקע (prune) רצות פעם אחת.
     on<LoadLibrary>(_onLoadLibrary, transformer: droppable());
     on<RefreshLibrary>(_onRefreshLibrary);
+    on<HiddenBooksChanged>(_onHiddenBooksChanged);
     on<UpdateLibraryPath>(_onUpdateLibraryPath);
     on<UpdateHebrewBooksPath>(_onUpdateHebrewBooksPath);
     on<RemoveHebrewBooksPath>(_onRemoveHebrewBooksPath);
@@ -129,6 +130,39 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
         ),
       );
     }
+  }
+
+  Future<void> _onHiddenBooksChanged(
+    HiddenBooksChanged event,
+    Emitter<LibraryState> emit,
+  ) async {
+    if (state.library == null) return;
+    final library = await _visibleLibrary();
+    // כל קטגוריה מיוצגת באובייקט אחר בעץ החדש. מי שמחזיק הפניה לישן ימשיך
+    // להציג את הספירה הישנה — לכן גם הקטגוריה הנוכחית וגם זו שבתצוגה
+    // המקדימה נפתרות מחדש לפי הנתיב.
+    final current =
+        _categoryByPath(library, state.currentCategory?.path) ?? library;
+    final preview = state.previewCategory == null
+        ? null
+        : _categoryByPath(library, state.previewCategory!.path);
+    emit(
+      state.copyWith(
+        library: library,
+        currentCategory: current,
+        previewCategory: preview,
+        clearPreviewBook: preview == null && state.previewCategory != null,
+      ),
+    );
+  }
+
+  /// מאתר בעץ [library] את הקטגוריה שנתיבה [path]. `null` כשהיא הוסתרה.
+  Category? _categoryByPath(Library library, String? path) {
+    if (path == null || path == '/') return library;
+    for (final category in library.getAllCategories()) {
+      if (category.path == path) return category;
+    }
+    return null;
   }
 
   Future<void> _onRefreshLibrary(

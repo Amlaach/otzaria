@@ -1,6 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/library/bloc/library_bloc.dart';
+import 'package:otzaria/library/bloc/library_event.dart';
+import 'package:otzaria/library/bloc/library_state.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
@@ -35,12 +39,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  late _TestLibraryBloc libraryBloc;
   final droppedFromIndex = <String>[];
 
   setUp(() async {
     await Settings.init(cacheProvider: _MemoryCacheProvider());
     tempDir = await Directory.systemTemp.createTemp('hidden_books_panel');
     droppedFromIndex.clear();
+    libraryBloc = _TestLibraryBloc();
   });
 
   tearDown(() async {
@@ -54,18 +60,21 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1000, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Scaffold(
-            body: SingleChildScrollView(
-              child: HiddenBooksPanel(
-                pickFileOverride: pickFile,
-                libraryLoader: () async => _library(),
-                indexDropper: (books) async {
-                  droppedFromIndex.addAll(books.map((b) => b.title));
-                  return true;
-                },
+      BlocProvider<LibraryBloc>.value(
+        value: libraryBloc,
+        child: MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: HiddenBooksPanel(
+                  pickFileOverride: pickFile,
+                  libraryLoader: () async => _library(),
+                  indexDropper: (books) async {
+                    droppedFromIndex.addAll(books.map((b) => b.title));
+                    return true;
+                  },
+                ),
               ),
             ),
           ),
@@ -89,6 +98,23 @@ void main() {
 
     expect(const HiddenLibraryStore().load().bookKeys, {_key('בראשית')});
     expect(droppedFromIndex, ['בראשית']);
+  });
+
+  testWidgets('הסתרה מרעננת את עץ הספרייה מיד (issue #1448)', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(
+      libraryBloc.addedEvents.whereType<HiddenBooksChanged>(),
+      hasLength(1),
+      reason: 'בלעדיו ההסתרה נכנסת לתוקף רק בהפעלה הבאה',
+    );
   });
 
   testWidgets('ביטול בדיאלוג הבחירה אינו משנה דבר (issue #1448)', (
@@ -250,4 +276,16 @@ class _MemoryCacheProvider extends CacheProvider {
   Future<void> setString(String key, String? value) async {
     _values[key] = value;
   }
+}
+
+class _TestLibraryBloc extends Cubit<LibraryState> implements LibraryBloc {
+  _TestLibraryBloc() : super(LibraryState.initial());
+
+  final List<LibraryEvent> addedEvents = [];
+
+  @override
+  void add(LibraryEvent event) => addedEvents.add(event);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
