@@ -614,6 +614,7 @@ void main() {
     // בלעדיו אין בדסקטופ שום מסלול עכבר להעתקה מתוך PDF.
     List<AppContextMenuEntry> buildMenu({
       required bool hasTextSelection,
+      bool? canCopySelection,
       VoidCallback? onCopySelection,
     }) {
       return buildPdfContextMenuEntries(
@@ -627,6 +628,7 @@ void main() {
           onOpenLink: (_) {},
         ),
         hasTextSelection: hasTextSelection,
+        canCopySelection: canCopySelection ?? hasTextSelection,
         onSearch: () {},
         onSearchParallels: () {},
         onCopySelection: onCopySelection ?? () {},
@@ -652,6 +654,14 @@ void main() {
 
     test('פעולת "העתקה" מנוטרלת כשאין טקסט מסומן', () {
       expect(copyActionOf(buildMenu(hasTextSelection: false)).enabled, isFalse);
+    });
+
+    test('פעולת "העתקה" מנוטרלת כשהמסמך אוסר העתקה', () {
+      expect(
+        copyActionOf(buildMenu(hasTextSelection: true, canCopySelection: false))
+            .enabled,
+        isFalse,
+      );
     });
 
     test('לחיצה על "העתקה" מפעילה את העתקת הבחירה', () {

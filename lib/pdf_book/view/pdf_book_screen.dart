@@ -440,6 +440,7 @@ List<AppContextMenuEntry> buildPdfContextMenuEntries({
   required bool canSelectCommentators,
   required AppContextMenuEntry linksEntry,
   required bool hasTextSelection,
+  required bool canCopySelection,
   required VoidCallback onSearch,
   required VoidCallback onSearchParallels,
   required VoidCallback onCopySelection,
@@ -452,7 +453,7 @@ List<AppContextMenuEntry> buildPdfContextMenuEntries({
       AppContextMenuIconAction(
         label: 'העתקה',
         icon: FluentIcons.copy_24_regular,
-        enabled: hasTextSelection,
+        enabled: canCopySelection,
         onTap: onCopySelection,
       ),
       AppContextMenuIconAction(
@@ -1461,6 +1462,8 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       isLinksTabActive: isLinksTabActive,
     );
 
+    final hasTextSelection = _hasPdfTextSelection();
+
     return buildPdfContextMenuEntries(
       commentatorChildren: commentatorChildren,
       hasRelevantCommentators: relevantCommentators.isNotEmpty,
@@ -1471,7 +1474,8 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         onOpenLinksPane: _openLinksPane,
         onOpenLink: (link) => _openLinkTarget(menuContext, link),
       ),
-      hasTextSelection: _hasPdfTextSelection(),
+      hasTextSelection: hasTextSelection,
+      canCopySelection: hasTextSelection && _isPdfCopyAllowed(),
       onSearch: _ensureSearchTabIsActive,
       onSearchParallels: _searchParallelsFromSelection,
       onCopySelection: _copyPdfTextSelection,
@@ -1533,6 +1537,11 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     final controller = widget.tab.pdfViewerController;
     if (!controller.isReady) return false;
     return controller.textSelectionDelegate.hasSelectedText;
+  }
+
+  bool _isPdfCopyAllowed() {
+    final controller = widget.tab.pdfViewerController;
+    return controller.isReady && controller.textSelectionDelegate.isCopyAllowed;
   }
 
   /// מנרמל את הטקסט המסומן לשאילתת "חפש מקבילות": הסרת ניקוד/טעמים,
