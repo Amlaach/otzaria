@@ -5,7 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/indexing/repository/indexing_repository.dart';
+import 'package:otzaria/models/books.dart';
 import 'package:otzaria/library/hidden/hidden_books_import.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
@@ -31,11 +34,15 @@ class HiddenBooksPanel extends StatefulWidget {
   /// לצורכי בדיקה — עוקף את טעינת הספרייה.
   final Future<Library> Function()? libraryLoader;
 
+  /// מסיר ספרים מאינדקס החיפוש. ניתן להחלפה בבדיקות.
+  final Future<bool> Function(Iterable<Book> books)? indexDropper;
+
   const HiddenBooksPanel({
     super.key,
     this.store = const HiddenLibraryStore(),
     this.pickFileOverride,
     this.libraryLoader,
+    this.indexDropper,
   });
 
   /// פריטי חיפוש בהגדרות. נסרק על-ידי tool/generate_search_index.dart.
@@ -126,6 +133,9 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
         bookKeys: {..._hidden.bookKeys, ...result.matchedBookKeys},
       ),
     );
+    // ספר מוסתר יורד מאינדקס החיפוש מיד (issue #1448), ולא מסונן מהתוצאות:
+    // כך מונה התוצאות וספירות חלונית הסינון נשארים נכונים.
+    await _dropFromIndex(library, result.matchedBookKeys);
     await _loadTitles();
     if (!mounted) return;
 
@@ -135,6 +145,25 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
           : 'הוסתרו ${result.matchedBookKeys.length} ספרים; '
                 '${result.unmatchedNames.length} שמות לא נמצאו בספרייה',
     );
+  }
+
+  Future<void> _dropFromIndex(Library library, Set<String> keys) async {
+    if (keys.isEmpty) return;
+    final books = library
+        .getAllBooks()
+        .where((book) => keys.contains(PerBookSettings.bookKey(book)))
+        .toList();
+    if (books.isEmpty) return;
+    final drop =
+        widget.indexDropper ??
+        IndexingRepository(TantivyDataProvider.instance).dropBookIndexEntries;
+    try {
+      await drop(books);
+    } catch (error) {
+      // כשל בהסרה מהאינדקס אינו מבטל את ההסתרה — הספר כבר נעלם מהממשק,
+      // וריצת האינדוקס הבאה תדלג עליו ממילא.
+      debugPrint('[HiddenBooks] index drop failed: $error');
+    }
   }
 
   Future<String?> _pickFile() async {

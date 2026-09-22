@@ -35,10 +35,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory tempDir;
+  final droppedFromIndex = <String>[];
 
   setUp(() async {
     await Settings.init(cacheProvider: _MemoryCacheProvider());
     tempDir = await Directory.systemTemp.createTemp('hidden_books_panel');
+    droppedFromIndex.clear();
   });
 
   tearDown(() async {
@@ -60,6 +62,10 @@ void main() {
               child: HiddenBooksPanel(
                 pickFileOverride: pickFile,
                 libraryLoader: () async => _library(),
+                indexDropper: (books) async {
+                  droppedFromIndex.addAll(books.map((b) => b.title));
+                  return true;
+                },
               ),
             ),
           ),
@@ -96,6 +102,23 @@ void main() {
       reason: 'רק השם שהותאם נשמר',
     );
     expect(find.text('בראשית'), findsOneWidget);
+  });
+
+  testWidgets('ספר שהוסתר יורד מאינדקס החיפוש (issue #1448)', (tester) async {
+    final file = File('${tempDir.path}/hide.csv')..writeAsStringSync('שמות\n');
+
+    await pump(tester, pickFile: () async => file.path);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('בחר קובץ'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      droppedFromIndex,
+      ['שמות'],
+      reason: 'הסרה מהאינדקס ולא סינון תוצאות — כך המונה נשאר נכון',
+    );
   });
 
   testWidgets('ביטול הסתרה מסיר מהרשימה (issue #1448)', (tester) async {

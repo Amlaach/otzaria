@@ -1,7 +1,7 @@
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/library/hidden/hidden_library_filter.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
-import 'package:otzaria/library/hidden/hidden_search_filter.dart';
+import 'package:otzaria/library/hidden/hidden_titles.dart';
 import 'dart:async';
 import 'package:otzaria/core/error_log_file.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';

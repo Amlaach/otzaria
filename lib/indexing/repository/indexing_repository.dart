@@ -1,3 +1,5 @@
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -54,7 +56,31 @@ class _PdfExtractionFailure implements Exception {
 class IndexingRepository {
   final TantivyDataProvider _tantivyDataProvider;
 
-  IndexingRepository(this._tantivyDataProvider);
+  /// רשימת ההסתרות. ניתנת להחלפה בבדיקות.
+  final HiddenLibraryStore hiddenStore;
+
+  IndexingRepository(
+    this._tantivyDataProvider, {
+    this.hiddenStore = const HiddenLibraryStore(),
+  });
+
+  /// הספרים שייכנסו לאינדוקס מתוך [ordered].
+  ///
+  /// ספר מוסתר אינו מאונדקס כלל (issue #1448). הוצאה מהאינדקס, ולא סינון של
+  /// התוצאות, היא מה ששומר על מונה התוצאות ועל ספירות חלונית הסינון.
+  @visibleForTesting
+  static List<Book> booksForIndexing(
+    List<Book> ordered, {
+    required bool includePdfBooks,
+    required HiddenLibrarySelection hidden,
+  }) => ordered
+      .where(
+        (book) =>
+            isIndexableBook(book) &&
+            (includePdfBooks || book is! PdfBook) &&
+            !hidden.isBookHidden(book),
+      )
+      .toList();
 
   bool _paused = false;
   Completer<void>? _resumeGate;
@@ -301,12 +327,13 @@ class IndexingRepository {
       );
     }
 
-    final allBooks = orderBooksForIndexing(library.getIndexableBooks())
-        .where(
-          (book) =>
-              isIndexableBook(book) && (includePdfBooks || book is! PdfBook),
-        )
-        .toList();
+    // מקור הספרים מ-dev (getIndexableBooks), והסינון דרך booksForIndexing
+    // כדי שספר מוסתר לא ייכנס לאינדקס מלכתחילה (issue #1448).
+    final allBooks = IndexingRepository.booksForIndexing(
+      orderBooksForIndexing(library.getIndexableBooks()),
+      includePdfBooks: includePdfBooks,
+      hidden: hiddenStore.load(),
+    );
     final totalBooks = allBooks.length;
 
     if (await requiresManualReindex(library)) {
