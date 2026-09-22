@@ -167,4 +167,90 @@ void main() {
       );
     });
   });
+
+  group('PluginFsService.deleteFolder', () {
+    test('מוחקת תיקייה על כל תוכנה', () async {
+      final dir = Directory(p.join(tempDir.path, 'coll'))
+        ..createSync(recursive: true);
+      File(p.join(dir.path, 'a.txt')).writeAsStringSync('x');
+      Directory(p.join(dir.path, 'sub')).createSync();
+      File(p.join(dir.path, 'sub', 'b.txt')).writeAsStringSync('y');
+
+      await service.deleteFolder(dir.path);
+
+      expect(await dir.exists(), isFalse);
+    });
+
+    test('idempotent — אינה זורקת כשהתיקייה אינה קיימת', () async {
+      await service.deleteFolder(p.join(tempDir.path, 'nope'));
+    });
+
+    test('זורקת כשהנתיב הוא קובץ', () async {
+      final file = File(p.join(tempDir.path, 'x.txt'))
+        ..writeAsStringSync('data');
+      await expectLater(
+        service.deleteFolder(file.path),
+        throwsA(isA<Exception>()),
+      );
+    });
+  });
+
+  group('PluginFsService.moveEntry', () {
+    test('מזיזה תיקייה עם תוכנה ליעד חדש', () async {
+      final from = Directory(p.join(tempDir.path, 'old_name'))
+        ..createSync(recursive: true);
+      File(p.join(from.path, 'a.txt')).writeAsStringSync('שלום');
+      Directory(p.join(from.path, 'sub')).createSync();
+      File(p.join(from.path, 'sub', 'b.txt')).writeAsStringSync('עולם');
+
+      final to = p.join(tempDir.path, 'new_name');
+      await service.moveEntry(from.path, to);
+
+      expect(await from.exists(), isFalse);
+      expect(File(p.join(to, 'a.txt')).readAsStringSync(), 'שלום');
+      expect(File(p.join(to, 'sub', 'b.txt')).readAsStringSync(), 'עולם');
+    });
+
+    test('מזיזה קובץ בודד ליעד חדש, כולל יצירת תיקיית האב', () async {
+      final from = File(p.join(tempDir.path, 'a.txt'))
+        ..writeAsStringSync('data');
+      final to = p.join(tempDir.path, 'nested', 'deeper', 'a.txt');
+
+      await service.moveEntry(from.path, to);
+
+      expect(await from.exists(), isFalse);
+      expect(File(to).readAsStringSync(), 'data');
+    });
+
+    test('זורקת error.not_found כשהמקור אינו קיים', () async {
+      await expectLater(
+        service.moveEntry(
+          p.join(tempDir.path, 'nope'),
+          p.join(tempDir.path, 'dest'),
+        ),
+        throwsA(
+          predicate((e) => e is Exception && e.toString().contains('error.not_found')),
+        ),
+      );
+    });
+
+    test('זורקת error.invalid_params ולא דורסת כשהיעד כבר קיים', () async {
+      final from = File(p.join(tempDir.path, 'a.txt'))
+        ..writeAsStringSync('new content');
+      final to = File(p.join(tempDir.path, 'b.txt'))
+        ..writeAsStringSync('existing content');
+
+      await expectLater(
+        service.moveEntry(from.path, to.path),
+        throwsA(
+          predicate(
+            (e) => e is Exception && e.toString().contains('error.invalid_params'),
+          ),
+        ),
+      );
+      // היעד הקיים לא נדרס, והמקור לא נמחק.
+      expect(to.readAsStringSync(), 'existing content');
+      expect(await from.exists(), isTrue);
+    });
+  });
 }

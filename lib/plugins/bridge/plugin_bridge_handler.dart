@@ -135,6 +135,9 @@ class PluginBridgeHandler {
       method == 'network.fetchStream' ||
       method == 'network.download' ||
       method == 'fs.extractZip' ||
+      // כמו extractZip: תיקייה גדולה שנעה בין כרכי דיסק שונים נופלת להעתקה
+      // רקורסיבית (ראה PluginFsService.moveEntry), שיכולה לארוך זמן.
+      method == 'fs.moveEntry' ||
       // סריקת התיקיות האישיות היא I/O על הדיסק שתלוי בכמות הקבצים אצל
       // המשתמש; היא מנהלת חסם זמן משלה באדפטר.
       method == 'library.refreshUserBooks' ||
@@ -454,10 +457,13 @@ class PluginBridgeHandler {
     // היעד, יחד עם רשימת ההיתר של המניפסט.
     'network.fetchStream': noManifestPermission,
     'network.download': noManifestPermission,
-    // extractZip/deleteFile מגודרות בכך שהנתיב חייב להיות בתוך תיקייה
-    // שהמשתמש בחר דרך ui.pickFolder — ההסכמה שם היא גבול האבטחה.
+    // extractZip/deleteFile/deleteFolder/moveEntry מגודרות בכך שהנתיב חייב
+    // להיות בתוך תיקייה שהמשתמש בחר דרך ui.pickFolder — ההסכמה שם היא גבול
+    // האבטחה.
     'fs.extractZip': noManifestPermission,
     'fs.deleteFile': noManifestPermission,
+    'fs.deleteFolder': noManifestPermission,
+    'fs.moveEntry': noManifestPermission,
     // המרחב הפרטי: כל הפעולות מוגבלות לשורש `<data>/plugins/data/<id>/files`
     // ואינן יכולות לצאת ממנו. השורש עצמו הוא הגבול, ולכן אין מה לבקש מהמשתמש.
     'fs.writeFile': noManifestPermission,

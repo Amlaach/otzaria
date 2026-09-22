@@ -3753,6 +3753,31 @@ class PluginBridgeAdapter {
         }
         await _fsService.deleteFile(path);
         return true;
+      case 'deleteFolder':
+        final folderPath = args['path'] as String?;
+        if (folderPath == null) {
+          throw Exception('error.invalid_params: path required');
+        }
+        if (!_isPathInGrantedFolder(folderPath)) {
+          throw Exception(
+            'error.forbidden: path outside a user-selected folder',
+          );
+        }
+        await _fsService.deleteFolder(folderPath);
+        return true;
+      case 'moveEntry':
+        final from = args['from'] as String?;
+        final to = args['to'] as String?;
+        if (from == null || to == null) {
+          throw Exception('error.invalid_params: from and to required');
+        }
+        if (!_isPathInGrantedFolder(from) || !_isPathInGrantedFolder(to)) {
+          throw Exception(
+            'error.forbidden: path outside a user-selected folder',
+          );
+        }
+        await _fsService.moveEntry(from, to);
+        return true;
       case 'writeFile':
         return await _writeWorkspaceFile(args);
       case 'readFile':

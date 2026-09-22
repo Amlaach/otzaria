@@ -168,6 +168,80 @@ class PluginFsService {
     // הקובץ אינו קיים — אין מה למחוק, פעולה idempotent ללא שגיאה.
   }
 
+  /// מוחקת תיקייה (על כל תוכנה) ב-[path]. בשונה מ-[deleteFile], שמוגבל
+  /// לקבצים בלבד — זו הדרך היחידה בתוך תיקייה מאושרת (`ui.pickFolder`)
+  /// לנקות תיקייה ישנה, למשל אחרי שינוי מבנה במקור נתונים מרוחק (rename).
+  ///
+  /// idempotent — תיקייה שאינה קיימת מסתיימת בשקט. זורקת אם [path] הוא קובץ.
+  Future<void> deleteFolder(String path) async {
+    final dir = Directory(path);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+      return;
+    }
+    if (await File(path).exists()) {
+      throw Exception('error.invalid_params: path is a file');
+    }
+    // התיקייה אינה קיימת — אין מה למחוק, פעולה idempotent ללא שגיאה.
+  }
+
+  /// מזיזה/משנה שם של קובץ או תיקייה מ-[from] אל [to], שניהם בתוך תיקייה
+  /// מאושרת. משמש תוסף שצריך לשקף שינוי מבנה (rename/relocate) במקור נתונים
+  /// מרוחק גם בעותק המקומי של המשתמש, בלי להוריד הכל מחדש.
+  ///
+  /// זורקת `error.not_found` אם [from] אינו קיים, ו-`error.invalid_params`
+  /// אם [to] כבר קיים — כדי לא לדרוס בשקט תוכן קיים ביעד (למשל תיקייה
+  /// שהמשתמש כבר הוריד בנפרד תחת אותו שם). הקורא אחראי למחוק את [to] קודם
+  /// (למשל דרך [deleteFolder]) אם דריסה היא הכוונה.
+  ///
+  /// `File.rename`/`Directory.rename` יכולים להיכשל בין כרכי דיסק שונים
+  /// (למשל תיקייה שנבחרה בדיסק אחר) — נופלת אז להעתקה+מחיקה.
+  Future<void> moveEntry(String from, String to) async {
+    final sourceIsDir = await Directory(from).exists();
+    final sourceIsFile = !sourceIsDir && await File(from).exists();
+    if (!sourceIsDir && !sourceIsFile) {
+      throw Exception('error.not_found: source does not exist');
+    }
+    if (await Directory(to).exists() || await File(to).exists()) {
+      throw Exception('error.invalid_params: destination already exists');
+    }
+
+    final parent = Directory(p.dirname(to));
+    await parent.create(recursive: true);
+
+    try {
+      if (sourceIsDir) {
+        await Directory(from).rename(to);
+      } else {
+        await File(from).rename(to);
+      }
+    } on FileSystemException {
+      if (sourceIsDir) {
+        await _copyDirectoryRecursive(Directory(from), Directory(to));
+        await Directory(from).delete(recursive: true);
+      } else {
+        await File(from).copy(to);
+        await File(from).delete();
+      }
+    }
+  }
+
+  /// מעתיקה תיקייה רקורסיבית — גיבוי ל-[moveEntry] כש-`rename` נכשל (בד"כ
+  /// חצייה בין כרכי דיסק, `EXDEV`). symlinks מדולגים, כמו ב-[extractZip].
+  Future<void> _copyDirectoryRecursive(Directory src, Directory dst) async {
+    await dst.create(recursive: true);
+    await for (final entity in src.list(followLinks: false)) {
+      final name = p.basename(entity.path);
+      final target = p.join(dst.path, name);
+      if (await FileSystemEntity.isLink(entity.path)) continue;
+      if (entity is Directory) {
+        await _copyDirectoryRecursive(entity, Directory(target));
+      } else if (entity is File) {
+        await entity.copy(target);
+      }
+    }
+  }
+
   // ================================================================
   // המרחב הפרטי של התוסף
   // ================================================================
