@@ -29,6 +29,9 @@ abstract class LibraryMessages {
   static String distanceSetAsDefault(int distance) =>
       'מרווח $distance נקבע כברירת מחדל לחיפוש רגיל';
 
+  static String searchModeSetAsDefault(String mode) =>
+      'חיפוש חדש ייפתח מעכשיו במצב $mode';
+
   static const String searchIndexMissing =
       'אינדקס לא קיים, לא ניתן לבצע חיפוש זה ללא אינדקס.';
 
@@ -80,6 +83,11 @@ abstract class LibraryMessages {
       'שגיאה בחיבור לרשת במהלך בדיקת עדכונים';
 
   static const String updateCheckError = 'שגיאה בבדיקת עדכונים';
+
+  /// GitHub הגביל את מספר הבדיקות מכתובת ה-IP; [minutes] = `null` כשלא ידוע.
+  static String updateRateLimited(int? minutes) => minutes == null
+      ? 'GitHub הגביל זמנית את מספר הבדיקות מרשת זו. נסה שוב מאוחר יותר'
+      : 'GitHub הגביל זמנית את מספר הבדיקות מרשת זו. נסה שוב בעוד $minutes דקות';
 
   static const String noInternetConnection = 'אין חיבור לאינטרנט';
 
