@@ -428,6 +428,72 @@ List<AppContextMenuEntry> buildGroupedCommentatorEntries({
   return items;
 }
 
+/// מרכיב את פריטי תפריט ההקשר של עמוד ה-PDF.
+///
+/// התפריט הזה מחליף את התפריט המובנה של pdfrx — `onGeneralTap` מחזיר `true`
+/// ל-secondaryTap ול-longPress, ולכן pdfrx לא מציג את שלו. כל פעולה שהתפריט
+/// המובנה סיפק חייבת להופיע כאן, אחרת היא נעלמת מהמשתמש (issue #1420).
+@visibleForTesting
+List<AppContextMenuEntry> buildPdfContextMenuEntries({
+  required List<AppContextMenuEntry> commentatorChildren,
+  required bool hasRelevantCommentators,
+  required bool canSelectCommentators,
+  required AppContextMenuEntry linksEntry,
+  required bool hasTextSelection,
+  required bool canCopySelection,
+  required VoidCallback onSearch,
+  required VoidCallback onSearchParallels,
+  required VoidCallback onCopySelection,
+  required VoidCallback onAddBookmark,
+  required VoidCallback onAddNote,
+}) {
+  return [
+    // שורת אייקונים עליונה בסגנון Windows 11, כמו בתצוגת הטקסט.
+    AppContextMenuEntry.iconRow([
+      AppContextMenuIconAction(
+        label: 'העתקה',
+        icon: FluentIcons.copy_24_regular,
+        enabled: canCopySelection,
+        onTap: onCopySelection,
+      ),
+      AppContextMenuIconAction(
+        label: 'מקבילות',
+        tooltip: 'חפש מקבילות',
+        icon: OtzariaIcons.book_search_24_regular,
+        enabled: hasTextSelection,
+        onTap: onSearchParallels,
+      ),
+      AppContextMenuIconAction(
+        label: 'הערה',
+        tooltip: 'הוסף הערה אישית',
+        icon: FluentIcons.note_add_24_regular,
+        onTap: onAddNote,
+      ),
+    ]),
+    const AppContextMenuEntry.divider(),
+    AppContextMenuEntry(
+      label: 'חיפוש',
+      icon: FluentIcons.search_24_regular,
+      onTap: onSearch,
+    ),
+    AppContextMenuEntry(
+      label: 'מפרשים',
+      icon: OtzariaIcons.book_24_regular,
+      // התת-תפריט פעיל אם יש בדף מפרשים זמינים, או אם ניתן לפתוח את
+      // חלונית בחירת המפרשים (כדי לאפשר בחירה התחלתית גם בדף ללא מפרשים).
+      enabled: hasRelevantCommentators || canSelectCommentators,
+      children: commentatorChildren,
+    ),
+    linksEntry,
+    const AppContextMenuEntry.divider(),
+    AppContextMenuEntry(
+      label: 'הוסף סימניה לעמוד זה',
+      icon: FluentIcons.bookmark_add_24_regular,
+      onTap: onAddBookmark,
+    ),
+  ];
+}
+
 /// מרווח השדרה בין שני עמודי הכפולה, ביחידות נקודות העמוד.
 const double kBookViewSpineGap = 6.0;
 
@@ -1396,44 +1462,34 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       isLinksTabActive: isLinksTabActive,
     );
 
-    return [
-      AppContextMenuEntry(
-        label: 'חיפוש',
-        icon: FluentIcons.search_24_regular,
-        onTap: _ensureSearchTabIsActive,
-      ),
-      AppContextMenuEntry(
-        label: 'חפש מקבילות',
-        icon: OtzariaIcons.book_search_24_regular,
-        enabled: _hasPdfTextSelection(),
-        onTap: _searchParallelsFromSelection,
-      ),
-      AppContextMenuEntry(
-        label: 'מפרשים',
-        icon: OtzariaIcons.book_24_regular,
-        // התת-תפריט פעיל אם יש בדף מפרשים זמינים, או אם ניתן לפתוח את
-        // חלונית בחירת המפרשים (כדי לאפשר בחירה התחלתית גם בדף ללא מפרשים).
-        enabled: relevantCommentators.isNotEmpty || shouldShowSelectEntry,
-        children: commentatorChildren,
-      ),
-      buildPdfLinksContextMenuEntry(
+    final hasTextSelection = _hasPdfTextSelection();
+
+    return buildPdfContextMenuEntries(
+      commentatorChildren: commentatorChildren,
+      hasRelevantCommentators: relevantCommentators.isNotEmpty,
+      canSelectCommentators: shouldShowSelectEntry,
+      linksEntry: buildPdfLinksContextMenuEntry(
         relevantLinks: relevantLinks,
         showOpenLinksPaneEntry: showOpenLinksPaneEntry,
         onOpenLinksPane: _openLinksPane,
         onOpenLink: (link) => _openLinkTarget(menuContext, link),
       ),
-      const AppContextMenuEntry.divider(),
-      AppContextMenuEntry(
-        label: 'הוסף סימניה לעמוד זה',
-        icon: FluentIcons.bookmark_add_24_regular,
-        onTap: () => _handleBookmarkPress(menuContext),
-      ),
-      AppContextMenuEntry(
-        label: 'הוסף הערה אישית',
-        icon: FluentIcons.note_add_24_regular,
-        onTap: () => _handleAddNotePress(menuContext),
-      ),
-    ];
+      hasTextSelection: hasTextSelection,
+      canCopySelection: hasTextSelection && _isPdfCopyAllowed(),
+      onSearch: _ensureSearchTabIsActive,
+      onSearchParallels: _searchParallelsFromSelection,
+      onCopySelection: _copyPdfTextSelection,
+      onAddBookmark: () => _handleBookmarkPress(menuContext),
+      onAddNote: () => _handleAddNotePress(menuContext),
+    );
+  }
+
+  /// העתקת הטקסט המסומן דרך pdfrx — אותו מסלול שמפעיל Ctrl+C, והוא זה
+  /// שמכבד את הרשאת ההעתקה של המסמך.
+  void _copyPdfTextSelection() {
+    final controller = widget.tab.pdfViewerController;
+    if (!controller.isReady) return;
+    controller.textSelectionDelegate.copyTextSelection();
   }
 
   /// פתיחת יעד קישור מתפריט ההקשר. יעד השייך לתלמוד בבלי נפתח כ-PDF
@@ -1481,6 +1537,11 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     final controller = widget.tab.pdfViewerController;
     if (!controller.isReady) return false;
     return controller.textSelectionDelegate.hasSelectedText;
+  }
+
+  bool _isPdfCopyAllowed() {
+    final controller = widget.tab.pdfViewerController;
+    return controller.isReady && controller.textSelectionDelegate.isCopyAllowed;
   }
 
   /// מנרמל את הטקסט המסומן לשאילתת "חפש מקבילות": הסרת ניקוד/טעמים,
