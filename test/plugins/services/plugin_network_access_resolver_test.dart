@@ -28,6 +28,12 @@ PluginManifest _buildManifest({List<String> networkAllowlist = const []}) {
   );
 }
 
+http.Response _officialAllowlistResponse(String body) => http.Response(
+  body,
+  200,
+  headers: const {'content-type': 'text/plain; charset=utf-8'},
+);
+
 void main() {
   group('PluginNetworkAccessResolver', () {
     test('מתיר URL מהרשימה הרשמית רק אם הוא הוצהר גם במניפסט', () async {
@@ -35,7 +41,7 @@ void main() {
       final client = MockClient((request) async {
         fetches++;
         expect(request.url, PluginNetworkAccessResolver.officialAllowlistUri);
-        return http.Response('https://nakdan.dicta.org.il/api\n', 200);
+        return _officialAllowlistResponse('https://nakdan.dicta.org.il/api\n');
       });
       final resolver = PluginNetworkAccessResolver(client: client);
       final localUri = Uri.parse('https://nakdan.dicta.org.il/api?text=שלום');
@@ -62,7 +68,7 @@ void main() {
 
     test('הרשימה הרשמית יכולה לבטל כתובת שקיימת ברשימה המקומפלת', () async {
       final client = MockClient((_) async {
-        return http.Response('https://approved.example.com/api\n', 200);
+        return _officialAllowlistResponse('https://approved.example.com/api\n');
       });
       final resolver = PluginNetworkAccessResolver(client: client);
       final compiledUri = Uri.parse('https://nakdan.dicta.org.il/api');
@@ -80,7 +86,7 @@ void main() {
 
     test('רשימה רשמית ריקה חוסמת גם כתובות מקומפלות', () async {
       final client = MockClient(
-        (_) async => http.Response('# emergency\n', 200),
+        (_) async => _officialAllowlistResponse('# emergency\n'),
       );
       final resolver = PluginNetworkAccessResolver(client: client);
 
@@ -182,6 +188,7 @@ https://api.example.com/root
 https://other.example.com
 '''),
           200,
+          headers: const {'content-type': 'text/plain; charset=utf-8'},
         );
       });
       final resolver = PluginNetworkAccessResolver(client: client);
@@ -198,7 +205,7 @@ https://other.example.com
 
     test('חוסם URL מהרשימה הרשמית אם המניפסט לא הצהיר עליו', () async {
       final client = MockClient((_) async {
-        return http.Response('https://api.example.com/root\n', 200);
+        return _officialAllowlistResponse('https://api.example.com/root\n');
       });
       final resolver = PluginNetworkAccessResolver(client: client);
 
@@ -216,7 +223,7 @@ https://other.example.com
       var fetches = 0;
       final client = MockClient((_) async {
         fetches++;
-        return http.Response('https://cached.example.com/api\n', 200);
+        return _officialAllowlistResponse('https://cached.example.com/api\n');
       });
       final resolver = PluginNetworkAccessResolver(client: client);
       final manifest = _buildManifest(
@@ -245,14 +252,122 @@ https://other.example.com
       );
       final uri = Uri.parse('https://blocked.example.com/api/v1/check');
 
+      // כל ניסיון כושל כולל שתי קריאות: raw.githubusercontent ואז Contents
+      // API כגיבוי (שגם הוא נכשל כאן) — לפני נפילה לרשימה המקומפלת.
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
-      expect(fetches, 1);
+      expect(fetches, 2);
 
       now = now.add(const Duration(minutes: 6));
       expect(await resolver.isUriAllowedForPlugin(uri, manifest), isFalse);
-      expect(fetches, 2);
+      expect(fetches, 4);
     });
+
+    test(
+      'raw.githubusercontent חסום — נופל ל-Contents API לפני הרשימה המקומפלת',
+      () async {
+        final client = MockClient((request) async {
+          if (request.url.host == 'raw.githubusercontent.com') {
+            return http.Response('blocked by content filter', 403);
+          }
+          expect(
+            request.url,
+            PluginNetworkAccessResolver.officialAllowlistContentsApiUri,
+          );
+          expect(request.headers['Accept'], 'application/vnd.github.raw');
+          return http.Response(
+            'https://api.example.com/root\n',
+            200,
+            headers: const {
+              'content-type': 'application/vnd.github.raw; charset=utf-8',
+            },
+          );
+        });
+        final resolver = PluginNetworkAccessResolver(client: client);
+
+        final allowed = await resolver.isUriAllowedForPlugin(
+          Uri.parse('https://api.example.com/root/v1/items'),
+          _buildManifest(
+            networkAllowlist: const ['https://api.example.com/root'],
+          ),
+        );
+
+        expect(allowed, isTrue);
+      },
+    );
+
+    test(
+      'דף חסימה של מסנן תוכן (200 + html) נחשב ככשל ונופל ל-Contents API',
+      () async {
+        final client = MockClient((request) async {
+          if (request.url.host == 'raw.githubusercontent.com') {
+            return http.Response(
+              '<html><body>הכתובת חסומה ע"י מדיניות הארגון</body></html>',
+              200,
+              headers: const {'content-type': 'text/html; charset=utf-8'},
+            );
+          }
+          return http.Response(
+            'https://api.example.com/root\n',
+            200,
+            headers: const {
+              'content-type': 'application/vnd.github.raw; charset=utf-8',
+            },
+          );
+        });
+        final resolver = PluginNetworkAccessResolver(client: client);
+
+        final allowed = await resolver.isUriAllowedForPlugin(
+          Uri.parse('https://api.example.com/root/v1/items'),
+          _buildManifest(
+            networkAllowlist: const ['https://api.example.com/root'],
+          ),
+        );
+
+        expect(allowed, isTrue);
+      },
+    );
+
+    test('הודעת חסימה טקסטואלית אינה נחשבת ל-allowlist רשמי', () async {
+      final client = MockClient((request) async {
+        if (request.url.host == 'raw.githubusercontent.com') {
+          return http.Response(
+            'Access denied by the content filter',
+            200,
+            headers: const {'content-type': 'text/plain; charset=utf-8'},
+          );
+        }
+        return http.Response(
+          'https://api.example.com/root\n',
+          200,
+          headers: const {
+            'content-type': 'application/vnd.github.raw; charset=utf-8',
+          },
+        );
+      });
+      final resolver = PluginNetworkAccessResolver(client: client);
+
+      final allowed = await resolver.isUriAllowedForPlugin(
+        Uri.parse('https://api.example.com/root/v1/items'),
+        _buildManifest(
+          networkAllowlist: const ['https://api.example.com/root'],
+        ),
+      );
+
+      expect(allowed, isTrue);
+    });
+
+    test(
+      'כתובת ה-Contents API הגיבוי מצביעה על הקובץ הרשמי בענף dev',
+      () {
+        expect(
+          PluginNetworkAccessResolver.officialAllowlistContentsApiUri
+              .toString(),
+          'https://api.github.com/repos/Otzaria/otzaria/contents/'
+          'plugin_network_allowlist.txt?ref=dev',
+        );
+      },
+    );
 
     test('כתובת הרשימה הרשמית מצביעה על הקובץ שבענף dev', () {
       expect(
