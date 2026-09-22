@@ -11,6 +11,7 @@ import 'package:otzaria/data/data_providers/cache_database_holder.dart';
 import 'package:otzaria/data/data_providers/user_books_database_holder.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/data/data_providers/database_library_provider.dart';
+import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/library/models/library.dart' as library_models;
 import 'package:otzaria/migration/models/author.dart';
@@ -1262,6 +1263,9 @@ void main() {
             'CREATE TABLE alt_toc_structure (id INTEGER PRIMARY KEY, bookId INTEGER, key TEXT, title TEXT, heTitle TEXT)',
           );
           db.execute(
+            'CREATE TABLE category (id INTEGER PRIMARY KEY, title TEXT)',
+          );
+          db.execute(
             "INSERT INTO book (id, title, categoryId) VALUES (1, 'הקדמה', 5), (2, 'הקדמה', 7)",
           );
           db.execute(
@@ -2066,7 +2070,7 @@ void main() {
             path2: 'הערות לבדיקה',
             index2: 2,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
           ),
         );
         expect(single, 'שורה שנייה');
@@ -2079,7 +2083,7 @@ void main() {
             index2: 2,
             index2End: 3,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
           ),
         );
         expect(range, 'שורה שנייה<br>שורה שלישית');
@@ -2091,7 +2095,7 @@ void main() {
             path2: 'הערות לבדיקה',
             index2: 99,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
           ),
         );
         expect(outOfRange, 'שגיאה: אינדקס מחוץ לטווח');
@@ -2104,7 +2108,7 @@ void main() {
             path2: 'הערות לבדיקה',
             index2: 1,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
             targetCategoryId: otherCategoryId,
           ),
         );
@@ -2130,7 +2134,7 @@ void main() {
             path2: 'ספר דוקס',
             index2: 1,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
           ),
         );
         expect(docxContent, '<h1>ספר דוקס</h1>');
@@ -2155,7 +2159,7 @@ void main() {
             path2: 'ספר סרוק',
             index2: 1,
             connectionType: 'commentary',
-            targetIsUserBook: true,
+            targetSource: BookSource.user,
           ),
         );
         expect(pdfContent, 'שגיאה: אינדקס מחוץ לטווח');

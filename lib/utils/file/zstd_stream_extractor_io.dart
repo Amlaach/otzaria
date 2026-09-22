@@ -10,6 +10,8 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:otzaria/utils/file/zstd_library.dart';
+import 'package:otzaria/utils/file/zstd_stream_extractor.dart';
 import 'package:zstandard_native/zstandard_native_bindings.dart';
 
 /// מחלץ את [archivePath] (קובץ `.zst`) אל [outputPath]. רץ ב-isolate נפרד
@@ -18,6 +20,7 @@ Future<void> extractToFile(
   String archivePath,
   String outputPath, {
   void Function(double progress)? onProgress,
+  int? maxOutputBytes,
 }) {
   return _runWithProgress(
     onProgress,
@@ -25,8 +28,9 @@ Future<void> extractToFile(
       () => _decompressWithLib(
         archivePath,
         outputPath,
-        _openZstandardLib(),
+        openZstandardLib(),
         port,
+        maxOutputBytes,
       ),
     ),
   );
@@ -52,36 +56,15 @@ Future<void> _runWithProgress(
   }
 }
 
-/// מחזיר את ה-DynamicLibrary של zstandard לפלטפורמה הנוכחית.
-DynamicLibrary _openZstandardLib() {
-  if (Platform.isAndroid) {
-    return DynamicLibrary.open('libzstandard_android.so');
-  }
-  if (Platform.isWindows) {
-    return DynamicLibrary.open('zstandard_windows.dll');
-  }
-  if (Platform.isLinux) {
-    return DynamicLibrary.open('libzstandard_linux_plugin.so');
-  }
-  if (Platform.isMacOS) {
-    return DynamicLibrary.open('zstandard_macos.framework/zstandard_macos');
-  }
-  if (Platform.isIOS) {
-    return DynamicLibrary.open('zstandard_ios.framework/zstandard_ios');
-  }
-  throw UnsupportedError(
-    'Platform not supported: ${Platform.operatingSystem}',
-  );
-}
-
 /// נקודת כניסה לבדיקות בלבד: מריצה את החילוץ סינכרונית עם [lib] מוזרק,
 /// כדי לאמת את לוגיקת ה-FFI גם בלי ה-framework של Flutter (למשל מול
 /// libzstd סטנדרטי במערכת).
 void decompressSyncForTest(
   String archivePath,
   String outputPath,
-  DynamicLibrary lib,
-) => _decompressWithLib(archivePath, outputPath, lib, null);
+  DynamicLibrary lib, {
+  int? maxOutputBytes,
+}) => _decompressWithLib(archivePath, outputPath, lib, null, maxOutputBytes);
 
 /// חילוץ ZST streaming דרך ZSTD FFI. בכשל מוחק את קובץ הפלט החלקי, אחרת
 /// קובץ חתוך נשאר ומפיל את פתיחת ה-DB בעלייה הבאה.
@@ -90,9 +73,16 @@ void _decompressWithLib(
   String outputPath,
   DynamicLibrary dylib,
   SendPort? progressPort,
+  int? maxOutputBytes,
 ) {
   try {
-    _decompressCore(archivePath, outputPath, dylib, progressPort);
+    _decompressCore(
+      archivePath,
+      outputPath,
+      dylib,
+      progressPort,
+      maxOutputBytes,
+    );
   } catch (_) {
     try {
       final partial = File(outputPath);
@@ -107,6 +97,7 @@ void _decompressCore(
   String outputPath,
   DynamicLibrary dylib,
   SendPort? progressPort,
+  int? maxOutputBytes,
 ) {
   final bindings = ZstandardNativeBindings(dylib);
 
@@ -191,6 +182,10 @@ void _decompressCore(
               );
             }
 
+            if (maxOutputBytes != null &&
+                totalWritten + outBuf.ref.pos > maxOutputBytes) {
+              throw ZstdOutputLimitExceeded(maxOutputBytes);
+            }
             if (outBuf.ref.pos > 0) {
               outputRaf.writeFromSync(outNative.asTypedList(outBuf.ref.pos));
               totalWritten += outBuf.ref.pos;

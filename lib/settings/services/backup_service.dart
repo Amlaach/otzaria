@@ -6,6 +6,9 @@ import 'package:path/path.dart' as p;
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:logging/logging.dart';
 import 'package:otzaria/app_report/services/app_report_service.dart';
+import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
+import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
+import 'package:otzaria/attached_libraries/repository/attached_library_store.dart';
 import 'package:otzaria/settings/services/custom_folders/custom_folder.dart';
 import 'package:otzaria/shortcuts/shortcut_validator.dart';
 import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
@@ -236,6 +239,9 @@ class BackupService {
         'תור זמני של בקשות פתיחה מחוץ לתוכנה, מתרוקן בעיבוד',
     'books': 'תוכן הספרייה, מגיע מההתקנה או מההורדה',
     'הספרים שלי': 'קובצי הספרים; הנתיב נשמר בהגדרות והתיקייה נסרקת מחדש',
+    'מסדים אישיים':
+        'עותקי מסדי ספרים מצורפים — קבצים גדולים שהמשתמש מחזיק במקור; '
+        'הרשימה עצמה נשמרת בהגדרות',
     'index': 'אינדקס החיפוש, נבנה מחדש מהספרים',
     'dictionaries': 'נכסי מילון שניתן להוריד שוב',
     'library_update_cache': 'קאש הורדות זמני',
@@ -269,6 +275,7 @@ class BackupService {
     // נתיבים שנגזרים מהמכשיר: שחזור למכשיר אחר מכניס נתיב שאינו קיים בו.
     SettingsRepository.keyDbEffectivePath,
     SettingsRepository.keyAndroidLibraryRoot,
+    SettingsRepository.keyAttachedLibraryPendingUpdates,
     // חותמות זמן ומזהים תפעוליים: שחזור ערך ישן מבלבל את התזמון.
     'key-last-auto-backup',
     _kLastPartialAutoBackupKey,
@@ -739,6 +746,11 @@ class BackupService {
       // והתיקיות המותאמות מתארים את המכשיר שממנו הגיע הקובץ, לא את זה.
       if (!isMerge) {
         await _restoreSettings(settings);
+        await _refreshAttachedLibrariesAfterRestore(
+          forgetPins: settings.containsKey(
+            SettingsRepository.keyAttachedLibraries,
+          ),
+        );
         missingCustomFolders.addAll(await findMissingCustomFolders());
         hasLegacyPartialSettings = isPartialSettingsSection(
           settings,
@@ -970,6 +982,20 @@ class BackupService {
     if (source != null) return false;
     final declared = fallbackSettingsKeys.toSet();
     return !settings.keys.any((key) => !declared.contains(key));
+  }
+
+  /// הרשימה המשוחזרת נושאת את מצב המכשיר שגובה — מסד שקובצו חסר כאן מסומן
+  /// 'לא זמין' ונשאר ברשימה, כך שאפשר לצרפו מחדש.
+  static Future<void> _refreshAttachedLibrariesAfterRestore({
+    required bool forgetPins,
+  }) async {
+    try {
+      if (forgetPins) await const AttachedLibraryStore().forgetUpdatePins();
+      await AttachedLibraryRegistry.instance.reset();
+      await AttachedLibrariesRepository.instance.rescan();
+    } catch (e) {
+      _logger.warning('Attached libraries refresh after restore failed: $e');
+    }
   }
 
   /// נתיבי התיקיות המותאמות אישית שרשומות בהגדרות ואינן קיימות בדיסק.

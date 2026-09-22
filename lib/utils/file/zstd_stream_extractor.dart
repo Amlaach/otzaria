@@ -10,11 +10,27 @@ import 'zstd_stream_extractor_stub.dart'
 class ZstdStreamExtractor {
   const ZstdStreamExtractor();
 
-  /// מחלץ את [archivePath] (קובץ `.zst`) אל [outputPath]. רץ ב-isolate נפרד
-  /// כדי לא לחסום את ה-UI. [onProgress] מקבל ערך 0.0–1.0.
+  /// מחלץ את [archivePath] אל [outputPath] ב-isolate נפרד; [onProgress] מקבל 0.0–1.0.
+  /// חריגה מ-[maxOutputBytes] עוצרת מיד ב-[ZstdOutputLimitExceeded] ומוחקת את הפלט.
   static Future<void> extractToFile(
     String archivePath,
     String outputPath, {
     void Function(double progress)? onProgress,
-  }) => impl.extractToFile(archivePath, outputPath, onProgress: onProgress);
+    int? maxOutputBytes,
+  }) => impl.extractToFile(
+    archivePath,
+    outputPath,
+    onProgress: onProgress,
+    maxOutputBytes: maxOutputBytes,
+  );
+}
+
+/// הפלט הפרוס חרג מהתקרה שנקבעה — הארכיון אינו מה שהוצהר עליו.
+class ZstdOutputLimitExceeded implements Exception {
+  final int maxOutputBytes;
+  const ZstdOutputLimitExceeded(this.maxOutputBytes);
+
+  @override
+  String toString() =>
+      'ZstdOutputLimitExceeded: more than $maxOutputBytes bytes';
 }

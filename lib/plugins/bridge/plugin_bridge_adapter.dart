@@ -6,6 +6,7 @@ import 'dart:io' hide Link;
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/dialogs/input_dialog.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,7 @@ import 'package:otzaria/migration/models/alt_toc_structure.dart';
 import 'package:otzaria/text_book/text_book_repository.dart';
 import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart';
 import 'package:otzaria/personal_notes/models/personal_note.dart';
+import 'package:otzaria/personal_notes/utils/personal_notes_book_key.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/core/connectivity_status_service.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -437,9 +439,8 @@ class PluginBridgeDependencies {
   /// למיקום, דרך מנוע `find_ref` המודע-להקשר. מחזיר התאמות עם מיקום ה-index.
   /// אופציונלי — אם לא סופק, `openBookAtRef` נופל להתאמת TOC מקומית בלבד.
   ///
-  /// `bookId` הוא ה-id המספרי ב-DB (‎-1 ל-PDF ממערכת הקבצים), ותקף רק כאשר
-  /// `isUserBook` כבוי: `user_books.db` מקצה מזהים באותו טווח כמו `seforim.db`,
-  /// ולכן id של ספר אישי אינו חד-משמעי מחוץ להקשרו.
+  /// `bookId` הוא ה-id המספרי ב-DB (‎-1 ל-PDF ממערכת הקבצים), ותקף רק במקור
+  /// רשמי: שאר המסדים מקצים מזהים באותו טווח, ולכן id שלהם אינו חד-משמעי.
   final Future<
     List<
       ({
@@ -450,7 +451,7 @@ class PluginBridgeDependencies {
         String reference,
         String bookPath,
         bool isSourceLine,
-        bool isUserBook,
+        BookSource source,
       })
     >
   >
@@ -1069,13 +1070,14 @@ class PluginBridgeAdapter {
           final hits = await resolve(ref);
           final books = library.getAllBooks();
           return hits.take(limit).map((h) {
-            // ה-id המספרי חד-משמעי רק בספרי הספרייה: `user_books.db`
-            // מקצה מזהים באותו טווח, ולכן id של ספר אישי אינו מזהה
-            // ספר יחיד. מוחזר null כדי שצרכן לא יבנה עליו קישור עומק.
-            final identity = (h.isUserBook || h.bookId < 0)
+            // מזהים מספריים של מסדים שונים חופפים — הזהות נקבעת רק יחד עם המקור.
+            final identity = h.bookId < 0
                 ? null
                 : books.firstWhereOrNull(
-                    (b) => b is TextBook && !b.isUserBook && b.id == h.bookId,
+                    (b) =>
+                        b is TextBook &&
+                        b.source == h.source &&
+                        b.id == h.bookId,
                   );
             return {
               'id': identity?.id,
@@ -1088,7 +1090,10 @@ class PluginBridgeAdapter {
               'index': h.index,
               'isPdf': h.isPdf,
               'isSourceLine': h.isSourceLine,
-              'isUserBook': h.isUserBook,
+              'isUserBook': h.source.isUser,
+              'source': identity != null
+                  ? PluginBookIdentity.sourceOf(identity)
+                  : PluginBookIdentity.sourceOfBookSource(h.source),
               'bookPath': h.bookPath,
             };
           }).toList();
@@ -1371,9 +1376,11 @@ class PluginBridgeAdapter {
     final bookId = (args['bookId'] ?? args['title']) as String?;
     if (PluginBookIdentity.parseId(args['id']) == null && bookId != null) {
       final categoryId = args['categoryId'] as int?;
+      final source = args['source'] as String?;
       return (_booksByTitle[bookId] ?? const <Book>[])
           .whereType<TextBook>()
           .where((b) => categoryId == null || b.categoryId == categoryId)
+          .where((b) => PluginBookIdentity.matches(b, source: source))
           .firstOrNull;
     }
     final book = _findPluginBook(library, args);
@@ -1462,7 +1469,13 @@ class PluginBridgeAdapter {
 
     if (args['grouped'] as bool? ?? false) {
       final titles = [for (final c in commentators) c.title];
-      final eras = await splitByEra(titles);
+      final eras = await splitByEra(
+        titles,
+        source: book.source,
+        sourceByTitle: await _linksRepository.getExternalCommentatorSources(
+          book,
+        ),
+      );
       return {
         'groups': _commentatorGroupsToJson(
           buildCommentatorGroups(eras, titles),
@@ -1546,6 +1559,7 @@ class PluginBridgeAdapter {
         'connectionType': link.connectionType,
         'isCommentary': LinkTypes.isDependentTextLink(link.connectionType),
         'targetIsUserBook': link.targetIsUserBook,
+        'targetSource': link.targetSource.wireKey,
         'targetCategoryId': link.targetCategoryId,
         if (includeAnchors) ...?_linkAnchorJson(link),
       },
@@ -1690,10 +1704,12 @@ class PluginBridgeAdapter {
     if (book?.categoryId == null) {
       throw Exception('error.not_found: book not found');
     }
+    final source = book!.source;
     final provider =
         _dependencies.linkTargetsSummaryProvider ??
-        DatabaseLibraryProvider.instance.getBookLinkTargetsSummary;
-    final summary = await provider(book!.title, book.categoryId!);
+        (title, categoryId) => DatabaseLibraryProvider.instance
+            .getBookLinkTargetsSummary(title, categoryId, source: source);
+    final summary = await provider(book.title, book.categoryId!);
     if (summary == null) {
       throw Exception('error.internal: link targets summary unavailable');
     }
@@ -1749,7 +1765,11 @@ class PluginBridgeAdapter {
         index2End: targetLineEnd is int ? targetLineEnd + 1 : null,
         connectionType: LinkTypes.commentary,
         targetCategoryId: raw['targetCategoryId'] as int?,
-        targetIsUserBook: raw['targetIsUserBook'] as bool? ?? false,
+        targetSource: BookSource.fromJson(
+          raw,
+          key: 'targetSource',
+          legacyUserFlagKey: 'targetIsUserBook',
+        ),
       );
       try {
         items.add({'content': await (loader?.call(link) ?? link.content)});
@@ -1774,7 +1794,7 @@ class PluginBridgeAdapter {
     if (provider != null) return provider(structure.id);
     return DatabaseLibraryProvider.instance.getAltTocEntriesWithLineIndex(
       structure.id,
-      isUserBook: structure.isUserBook,
+      source: structure.source,
     );
   }
 
@@ -2350,7 +2370,12 @@ class PluginBridgeAdapter {
               try {
                 final hits = await resolve('$resolvedBookId $ref');
                 final hit = hits
-                    .where((h) => h.title == resolvedBookId && !h.isPdf)
+                    .where(
+                      (h) =>
+                          h.title == resolvedBookId &&
+                          h.source == book.source &&
+                          !h.isPdf,
+                    )
                     .firstOrNull;
                 if (hit != null) {
                   index = hit.index;
@@ -3236,11 +3261,23 @@ class PluginBridgeAdapter {
   // ----------------------------------------------------------------
   // notes.*
   // ----------------------------------------------------------------
+  /// מפתח ההערות מה-wire: `bookUid` נפתר לספר ולמפתח לפי מקורו (ספר ממסד
+  /// מצורף); אחרת `bookId` כמות שהוא, כמו מפתח שהוחזר מ-getBookNotesSummary.
+  Future<String?> _notesBookKey(Map<String, dynamic> args) async {
+    final bookUid = (args['bookUid'] as String?)?.trim();
+    if (bookUid != null && bookUid.isNotEmpty) {
+      _ensureBookIndex(await DataRepository.instance.library);
+      final book = _booksByUid[bookUid];
+      if (book != null) return personalNotesBookKey(book);
+    }
+    return args['bookId'] as String?;
+  }
+
   Future<dynamic> _handleNotes(String action, Map<String, dynamic> args) async {
     final repo = _dependencies.personalNotesRepository;
     switch (action) {
       case 'list':
-        final bookId = args['bookId'] as String?;
+        final bookId = await _notesBookKey(args);
         if (bookId == null) {
           throw Exception("error.invalid_params: bookId required");
         }
@@ -3267,7 +3304,7 @@ class PluginBridgeAdapter {
             )
             .toList();
       case 'add':
-        final bookId = args['bookId'] as String?;
+        final bookId = await _notesBookKey(args);
         final lineNumber = args['lineNumber'] as int?;
         final content = args['content'] as String?;
         if (bookId == null || lineNumber == null || content == null) {
@@ -3282,7 +3319,7 @@ class PluginBridgeAdapter {
         );
         return true;
       case 'update':
-        final bookId = args['bookId'] as String?;
+        final bookId = await _notesBookKey(args);
         final noteId = args['noteId'] as String?;
         final content = args['content'] as String?;
         if (bookId == null || noteId == null || content == null) {
@@ -3297,7 +3334,7 @@ class PluginBridgeAdapter {
         );
         return true;
       case 'delete':
-        final bookId = args['bookId'] as String?;
+        final bookId = await _notesBookKey(args);
         final noteId = args['noteId'] as String?;
         if (bookId == null || noteId == null) {
           throw Exception("error.invalid_params: Missing arguments");

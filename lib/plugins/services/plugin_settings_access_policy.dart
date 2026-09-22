@@ -67,6 +67,9 @@ class PluginSettingsAccessPolicy {
     'key-saved-alternative-words',
     'key-plugin-search-selections',
     SettingsRepository.keyCustomFolders,
+    SettingsRepository.keyAttachedLibraries,
+    SettingsRepository.keyAttachedLibraryFolders,
+    SettingsRepository.keyAttachedLibraryPendingUpdates,
     SettingsRepository.keyErrorReportSenderEmail,
   };
 

@@ -1,0 +1,113 @@
+# מסדים מצורפים — הערות ארכיטקטורה למפתחים
+
+תיעוד המשתמש ובוני המסדים: [personal_databases.md](personal_databases.md).
+כאן: איך הפיצ'ר בנוי ואיפה נוגעים כשמרחיבים אותו.
+
+## זהות ומפתחות
+
+| שכבה | ערכים |
+|---|---|
+| `BookSource` | `official` / `user` / `attached(slug)` |
+| מפתח wire | `o` / `u` / `d:<slug>` |
+| `BookCompositeKey` | סיומת מקור על מפתח הספר |
+| מפתח אינדקס החיפוש | `id:` / `uid:` / `ext:` / `db:<slug>:<id>` |
+| הערות אישיות | `"<title>|db:<slug>"` |
+| `bookUid` לתוספים | `db:<slug>:<id>`, `source: "attached"` |
+
+- slug: `schema_meta.library_id`, אחרת שם הקובץ אחרי ניקוי; אותיות (כולל עברית), ספרות,
+  `._-`, עד 64 תווים. התנגשות slug ← הקובץ השני נדחה.
+- ספרים מצורפים נוספים **בסוף** סדר הקטלוג של האינדקס, כך שצירוף מסד לא מזיז מפתחות של
+  ספרים אחרים ולא גורם לאינדוקס מחדש שלהם. החלפת קובץ באותו slug ← אינדוקס מחדש רק שלו.
+
+## מבנה הקוד
+
+```
+lib/attached_libraries/
+├── bloc/          # מצב המסדים בהגדרות (צירוף, הסרה, עדיפות, מיקום, הסתרה)
+├── models/
+└── repository/
+    ├── registry            # פתיחה עצלה ומוקשחת, סגירה בזמן סרק, closeAll
+    ├── probe (isolate)     # בדיקת קובץ לפני צירוף: slug, WAL/journal, טבלאות
+    ├── store               # שמירת רשימת המסדים והגדרותיהם
+    └── external_link_core / external_link_repository
+lib/migration/database/
+├── db_capabilities.dart    # מקור אמת יחיד לקיום טבלאות/עמודות
+└── untrusted_database.dart # openUntrustedReadOnlyDatabase, ReadOnlyDbTarget
+```
+
+- **`DbCapabilities`** — רשימת היתר של טבלאות, getter יכולת לכל טבלה/זוג. נשמר במטמון
+  לפי נתיב + `PRAGMA schema_version`. שם מוכר שהוא VIEW/וירטואלי נחשב חסר.
+- **`openUntrustedReadOnlyDatabase`** — read-only, `query_only`, `trusted_schema=OFF`,
+  defensive, ללא הרחבות, mmap כבוי. `ReadOnlyDbTarget` מעביר את אותה פתיחה ל-isolates.
+- **קטלוג המסדים** נקרא ב-isolate עם timeout לכל מסד; מסד שלא עונה מסומן לא זמין
+  והעץ ממשיך.
+- **איתור מקורות** במסדים מצורפים רץ ב-isolate עובד ברקע.
+- **`external_link`** — אינדקס צד של קישורים הפוכים ב-`cache.db`, נבנה מחדש כשהקובץ או
+  גרסת הספרייה הרשמית משתנים. מגבלה: 5,000,000 שורות למסד (נבנה בזרם, במנות), חיתוך כותרת/הפניה ב-512.
+
+## עלייה
+
+`_runDeferredAttachedLibraries` ב-`main.dart` רץ אחרי חשיפת החלון (שער reveal עם
+timeout), מוגן ב-`WindowRole.isSecondary` לעבודה ברמת מחשב, ונכשל ללא הפלה
+(`_logNonFatalInitializationError`). שום דבר מהפיצ'ר לא נוסף למסלול לפני הפריים הראשון.
+
+## כלל היתומים באינדקס
+
+מפתחות `db:` נמחקים מהאינדקס **רק** כש:
+1. המסד הוסר מהרשימה, או
+2. הספר נעלם ממסד שנטען, גלוי ונגיש.
+
+מסד לא זמין או מוסתר לעולם לא גורם למחיקה — אחרת ניתוק כונן היה מוחק את האינדקס,
+הסימניות וההערות.
+
+## הוספת טבלה חדשה לתמיכה
+
+1. **רשימת היתר ב-`DbCapabilities`** — הוסיפו את שם הטבלה (וגם את בת הזוג אם הן
+   חייבות לבוא יחד).
+2. **getter יכולת** — `hasX` שבודק קיום (ועמודות נדרשות); לזוג — שתי הטבלאות.
+3. **שער בנקודת השאילתה** — כל שאילתה על הטבלה נשמרת ב-getter, והחזרה ריקה כשהיכולת
+   חסרה. אין להניח קיום טבלה במסד מצורף.
+4. עדכנו את `tool/validate_personal_db.dart` ואת קטלוג הטבלאות ב-
+   [personal_databases.md](personal_databases.md).
+
+טבלה שאינה ברשימת ההיתר לעולם לא נקראת — זה חלק ממודל האבטחה, לא מגבלה זמנית.
+
+## אבטחה — עקרונות שאסור לשבור
+
+- המסד לעולם לא נכתב; עותק מנוהל (מובייל) הוא היחיד שה-journal שלו מנורמל.
+- שום דבר מהמסד לא מותקן או מורץ (תוספים, סקריפטים, גופנים).
+- קישורים בטקסט הספר — ניווט בלבד.
+- `book.filePath` — יחסי לתיקיית המסד בלבד; נדחים נתיב מוחלט, אות כונן, UNC, `..`,
+  רכיב של נקודות/רווחים בלבד, `:`, NUL.
+
+## עדכונים (שלב U1: מודל, אימות ורשת)
+
+- **נעיצה (TOFU):** `AttachedLibraryProbe` קורא `update_manifest_url`/`update_public_key` עם `library_id` ל-`AttachedLibraryUpdateSource`. `_applyProbe` נועץ אותו ב-`AttachedLibrary.updateSource` בצירוף. בבדיקה חוזרת של אותו slug הנעוץ נשמר, וכל סטייה (גם הסרה) מסמנת `updateSourceMismatch` — בלי רשת. slug אחר הוא מסד אחר ונעוץ מחדש. `updateSourceProbed` גורם למסד שצורף לפני התכונה להיבדק שוב פעם אחת.
+- **מניפסט:** `models/attached_update_manifest.dart` — פענוח קפדני אחרי אימות החתימה בלבד. `checkApplicable` דוחה `library_id` שונה ו-`db_version` שאינו גדול מהמותקן (או מותקן שאינו מספר שלם).
+- **חתימה:** `repository/update/attached_update_signature.dart` — ed25519 דרך `pinenacl` (Dart טהור, בלי תלויות). נבדקת תמיד מול המפתח הנעוץ, לעולם לא מול מפתח מקובץ שהורד.
+- **רשת:** `AttachedUpdateHostPolicy` (https, שם מארח ולא IP, בלי שמות מקומיים, כל כתובות ה-DNS ציבוריות) ו-`AttachedUpdateFetcher`: `connectionFactory` מתחבר לכתובות שהמדיניות אישרה ומקים TLS מול שם המארח (אין תרגום DNS שני), הפניות מטופלות ידנית ונבדקות, `findProxy` = `HttpClient.findProxyFromEnvironment` (כמו `http.Client` של המעדכן הרשמי; דרך פרוקסי נדחית רק כתובת שנפתרת מקומית לטווח פרטי), timeouts לחיבור ולכל נתח. תעודות נטפרי מגיעות מה-SecurityContext הגלובלי שנטען בעלייה. dart:io בלבד — אפשר להריץ ב-isolate.
+- **הורדה ובנייה:** `downloadParts` משרשר את החלקים לקובץ אחד עם sha256 לכל חלק, ממשיך ב-Range אחרי אימות מה שכבר בדיסק, וחלק פגום נחתך. `AttachedUpdateArtifactBuilder` פורס zstd בזרם דרך `ZstdStreamExtractor` (אותו FFI של עדכון הספרייה) ובודק גודל ו-sha256.
+- **delta:** מפוענח בלבד. ה-`PatchApplier` של seforim_library_updater מקבל נתיב מסד, אבל קשור לרשימת הטבלאות ולגיבוב הלוגי של הספרייה הרשמית ולקובצי patch שמיוצרים ב-SeforimLibrary — אין למפרסם אישי דרך לייצר אותם. נדחה ל-v2.
+- **לבדיקות:** `AttachedUpdateHostPolicy.allowLoopbackForTesting` מתיר http ל-127.0.0.1 בפורטים שנמסרו בלבד; מדיניות הייצור אינה משתנה.
+
+## עדכונים (שלב U2: בדיקה, הורדה, התקנה)
+
+- **שירות:** `repository/update/attached_library_update_service.dart` — מצב לכל מסד (לפי נתיב) ב-`ValueListenable`, שה-BLoC מעביר ל-`AttachedLibrariesState.updates`. מסד בלי מקור נעוץ או עם `updateSourceMismatch` לא נבדק כלל.
+- **תזמון:** `_runDeferredAttachedLibraryUpdates()` ב-`main.dart` רץ אחרי סריקת המסדים, בחלון הראשי בלבד. אותם שערים כמו בדיקת הספרייה הרשמית: לא במצב לא מקוון, `keySoftwareAndBookUpdatesEnabled`, `keyAutoSync`, ותדירות `keyUpdateCheckFrequency` מול `keyLastAttachedLibraryUpdateCheck` (נרשם רק כשכל המקורות נענו). בדיקה ידנית מכבדת את מצב לא מקוון ואת כיבוי העדכונים.
+- **הצעה שמורה:** המניפסט והחתימה כפי שהורדו נשמרים ב-`keyAttachedLibraryPendingUpdates` (לא מגובה, חסום לתוספים), ובטעינה מאומתים שוב מול המפתח הנעוץ והגרסה המותקנת. גם לפני ההתקנה החתימה נבדקת שוב.
+- **הורדה:** `AttachedUpdateDownloader` מריץ את ההורדה, ה-sha256 של כל חלק, zstd וה-sha256 הסופי ב-isolate אחד. `SecurityContext.defaultContext` הוא פר-isolate, לכן בתי התעודות של נטפרי נקראים ב-UI isolate (`loadNetfreeCaBytes`) ונטענים ב-isolate. ביטול עובר בפורט בקרה. קובץ ההורדה הדחוס נשמר ב-`<תיקיית העותקים>/.updates` (חידוש אחרי כשל רשת; נמחק בביטול); הקובץ המורכב נכתב ליד קובץ היעד (`.<שם>.update-new`) כדי שההחלפה תהיה rename באותו כונן. ארטיפקט לא דחוס מורד ישר ליד היעד.
+- **לפני ההורדה:** בדיקת כתיבה בתיקיית היעד (תיקייה לקריאה בלבד / כונן מנותק נכשלים כאן) ובדיקת מקום פנוי לכל כונן (`getDiskSpaceInfo`), עם מרווח 32MB.
+- **התקנה (`AttachedLibrariesRepository.installUpdate`, בתור הסדרתי של המאגר):** `registry.close(slug)` משחרר את הנעילות, `AttachedUpdateFileSwap.swapIn` מעביר את הקובץ הישן וקבצי הצד שלו (`-wal`/`-shm`/`-journal`) ל-`<file>.bak-update` ומכניס את החדש. הקובץ החדש נבדק פעמיים — לפני ההחלפה ואחריה — ב-`AttachedLibraryProbe`: אותו `library_id`, אותו `update_public_key` ו-`db_version` שווה בדיוק לגרסת המניפסט. כשל ⇒ שחזור הגיבוי. הגיבוי נמחק רק אחרי הצלחה, ואז `_commit` עם טביעת האצבע החדשה מפעיל את מסלול הרענון הקיים (עץ, אינדוקס של המקור בלבד, אינדקס `external_link`, מטמונים).
+- **קריסה באמצע:** `recoverInterruptedUpdates()` רץ ב-`_runDeferredAttachedLibraries` לפני `rescan`: `.bak-update` קיים ⇒ הוא מוחזר למקום (גם אם הקובץ החדש כבר במקומו — שמרני: העדכון יוצע שוב), וקובץ `.update-new` יתום נמחק. קבצים שמתחילים בנקודה ו-`.bak-update` אינם נסרקים כמסדים.
+- **נעילות ב-Windows:** שינוי שם שנכשל ב-ERROR_SHARING_VIOLATION מנוסה שוב כמה פעמים (isolate של אינדוקס או של הקישורים שמסיים קריאה), ואז "קובץ המסד תפוס".
+- **ממשק:** `view/attached_library_update_view.dart` — צ'יפ מקור (אין / חתום · דומיין / השתנה), שורת עדכון (בדיקה, "עדכון זמין", התקדמות וביטול, שגיאות), דיאלוג אישור (דומיין, גרסה, גודל, הערות כטקסט פשוט) ודיאלוג סיכום אחרי צירוף מסד עם מקור.
+
+## עדכונים (שלב U4: דלתא)
+
+- **הפורמט:** ערך ב-`delta[]` של המניפסט עם `compression: "zstd-patch"` — פלט `zstd --patch-from=<old.db> <new.db>`, מפוצל לחלקים כמו הקובץ המלא. `size` ו-`sha256` הם של ה-`.db` המתקבל, זהים לאלה של `full`, ולכן מסלול הדלתא נבדק בדיוק באותו שער. `zstd-patch` תקף רק בתוך `delta`; ב-`full` הוא נדחה.
+- **תאימות קדימה:** `AttachedUpdateManifest.parse` מדלג על ערך דלתא שאינו נקרא (פורמט תיקון עתידי, שדה חסר) במקום להפיל את המניפסט. `full` נשאר קפדני, ולכן אי אפשר להבריח דרך זה ארטיפקט שלא נחתם.
+- **הבחירה (`AttachedUpdateArtifactPlanner`):** תיקון נבחר רק אם התהליך 64 סיביות, הקובץ המותקן קטן מ-2GiB (תקרת חלון ה-zstd), `from_db_version` שווה לגרסה המותקנת, `from_sha256` שווה ל-sha256 של הקובץ בפועל, וסך ההורדה קטן מזה של הקובץ המלא. מבין המתאימים נבחר הקטן ביותר. כל ספק ⇒ הקובץ המלא, בלי שגיאה למשתמש.
+- **ה-sha256 של הקובץ המותקן** מחושב ב-isolate ורק כשקיים תיקון שגרסת המקור שלו מתאימה, ונשמר במטמון לפי (נתיב, גודל, מועד שינוי) — כך שהבדיקה, הדיאלוג וההתקנה אינם קוראים גיגה-בתים שלוש פעמים. הדיאלוג מציג את גודל ההורדה של הארטיפקט שנבחר.
+- **ההחלה (`AttachedUpdateDeltaApplier`, ב-isolate ההורדה):** `ZSTD_DCtx_refPrefix` על הקובץ המותקן כשהוא ממופה לזיכרון לקריאה בלבד (`MappedFile`, `lib/utils/file/mapped_file.dart`) ו-`ZSTD_d_windowLogMax = 31`; הפלט נכתב לאותו `.<שם>.update-new` של המסלול המלא, עם אותה תקרת גודל ואותה בדיקת sha256. קריאת המסד ל-heap הייתה מפילה מכונות של 8GB, והמיפוי משוחרר תמיד ב-`finally` — מיפוי שנשאר פתוח נועל את הקובץ ב-Windows ומונע את ההחלפה.
+- **נפילה חזרה:** כשל בהורדת התיקון או בהחלתו מוחק את ההורדה החלקית ומוריד את הקובץ המלא באותו ניסיון התקנה (ביטול המשתמש אינו נפילה כזאת). הורדת תיקון נשמרת בשם נפרד לכל גרסת מקור, כדי שחידוש חלקי לא ייקרא כקלט של תיקון אחר.
+- **המפרסם:** `pack --delta-from <old.db>` (עד 4) ו-`verify`, שמחיל כל תיקון עם אותו applier של התוכנה. ראו `docs/personal_databases.md`.

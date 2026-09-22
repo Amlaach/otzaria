@@ -17,6 +17,10 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:otzaria/attached_libraries/bloc/attached_libraries_bloc.dart';
+import 'package:otzaria/attached_libraries/repository/attached_libraries_repository.dart';
+import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
+import 'package:otzaria/attached_libraries/repository/external_link_repository.dart';
 import 'package:otzaria/app_report/services/app_crash_session.dart';
 import 'package:otzaria/app_report/services/app_report_service.dart';
 import 'package:otzaria/app_report/services/crash_report_flow.dart';
@@ -27,6 +31,8 @@ import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_bloc.dart';
 import 'package:otzaria/find_ref/repository/find_ref_factory.dart';
 import 'package:otzaria/core/focus_repository.dart';
+import 'package:otzaria/core/netfree_certificates.dart';
+import 'package:otzaria/attached_libraries/repository/update/attached_library_update_service.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/history_repository.dart';
 import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
@@ -318,6 +324,9 @@ void main(List<String> args) async {
     return;
   }
   StartupTimeline.instance.start();
+  AttachedLibraryRegistry.startupGate = () => _mainWindowRevealedCompleter
+      .future
+      .timeout(const Duration(seconds: 20), onTimeout: () {});
 
   PluginDevToolsMode.initFromArgs(args);
 
@@ -867,6 +876,7 @@ Future<void> _initializeRestartableRuntime() async {
   unawaited(_logJobObjectContainmentFailure());
   unawaited(_runDeferredDataRootWritabilityWarning());
   unawaited(_runDeferredCrashCheck());
+  unawaited(_runDeferredAttachedLibraries());
 }
 
 /// כשקונטיינמנט ה-Job Object לא הוקם, תהליכי msedgewebview2.exe שורדים את
@@ -1048,6 +1058,67 @@ Future<void> _runDeferredCrashCheck() async {
     ).handle(candidate);
   } catch (error, stackTrace) {
     _logNonFatalInitializationError('Crash report check', error, stackTrace);
+  }
+}
+
+/// סריקת תיקיות המסדים ובדיקת המסדים המצורפים (קובץ שנעלם, שהשתנה או
+/// שנוסף). שינוי משודר ל-AttachedLibrariesBloc, שמרענן את עץ הספרייה.
+Future<void> _runDeferredAttachedLibraries() async {
+  // פר-תהליך: הסריקה שומרת את הרשימה בהגדרות; חלון משני קורא אותה בלבד.
+  if (WindowRole.isSecondary) return;
+  try {
+    await _mainWindowRevealedCompleter.future.timeout(
+      const Duration(seconds: 20),
+    );
+  } on TimeoutException {
+    // ממשיכים בכל זאת — אחרת מסדים חדשים לא ייקלטו עד סריקה ידנית.
+  }
+  try {
+    await AttachedLibrariesRepository.instance.recoverInterruptedUpdates();
+    await AttachedLibrariesRepository.instance.rescan();
+  } catch (error, stackTrace) {
+    _logNonFatalInitializationError(
+      'Attached libraries scan',
+      error,
+      stackTrace,
+    );
+  }
+  await _syncExternalLinkIndex();
+  unawaited(_runDeferredAttachedLibraryUpdates());
+  AttachedLibrariesRepository.instance.changes.listen(
+    (_) => unawaited(_syncExternalLinkIndex()),
+  );
+}
+
+/// Runs after the attached-library scan so every pinned source is known. The
+/// service itself applies the official gates (offline, updates, cadence).
+Future<void> _runDeferredAttachedLibraryUpdates() async {
+  // Per machine: a second window would contact the same sources again.
+  if (WindowRole.isSecondary) return;
+  try {
+    await _mainWindowRevealedCompleter.future.timeout(
+      const Duration(seconds: 20),
+    );
+  } on TimeoutException {
+    // Continue anyway, or the check never runs.
+  }
+  try {
+    await AttachedLibraryUpdateService.instance.runScheduledCheck();
+  } catch (error, stackTrace) {
+    _logNonFatalInitializationError(
+      'Attached library updates',
+      error,
+      stackTrace,
+    );
+  }
+}
+
+/// אינדקס הקישורים ההפוכים של מסדים מצורפים (cache.db) — נבנה רק למסד שהשתנה.
+Future<void> _syncExternalLinkIndex() async {
+  try {
+    await ExternalLinkRepository.instance.sync();
+  } catch (error, stackTrace) {
+    _logNonFatalInitializationError('External link index', error, stackTrace);
   }
 }
 
@@ -1413,6 +1484,15 @@ class _AppBootstrapState extends State<AppBootstrap> {
                   context.read<LibraryBloc>().add(event),
             )..add(const LoadCustomFolders()),
           ),
+          // לא עצל: הבלוק מאזין לשינויי המסדים המצורפים (גם מהסריקה בעלייה)
+          // ומרענן את העץ, גם כשמסך ההגדרות לא נפתח.
+          BlocProvider<AttachedLibrariesBloc>(
+            lazy: false,
+            create: (context) => AttachedLibrariesBloc(
+              addLibraryEvent: (event) =>
+                  context.read<LibraryBloc>().add(event),
+            ),
+          ),
           BlocProvider<IndexingBloc>(
             create: (_) => IndexingBloc.create(),
           ),
@@ -1732,19 +1812,7 @@ Future<void>? _loadCertsFuture;
 Future<void> loadCerts() => _loadCertsFuture ??= _loadCerts();
 
 Future<void> _loadCerts() async {
-  // נטפרי עברו לשורש אחיד (גירסה 1 ואז X2), אבל ספקים שטרם הועברו עדיין
-  // חותמים בתעודה הישנה לכל ספק — לכן טוענים את שלוש הקבוצות.
-  final certs = [
-    'assets/ca/netfree_cas.pem',
-    'assets/ca/netfree_root_ca_unified_v1.pem',
-    'assets/ca/netfree_root_ca_x2.pem',
-  ];
-  for (var cert in certs) {
-    final certBytes = await rootBundle.load(cert);
-    SecurityContext.defaultContext.setTrustedCertificatesBytes(
-      certBytes.buffer.asUint8List(),
-    );
-  }
+  trustCertificates(await loadNetfreeCaBytes());
 }
 
 /// Clean up resources when the app is closing
