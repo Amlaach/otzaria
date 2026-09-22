@@ -356,6 +356,11 @@ jobs:
     name: Build (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      WPE_SDK: ${{ runner.temp }}/wpe-sdk
+      PKG_CONFIG_PATH: ${{ runner.temp }}/wpe-sdk/lib/pkgconfig
+      LD_LIBRARY_PATH: ${{ runner.temp }}/wpe-sdk/lib
+      LIBRARY_PATH: ${{ runner.temp }}/wpe-sdk/lib
 
     steps:
       - name: Checkout code
@@ -369,7 +374,26 @@ jobs:
           cache: true
 
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl libglib2.0-dev libgtk-3-dev \
+            libsecret-1-dev libsoup-3.0-dev libxkbcommon-dev ninja-build \
+            pkg-config zstd
+
+      - name: Download prebuilt WPE runtime SDK
+        env:
+          WPE_RUNTIME_SHA256: ca7e706c0ec2f66623fede2c369e3e13339448843e125f2ccd1553f4a3c4bcaf
+          WPE_RUNTIME_VERSION: 2.48.7
+        run: |
+          set -euo pipefail
+          asset="wpe-runtime-${WPE_RUNTIME_VERSION}-linux-x86_64.tar.zst"
+          base="https://github.com/Otzaria/otzaria-wpe-runtime/releases/download/wpe-2.48.7-print-to-pdf"
+          curl -fSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/$asset" "$base/$asset"
+          printf '%s  %s\n' "$WPE_RUNTIME_SHA256" "$RUNNER_TEMP/$asset" | sha256sum -c -
+          tar -C "$RUNNER_TEMP" -I zstd -xf "$RUNNER_TEMP/$asset"
+          test -f "$WPE_SDK/lib/pkgconfig/wpe-webkit-2.0.pc"
+          pkg-config --print-errors --exists \
+            wpe-webkit-2.0 wpe-platform-2.0 wpe-platform-headless-2.0 wpe-1.0
 
       - name: Install dependencies
         run: flutter pub get
