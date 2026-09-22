@@ -65,6 +65,22 @@ void main() {
     expect(result.matchedBookKeys, hasLength(2));
   });
 
+  test('מזהה פנימי מתקבל כמות שהוא (issue #1448)', () {
+    final result = parseHiddenBooksImport(_key('שמות'), _library());
+
+    expect(result.matchedBookKeys, {_key('שמות')});
+    expect(result.unmatchedNames, isEmpty);
+  });
+
+  test('קובץ מעורב — מזהה ושם יחד (issue #1448)', () {
+    final result = parseHiddenBooksImport(
+      '${_key('שמות')}\nבראשית\n',
+      _library(),
+    );
+
+    expect(result.matchedBookKeys, {_key('שמות'), _key('בראשית')});
+  });
+
   test('שם שאינו בספרייה מדווח ואינו מסתיר דבר (issue #1448)', () {
     final result = parseHiddenBooksImport('בראשית\nאין כזה ספר\n', _library());
 

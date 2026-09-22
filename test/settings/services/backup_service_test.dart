@@ -1,3 +1,5 @@
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -161,6 +163,60 @@ void main() {
         defaultValue: '',
       ),
       'builtin.gematria,builtin.calendar',
+    );
+  });
+
+  test('רשימת ההסתרות נכנסת לגיבוי ומשוחזרת ממנו (issue #1448)', () async {
+    await const HiddenLibraryStore().save(
+      const HiddenLibrarySelection(
+        bookKeys: {'o__10__שמות'},
+        categoryPaths: {'/תנ"ך/תורה'},
+      ),
+    );
+
+    final result = await BackupService.createBackup(
+      includeSettings: true,
+      includeBookmarks: false,
+      includeHistory: false,
+      includeNotes: false,
+      includeWorkspaces: false,
+      includeShamorZachor: false,
+      includePlugins: false,
+    );
+
+    final settings =
+        (jsonDecode(await File(result.path).readAsString())
+                as Map<String, dynamic>)['settings']
+            as Map<String, dynamic>;
+    expect(settings[SettingsRepository.keyHiddenBookKeys], '["o__10__שמות"]');
+    expect(
+      settings[SettingsRepository.keyHiddenCategoryPaths],
+      '["/תנ\\"ך/תורה"]',
+    );
+
+    await const HiddenLibraryStore().save(const HiddenLibrarySelection());
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+
+    await BackupService.restoreFromBackup(result.path);
+
+    final restored = const HiddenLibraryStore().load();
+    expect(restored.bookKeys, {'o__10__שמות'});
+    expect(restored.categoryPaths, {'/תנ"ך/תורה'});
+  });
+
+  test('מפתחות ההסתרה מוצהרים ונכנסים גם במסלול הנסיגה (issue #1448)', () {
+    // כש-Hive אינו פתוח הגיבוי אוסף את הרשימה המוצהרת בלבד. מפתח שאינו שם
+    // נשמט מהגיבוי בשקט.
+    expect(
+      BackupService.fallbackSettingsKeys,
+      containsAll([
+        SettingsRepository.keyHiddenBookKeys,
+        SettingsRepository.keyHiddenCategoryPaths,
+      ]),
+    );
+    expect(
+      BackupService.nonPortableSettingsKeys,
+      isNot(contains(SettingsRepository.keyHiddenBookKeys)),
     );
   });
 

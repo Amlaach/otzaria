@@ -3,14 +3,19 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/settings/engine/settings_repository.dart';
 
 /// שמירה וטעינה של רשימת ההסתרות (issue #1448).
 ///
 /// יושב ב-`app_preferences`, ולכן מגובה אוטומטית: `BackupService` סורק את כל
 /// מפתחות ההגדרות. אין כאן box חדש ואין קובץ נפרד.
 class HiddenLibraryStore {
-  static const String bookKeysSetting = 'key-hidden-book-keys';
-  static const String categoryPathsSetting = 'key-hidden-category-paths';
+  /// המפתחות מוצהרים ב-[SettingsRepository] ונמצאים ב-`allKeys`, כדי
+  /// שהגיבוי יתפוס אותם גם במסלול הנסיגה שבו Hive אינו פתוח ונאספת רשימת
+  /// המפתחות המוצהרת בלבד.
+  static const String bookKeysSetting = SettingsRepository.keyHiddenBookKeys;
+  static const String categoryPathsSetting =
+      SettingsRepository.keyHiddenCategoryPaths;
 
   const HiddenLibraryStore();
 

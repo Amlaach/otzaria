@@ -23,17 +23,18 @@ class HiddenBooksImportResult {
   bool get isEmpty => totalNames == 0;
 }
 
-/// מפרש קובץ הסתרות ומתאים את שמותיו לספרים בספרייה.
+/// מפרש קובץ הסתרות ומתאים את ערכיו לספרים בספרייה.
 ///
-/// הקובץ מכיל **שמות ספרים** ולא מזהים פנימיים: מזהה כמו `o__4217__אור החיים`
-/// אינו בר-כתיבה ביד, והבקשה באישו הייתה רשימה שמשתמש מכין בעצמו.
+/// כל ערך מתפרש קודם כ**מזהה** בפורמט [PerBookSettings.bookKey] (למשל
+/// `o__4217__אור החיים`), ואם אינו מזהה מוכר — כ**שם ספר**. כך קובץ שנוצר
+/// מתוך התוכנה נטען בדיוק כפי שנשמר, וקובץ שמשתמש הכין ביד עדיין עובד.
 ///
 /// נתמכים שני פורמטים:
 /// - JSON: מערך מחרוזות, או אובייקט עם המפתח `books`.
-/// - CSV/טקסט: שם בכל שורה. בשורה עם פסיקים נלקחת העמודה הראשונה.
+/// - CSV/טקסט: ערך בכל שורה. בשורה עם פסיקים נלקחת העמודה הראשונה.
 ///
-/// שם שמופיע יותר מפעם אחת בספרייה מסתיר את כל המופעים — ההתאמה היא לפי שם,
-/// כפי שהקובץ מנוסח.
+/// שם שמופיע יותר מפעם אחת בספרייה מסתיר את כל המופעים; מזהה מצביע על ספר
+/// אחד בדיוק.
 HiddenBooksImportResult parseHiddenBooksImport(
   String content,
   Library library,
@@ -48,18 +49,23 @@ HiddenBooksImportResult parseHiddenBooksImport(
   }
 
   final booksByTitle = <String, List<String>>{};
+  final knownKeys = <String>{};
   for (final book in library.getAllBooks()) {
-    booksByTitle
-        .putIfAbsent(book.title.trim(), () => <String>[])
-        .add(PerBookSettings.bookKey(book));
+    final key = PerBookSettings.bookKey(book);
+    knownKeys.add(key);
+    booksByTitle.putIfAbsent(book.title.trim(), () => <String>[]).add(key);
   }
 
   final matched = <String>{};
   final unmatched = <String>[];
-  for (final name in names) {
-    final keys = booksByTitle[name];
+  for (final value in names) {
+    if (knownKeys.contains(value)) {
+      matched.add(value);
+      continue;
+    }
+    final keys = booksByTitle[value];
     if (keys == null) {
-      unmatched.add(name);
+      unmatched.add(value);
       continue;
     }
     matched.addAll(keys);
