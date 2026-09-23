@@ -24,6 +24,7 @@ import 'package:otzaria/data/data_providers/library_provider_manager.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/pdf_book/utils/pdf_color_filter.dart';
 import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/pdf_book/utils/pdf_links_window.dart';
 import 'package:otzaria/pdf_book/utils/pdf_scroll_physics_provider.dart';
@@ -1572,26 +1573,11 @@ class _PdfBookScreenState extends State<PdfBookScreen>
     );
   }
 
-  /// מחזיר את צבע הרקע שיועבר ל-[PdfViewerParams.backgroundColor].
-  ///
-  /// ה-PdfViewer עטוף ב-[ColorFiltered] עם [BlendMode.difference] במצב כהה,
-  /// שמהפך כל צבע. כדי שהמשתמש יראה [AppSurfaces.readerBackground] בשני
-  /// המצבים, צריך לספק:
-  /// - מצב בהיר: [AppSurfaces.readerBackground] ישירות.
-  /// - מצב כהה: ה-"מהופך מראש" של [AppSurfaces.readerBackground] הכהה,
-  ///   כך שאחרי ההיפוך ייראה כמו [AppSurfaces.readerBackground] הכהה.
-  Color _pdfViewerBgColor() {
-    final base = AppSurfaces.readerBackground(context);
-    if (Theme.of(context).brightness == Brightness.dark) {
-      return Color.from(
-        alpha: 1.0,
-        red: 1.0 - base.r,
-        green: 1.0 - base.g,
-        blue: 1.0 - base.b,
-      );
-    }
-    return base;
-  }
+  /// צבע הרקע שמועבר ל-[PdfViewerParams.backgroundColor].
+  Color _pdfViewerBgColor() => pdfColorBeforeFilter(
+    AppSurfaces.readerBackground(context),
+    Theme.of(context).brightness,
+  );
 
   PdfViewerParams _buildPdfViewerParams(PdfLayoutMode layoutMode) {
     if (layoutMode.isBookView) {
@@ -1749,7 +1735,10 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       loadingBannerBuilder: (context, bytesDownloaded, totalBytes) => Center(
         child: CircularProgressIndicator(
           value: totalBytes != null ? bytesDownloaded / totalBytes : null,
-          backgroundColor: Colors.grey,
+          backgroundColor: pdfColorBeforeFilter(
+            Theme.of(context).colorScheme.surfaceContainerHighest,
+            Theme.of(context).brightness,
+          ),
         ),
       ),
       linkWidgetBuilder: (context, link, size) => Material(
@@ -1762,7 +1751,10 @@ class _PdfBookScreenState extends State<PdfBookScreen>
               widget.tab.pdfViewerController.goToDest(link.dest);
             }
           },
-          hoverColor: Colors.blue.withValues(alpha: 0.2),
+          hoverColor: pdfColorBeforeFilter(
+            AppSurfaces.pdfLinkHover(Theme.of(context).colorScheme),
+            Theme.of(context).brightness,
+          ),
         ),
       ),
       pagePaintCallbacks: textSearcher != null
@@ -4866,7 +4858,9 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                   const TextSpan(text: 'האם לעבור לכתובת הבאה\n'),
                   TextSpan(
                     text: url.toString(),
-                    style: const TextStyle(color: Colors.blue),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ],
               ),

@@ -202,6 +202,7 @@
 | טקסט מעוצב ב-PDF (גופן Type0 עם גליפים מ-shaper, פריסה ויישור, bidi) | `test/printing/shaped_text/pdf_shaped_font_test.dart`, `…shaped_text_layout_test.dart` |
 | גופן לא מוטמע ב-PDF (עברית נעלמת מתצוגה/חיפוש/אינדוקס — `PdfFontFallback`) | `test/pdf_book/pdf_font_fallback_test.dart` |
 | PDF in-book search highlight pattern | `test/pdf_book/pdf_search_highlight_pattern_test.dart` |
+| צבעי מסך ה-PDF נגזרים מערכת הצבעים (issue #1469) | `test/pdf_book/pdf_hardcoded_colors_test.dart`, `test/pdf_book/pdf_link_hover_color_test.dart`, `test/pdf_book/pdf_theme_rendering_test.dart` |
 | ניתוב החיפוש בתוך PDF (פשוט מול מנוע) | `test/pdf_book/pdf_search_in_book_routing_test.dart` |
 | Printing models | `test/printing/print_content_models_test.dart` |
 | File sync / background sync | `test/migration/sync/file_sync_service_prune_test.dart`, `…background_db_sync_worker_test.dart`, `…background_sync_initializer_test.dart` |
