@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:otzaria/theme/app_surfaces.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 
@@ -19,18 +20,18 @@ class PdfZoomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final zoomPercentage = (currentZoom * 100).round();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final divider = Theme.of(context).colorScheme.outlineVariant;
 
     return Material(
       elevation: 4,
       borderRadius: AppTokens.borderRadiusAll,
-      color: isDark ? Colors.grey[850] : Colors.white,
+      color: AppSurfaces.card(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: AppTokens.borderRadiusAll,
           border: Border.all(
-            color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+            color: divider,
             width: 1,
           ),
         ),
@@ -55,7 +56,7 @@ class PdfZoomBar extends StatelessWidget {
             Container(
               width: 1,
               height: 24,
-              color: isDark ? Colors.grey[700] : Colors.grey[300],
+              color: divider,
               margin: const EdgeInsets.symmetric(horizontal: 4),
             ),
             // כפתור הגדלה
@@ -72,7 +73,7 @@ class PdfZoomBar extends StatelessWidget {
             Container(
               width: 1,
               height: 24,
-              color: isDark ? Colors.grey[700] : Colors.grey[300],
+              color: divider,
               margin: const EdgeInsets.symmetric(horizontal: 4),
             ),
             // כפתור הקטנה
