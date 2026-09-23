@@ -205,7 +205,7 @@ public struct ReleaseManifest: Decodable, Equatable {
                 }
                 total += part.size
             }
-            // ההרכבה בודקת גודל ולא hash שלם, ולכן סכום החלקים חייב להיות הקובץ השלם.
+            // סכום החלקים חייב להתאים לגודל הנכס גם לפני אימות ה-hash של התוצר.
             guard total == asset.size else {
                 throw invalid("parts of \(asset.name) sum to \(total), expected \(asset.size)")
             }
