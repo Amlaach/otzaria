@@ -70,7 +70,7 @@ void main() {
         find.byIcon(OtzariaIcons.alef_near_alef_24_regular),
         findsOneWidget,
       );
-      expect(find.byIcon(OtzariaIcons.tet_near_tet_24_regular), findsOneWidget);
+      expect(find.byIcon(OtzariaIcons.alef_alef_24_regular), findsOneWidget);
       expect(
         find.byIcon(OtzariaIcons.beit_near_alef_24_regular),
         findsOneWidget,

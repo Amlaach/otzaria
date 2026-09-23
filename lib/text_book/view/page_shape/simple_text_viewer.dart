@@ -1902,7 +1902,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
           if (state.book.id != null)
             AppContextMenuIconAction(
               label: 'קישור',
-              icon: FluentIcons.link_24_regular,
+              icon: OtzariaIcons.link_copy_24_regular,
               submenuBuilder: () => buildDirectLinkSubmenuActions(
                 bookId: state.book.id!,
                 source: state.book.source,
@@ -1952,7 +1952,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
       entries.add(
         AppContextMenuEntry(
           label: 'קישורים',
-          icon: OtzariaIcons.link_24_regular,
+          icon: OtzariaIcons.links_24_regular,
           enabled: hasLinkItems,
           childrenBuilder: buildLinksItems,
         ),
@@ -2152,7 +2152,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
         entries.add(
           AppContextMenuEntry(
             label: 'העתק קישור ישיר',
-            icon: FluentIcons.link_24_regular,
+            icon: OtzariaIcons.link_24_regular,
             childrenBuilder: () => buildDirectLinkContextMenuEntries(
               bookId: commentaryBookId,
               source: widget.reportBook?.source ?? BookSource.official,
@@ -2610,7 +2610,7 @@ class _SimpleTextViewerState extends State<SimpleTextViewer> {
     final hasSelection = selectedText != null && selectedText.trim().isNotEmpty;
     return AppContextMenuEntry(
       label: 'העתק כ...',
-      icon: FluentIcons.text_clear_formatting_24_regular,
+      icon: OtzariaIcons.alef_copy_24_regular,
       enabled: hasSelection,
       children: buildCopyAsMenuEntries(
         base: state.displayProfile(

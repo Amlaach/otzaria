@@ -8,10 +8,13 @@ import 'package:otzaria/text_display/text_display_exports.dart';
 import 'package:otzaria/text_display/view/text_display_profile_editor.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 
 /// כרטיס "תצוגת הטקסט": השורש (גוף הספר, תצוגה רגילה, ערוץ התצוגה) גלוי
 /// תמיד; שאר 11 החריצים ושכבת התנ"ך מקופלים תחת "התאמות נוספות", שבה
-/// בוחרים חריץ ומחליטים אם הוא יורש או מקבל הגדרות נפרדות.
+/// בוחרים צירוף ומחליטים אם הוא יורש או מקבל הגדרות נפרדות. "צירוף" הוא
+/// המונח שנחשף למשתמש עבור [TextDisplaySlot] — ארבעת הבוררים שמעליו *הם*
+/// הצירוף, ולכן המילה מתארת בדיוק את מה שנראה על המסך.
 class TextDisplaySettingsCard extends StatefulWidget {
   const TextDisplaySettingsCard({super.key});
 
@@ -77,106 +80,132 @@ class _TextDisplaySettingsCardState extends State<TextDisplaySettingsCard> {
     final slot = _slot;
     final layer = policy.layer(_bookClass);
     final isSeparate = layer.patchFor(slot).isNotEmpty;
-    // השורש הכללי נערך למעלה; בחריץ זה המתג מיותר.
+    // השורש הכללי נערך למעלה; בצירוף זה המתג מיותר.
     final isGeneralRoot = !_isTanach && slot.isRoot;
     final resolved = policy.resolve(slot, isTanach: _isTanach);
     final hasOverrides =
         policy.tanach.isNotEmpty ||
         policy.general.patches.keys.any((s) => !s.isRoot);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceMD,
-        vertical: AppTokens.spaceSM,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _selectorRow<TextDisplayBookClass>(
-            label: t('ספרים'),
-            value: _bookClass,
-            options: [
-              SegmentOption(
-                value: TextDisplayBookClass.general,
-                label: t('כל הספרים'),
-              ),
-              SegmentOption(
-                value: TextDisplayBookClass.tanach,
-                label: t('תנ"ך'),
-              ),
-            ],
-            onChanged: (v) => setState(() => _bookClass = v),
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: AppTokens.spaceSM),
+        SettingsActionTile.segmentedTile<TextDisplayBookClass>(
+          icon: OtzariaIcons.bookshelf_24_regular,
+          title: t('ספרים'),
+          currentValue: _bookClass,
+          options: [
+            SegmentOption(
+              value: TextDisplayBookClass.general,
+              label: t('כל הספרים'),
+            ),
+            SegmentOption(
+              value: TextDisplayBookClass.tanach,
+              label: t('תנ"ך'),
+            ),
+          ],
+          onChanged: (v) => setState(() => _bookClass = v),
+        ),
+        SettingsActionTile.segmentedTile<TextTarget>(
+          icon: FluentIcons.book_open_24_regular,
+          title: t('יעד'),
+          currentValue: _target,
+          options: [
+            SegmentOption(value: TextTarget.body, label: t('גוף הספר')),
+            SegmentOption(value: TextTarget.commentary, label: t('מפרשים')),
+          ],
+          onChanged: (v) => setState(() => _target = v),
+        ),
+        SettingsActionTile.segmentedTile<TextView>(
+          icon: OtzariaIcons.book_open_tzurat_hadaf_24_regular,
+          title: t('תצוגה'),
+          currentValue: _view,
+          options: [
+            SegmentOption(value: TextView.regular, label: t('רגילה')),
+            SegmentOption(value: TextView.pageShape, label: t('צורת הדף')),
+          ],
+          onChanged: (v) => setState(() => _view = v),
+        ),
+        SettingsActionTile.segmentedTile<TextChannel>(
+          icon: FluentIcons.channel_24_regular,
+          title: t('ערוץ'),
+          currentValue: _channel,
+          options: [
+            SegmentOption(value: TextChannel.display, label: t('תצוגה')),
+            SegmentOption(value: TextChannel.copy, label: t('העתקה')),
+            SegmentOption(
+              value: TextChannel.export,
+              label: t('ייצוא והדפסה'),
+            ),
+          ],
+          onChanged: (v) => setState(() => _channel = v),
+        ),
+        const SizedBox(height: AppTokens.spaceSM),
+        AppCard.sectionDivider(context),
+        if (!isGeneralRoot)
+          SettingsActionTile.switchTile(
+            icon: FluentIcons.branch_fork_24_regular,
+            title: t('הגדרות נפרדות'),
+            subtitle: isSeparate
+                ? t('לצירוף הזה ערכים משלו')
+                : t(
+                    'יורש מהצירוף הכללי יותר: {parent}',
+                    args: {
+                      'parent': _parentLabel(context, slot),
+                    },
+                  ),
+            value: isSeparate,
+            onChanged: (value) => _update(
+              value
+                  ? policy.withSlot(_bookClass, slot, resolved.toPatch())
+                  : policy.withLayer(_bookClass, layer.without(slot)),
+            ),
           ),
-          _selectorRow<TextTarget>(
-            label: t('יעד'),
-            value: _target,
-            options: [
-              SegmentOption(value: TextTarget.body, label: t('גוף הספר')),
-              SegmentOption(value: TextTarget.commentary, label: t('מפרשים')),
-            ],
-            onChanged: (v) => setState(() => _target = v),
-          ),
-          _selectorRow<TextView>(
-            label: t('תצוגה'),
-            value: _view,
-            options: [
-              SegmentOption(value: TextView.regular, label: t('רגילה')),
-              SegmentOption(value: TextView.pageShape, label: t('צורת הדף')),
-            ],
-            onChanged: (v) => setState(() => _view = v),
-          ),
-          _selectorRow<TextChannel>(
-            label: t('ערוץ'),
-            value: _channel,
-            options: [
-              SegmentOption(value: TextChannel.display, label: t('תצוגה')),
-              SegmentOption(value: TextChannel.copy, label: t('העתקה')),
-              SegmentOption(
-                value: TextChannel.export,
-                label: t('ייצוא והדפסה'),
-              ),
-            ],
-            onChanged: (v) => setState(() => _channel = v),
-          ),
-          const SizedBox(height: AppTokens.spaceSM),
-          if (!isGeneralRoot)
-            SettingsActionTile.switchTile(
-              icon: FluentIcons.branch_fork_24_regular,
-              title: t('הגדרות נפרדות'),
-              subtitle: isSeparate
-                  ? t('לחריץ זה ערכים משלו')
-                  : t(
-                      'יורש מהחריץ שמעליו: {parent}',
-                      args: {
-                        'parent': _parentLabel(context, slot),
-                      },
+        if (isGeneralRoot)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.spaceMD,
+              vertical: AppTokens.spaceSM + AppTokens.spaceXS,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  FluentIcons.info_24_regular,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppTokens.spaceSM),
+                Expanded(
+                  child: Text(
+                    t('זהו הצירוף הבסיסי — הוא נערך למעלה'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-              value: isSeparate,
-              onChanged: (value) => _update(
-                value
-                    ? policy.withSlot(_bookClass, slot, resolved.toPatch())
-                    : policy.withLayer(_bookClass, layer.without(slot)),
-              ),
+                  ),
+                ),
+              ],
             ),
-          if (isGeneralRoot)
-            Padding(
-              padding: const EdgeInsets.all(AppTokens.spaceSM),
-              child: Text(
-                t('זהו החריץ הבסיסי — הוא נערך למעלה'),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            )
-          else if (isSeparate)
-            TextDisplayProfileEditor(
-              profile: resolved,
-              onChanged: (profile) =>
-                  _update(policy.withSlot(_bookClass, slot, profile.toPatch())),
-              showAnchorMarkers: _target == TextTarget.body,
+          )
+        else if (isSeparate)
+          TextDisplayProfileEditor(
+            profile: resolved,
+            onChanged: (profile) =>
+                _update(policy.withSlot(_bookClass, slot, profile.toPatch())),
+            showAnchorMarkers: _target == TextTarget.body,
+          ),
+        if (hasOverrides) ...[
+          AppCard.sectionDivider(context),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.spaceSM,
+              vertical: AppTokens.spaceXS,
             ),
-          if (hasOverrides)
-            Align(
+            child: Align(
               alignment: AlignmentDirectional.centerStart,
               child: ActionButton.ghost(
+                icon: FluentIcons.arrow_reset_24_regular,
                 text: t('איפוס כל ההתאמות הנוספות'),
                 onPressed: () => _update(
                   TextDisplayPolicy(
@@ -190,12 +219,13 @@ class _TextDisplaySettingsCardState extends State<TextDisplaySettingsCard> {
                 ),
               ),
             ),
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  /// תווית החריץ שממנו יורש [slot] בפועל — הראשון בשרשרת הירושה.
+  /// תווית הצירוף שממנו יורש [slot] בפועל — הראשון בשרשרת הירושה.
   String _parentLabel(BuildContext context, TextDisplaySlot slot) {
     final t = context.settingsText;
     final parent = slot.inheritanceChain.length > 1
@@ -212,33 +242,5 @@ class _TextDisplaySettingsCardState extends State<TextDisplaySettingsCard> {
     };
     final scope = _isTanach && slot.isRoot ? t('כל הספרים') : null;
     return [?scope, target, view, channel].join(' · ');
-  }
-
-  Widget _selectorRow<T>({
-    required String label,
-    required T value,
-    required List<SegmentOption<T>> options,
-    required ValueChanged<T> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppTokens.spaceXS),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 64,
-            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-          Expanded(
-            child: AppSegmentedControl<T>(
-              options: options,
-              currentValue: value,
-              onChanged: onChanged,
-              expandToFillWidth: true,
-              showSelectedIcon: false,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -24,6 +24,7 @@ import 'package:otzaria/data/data_providers/library_provider_manager.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/pdf_book/utils/pdf_color_filter.dart';
 import 'package:otzaria/pdf_book/utils/pdf_font_fallback.dart';
 import 'package:otzaria/pdf_book/utils/pdf_links_window.dart';
 import 'package:otzaria/pdf_book/utils/pdf_scroll_physics_provider.dart';
@@ -359,7 +360,7 @@ AppContextMenuEntry buildPdfLinksContextMenuEntry({
 
   return AppContextMenuEntry(
     label: 'קישורים',
-    icon: OtzariaIcons.link_24_regular,
+    icon: OtzariaIcons.links_24_regular,
     enabled: relevantLinks.isNotEmpty,
     childrenBuilder: buildLinkChildren,
   );
@@ -1573,20 +1574,10 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   }
 
   /// צבע הרקע שמועבר ל-[PdfViewerParams.backgroundColor].
-  Color _pdfViewerBgColor() =>
-      _preInvertedForDarkPdf(AppSurfaces.readerBackground(context));
-
-  /// שכבת ה-PDF מציירת במצב כהה דרך [BlendMode.difference], שמהפך כל צבע —
-  /// לכן צבע שמועבר לתוכה חייב להיכנס מהופך מראש.
-  Color _preInvertedForDarkPdf(Color base) {
-    if (Theme.of(context).brightness != Brightness.dark) return base;
-    return Color.from(
-      alpha: base.a,
-      red: 1.0 - base.r,
-      green: 1.0 - base.g,
-      blue: 1.0 - base.b,
-    );
-  }
+  Color _pdfViewerBgColor() => pdfColorBeforeFilter(
+    AppSurfaces.readerBackground(context),
+    Theme.of(context).brightness,
+  );
 
   PdfViewerParams _buildPdfViewerParams(PdfLayoutMode layoutMode) {
     if (layoutMode.isBookView) {
@@ -1744,8 +1735,9 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       loadingBannerBuilder: (context, bytesDownloaded, totalBytes) => Center(
         child: CircularProgressIndicator(
           value: totalBytes != null ? bytesDownloaded / totalBytes : null,
-          backgroundColor: _preInvertedForDarkPdf(
+          backgroundColor: pdfColorBeforeFilter(
             Theme.of(context).colorScheme.surfaceContainerHighest,
+            Theme.of(context).brightness,
           ),
         ),
       ),
@@ -1759,8 +1751,9 @@ class _PdfBookScreenState extends State<PdfBookScreen>
               widget.tab.pdfViewerController.goToDest(link.dest);
             }
           },
-          hoverColor: _preInvertedForDarkPdf(
+          hoverColor: pdfColorBeforeFilter(
             AppSurfaces.pdfLinkHover(Theme.of(context).colorScheme),
+            Theme.of(context).brightness,
           ),
         ),
       ),
@@ -4990,7 +4983,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
             return _buildLayoutModeDropdown(context, state);
           },
         ),
-        icon: OtzariaIcons.book_open_small_24_regular,
+        icon: OtzariaIcons.book_open_medium_line_24_regular,
         tooltip: 'מצב תצוגה',
         actionId: ToolbarActionId.viewMode,
         onPressed: null,
@@ -5106,7 +5099,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
         70,
         ActionButtonData(
           widget: const SizedBox.shrink(),
-          icon: FluentIcons.link_24_regular,
+          icon: OtzariaIcons.link_24_regular,
           tooltip: widget.tab.book.id != null
               ? 'העתק קישור ישיר'
               : 'העתק קישור ישיר (לא זמין לספר זה)',
@@ -5117,7 +5110,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                   return [
                     ActionButtonData(
                       widget: const SizedBox.shrink(),
-                      icon: FluentIcons.link_24_regular,
+                      icon: OtzariaIcons.link_book_empty_24_regular,
                       tooltip: 'העתק קישור ישיר לספר זה',
                       onPressed: () => copyLinkToClipboard(
                         buildPdfBookLink(
@@ -5128,7 +5121,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
                     ),
                     ActionButtonData(
                       widget: const SizedBox.shrink(),
-                      icon: FluentIcons.link_multiple_24_regular,
+                      icon: OtzariaIcons.link_document_24_regular,
                       tooltip: 'העתק קישור ישיר לעמוד זה',
                       onPressed: () {
                         final page =
@@ -5529,7 +5522,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   Widget _buildLayoutModeDropdown(BuildContext context, PdfBookLoaded state) {
     final isBookViewMode = state.layoutMode.isBookView;
     final iconData = isBookViewMode
-        ? OtzariaIcons.book_open_small_24_regular
+        ? OtzariaIcons.book_open_medium_line_24_regular
         : OtzariaIcons.book_24_regular;
 
     return AppPopupMenuButton<PdfLayoutMode>(
@@ -5589,7 +5582,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
             // בחירה חוזרת בתצוגת ספר משמרת את כיוון הזוגות שנבחר.
             value: isBookViewMode ? state.layoutMode : PdfLayoutMode.bookView,
             text: 'תצוגת ספר',
-            icon: OtzariaIcons.book_open_small_24_regular,
+            icon: OtzariaIcons.book_open_medium_line_24_regular,
             isSelected: isBookViewMode,
           ),
           if (isBookViewMode)

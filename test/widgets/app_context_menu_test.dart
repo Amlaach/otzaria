@@ -2213,7 +2213,7 @@ void main() {
           AppContextMenuIconAction(
             label: 'קישור ישיר',
             tooltip: 'העתק קישור ישיר',
-            icon: OtzariaIcons.link_24_regular,
+            icon: OtzariaIcons.links_24_regular,
             submenuBuilder: () => [
               AppContextMenuSubAction(
                 label: 'העתק קישור למקטע',
@@ -2231,7 +2231,7 @@ void main() {
         reason: 'פעולה עם submenuBuilder מציגה חץ למטה',
       );
 
-      await tester.tap(find.byIcon(OtzariaIcons.link_24_regular));
+      await tester.tap(find.byIcon(OtzariaIcons.links_24_regular));
       await tester.pumpAndSettle();
       expect(
         find.text('העתק קישור למקטע'),

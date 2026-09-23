@@ -1,13 +1,24 @@
-import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:flutter/widgets.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/utils/link_helpers.dart';
 import 'package:otzaria/widgets/misc/app_popup_menu.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
+
+/// האייקון של כל סוג קישור. שלושתם מבית ה-link של אוצריא, כדי שהתת-תפריט
+/// ייקרא כמשפחה אחת: מסמך = המקטע עצמו, מרקר = המקטע מודגש, אל"ף = הטקסט
+/// המסומן מודגש.
+IconData _iconFor(DirectLinkKind kind) => switch (kind) {
+  DirectLinkKind.section => OtzariaIcons.link_document_24_regular,
+  DirectLinkKind.sectionMark => OtzariaIcons.link_marker_24_regular,
+  DirectLinkKind.textMark => OtzariaIcons.link_alef_24_regular,
+};
 
 /// בניית פעולות "העתק קישור ישיר" לשורת אייקונים (תת-תפריט פשוט).
 ///
 /// מאחד מימוש משוכפל שהיה ב-combined_book_screen.dart וב-simple_text_viewer.dart.
 /// משתמש ב-[buildDirectLinkSubmenuEntries] (לוגיקה טהורה) ועוטף ב-
-/// [AppContextMenuSubAction] עם אייקון אחיד וקריאה ל-[copyLinkToClipboard].
+/// [AppContextMenuSubAction] עם האייקון של סוג הקישור וקריאה ל-
+/// [copyLinkToClipboard].
 List<AppContextMenuSubAction> buildDirectLinkSubmenuActions({
   required int bookId,
   BookSource source = BookSource.official,
@@ -24,7 +35,7 @@ List<AppContextMenuSubAction> buildDirectLinkSubmenuActions({
       .map(
         (e) => AppContextMenuSubAction(
           label: e.label,
-          icon: FluentIcons.link_24_regular,
+          icon: _iconFor(e.kind),
           enabled: e.link != null,
           onTap: e.link != null ? () => copyLinkToClipboard(e.link!) : null,
         ),

@@ -454,7 +454,7 @@ class _BookPreviewPanelState extends State<BookPreviewPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              FluentIcons.link_24_regular,
+              OtzariaIcons.link_24_regular,
               size: 64,
               color: Theme.of(
                 context,

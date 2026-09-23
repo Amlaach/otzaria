@@ -638,7 +638,7 @@ class _LinksListViewState extends State<LinksListView> {
   Widget _buildEmptyMessage(String message) {
     return OtzariaEmptyState(
       isCompact: true,
-      icon: OtzariaIcons.link_24_regular,
+      icon: OtzariaIcons.links_24_regular,
       title: message,
     );
   }

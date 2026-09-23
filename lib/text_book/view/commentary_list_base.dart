@@ -690,7 +690,7 @@ class CommentaryListBaseState extends State<CommentaryListBase>
         const SizedBox(width: gap),
         // 4. הפעלת שדה החיפוש
         IconButton(
-          icon: const Icon(OtzariaIcons.search_24_regular),
+          icon: const Icon(FluentIcons.search_24_regular),
           tooltip: 'חיפוש',
           onPressed: _openInlineSearch,
         ),
@@ -779,6 +779,9 @@ class CommentaryListBaseState extends State<CommentaryListBase>
                         controller: _searchController,
                         hintText: 'חפש בתוך המפרשים המוצגים...',
                         icon: OtzariaIcons.search_in_the_library_24_regular,
+                        // Enter מנווט לתוצאה הבאה ומחזיר את הפוקוס לשדה; בחירת
+                        // הכל בקבלת פוקוס הייתה מוחקת את השאילתה בתו הבא.
+                        selectAllOnFocus: false,
                         trailingActions: [
                           if (query.isNotEmpty && total > 1) ...[
                             if (currentIndex >= 0)
@@ -2015,7 +2018,7 @@ class CommentaryListBaseState extends State<CommentaryListBase>
                 // אין מפרשים בכלל לקטע הזה, או שיש מפרשים נבחרים אבל הם לא רלוונטיים
                 return OtzariaEmptyState(
                   isCompact: true,
-                  icon: OtzariaIcons.link_24_regular,
+                  icon: OtzariaIcons.links_24_regular,
                   title: hasAnyCommentaryLinks
                       ? 'לא נמצאו מפרשים מהנבחרים לקטע זה'
                       : 'לא נמצאו מפרשים לקטע הנבחר',
@@ -2040,7 +2043,7 @@ class CommentaryListBaseState extends State<CommentaryListBase>
                     if (effectiveTypes.isEmpty) return const SizedBox.shrink();
                     return const OtzariaEmptyState(
                       isCompact: true,
-                      icon: OtzariaIcons.link_24_regular,
+                      icon: OtzariaIcons.links_24_regular,
                       title: 'לא נמצאו מפרשים מהסוגים שנבחרו',
                     );
                   }

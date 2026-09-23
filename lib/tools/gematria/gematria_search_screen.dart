@@ -306,7 +306,9 @@ class GematriaSearchScreenState extends State<GematriaSearchScreen> {
           final relativePath = result.file
               .replaceFirst(libraryPath, '')
               .replaceAll('\\', '/');
-          final fileName = _bookNameWithoutTextExtension(relativePath.split('/').last);
+          final fileName = _bookNameWithoutTextExtension(
+            relativePath.split('/').last,
+          );
 
           // בניית הנתיב עם מספר הפסוק
           String displayPath = result.path.isNotEmpty ? result.path : fileName;

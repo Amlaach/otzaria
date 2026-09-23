@@ -67,7 +67,7 @@ jobs:
       - name: Check plugin SDK spec is fresh
         run: dart run tool/plugins/generate_plugin_spec.dart --check
 
-      # ה-trinity של CLAUDE.md: analyze + test (פורמט נבדק locally בlint).
+      # בדיקות ה־CI: analyze + test (פורמט נבדק locally ב־lint).
       - name: Analyze
         run: flutter analyze
 

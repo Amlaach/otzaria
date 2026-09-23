@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
 import 'package:otzaria/library/models/library.dart';
@@ -309,7 +310,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final fileIconCenter = tester.getCenter(
-      find.byIcon(FluentIcons.document_text_24_regular),
+      find.byIcon(OtzariaIcons.document_alef_24_regular),
     );
     final menuIconCenter = tester.getCenter(
       find.byIcon(FluentIcons.more_vertical_24_regular),
@@ -327,8 +328,8 @@ void main() {
     await tester.pumpWidget(buildTestWidget(book: book));
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(FluentIcons.document_edit_24_regular), findsOneWidget);
-    expect(find.byIcon(FluentIcons.document_text_24_regular), findsNothing);
+    expect(find.byIcon(OtzariaIcons.document_word_24_regular), findsOneWidget);
+    expect(find.byIcon(OtzariaIcons.document_alef_24_regular), findsNothing);
   });
 
   testWidgets('מציג אייקון תיקייה בקו regular ולא filled', (tester) async {

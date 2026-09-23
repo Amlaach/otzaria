@@ -46,8 +46,9 @@ class ItemsListView extends StatefulWidget {
   final String notFoundText;
   final String clearAllText;
 
-  /// אייקון שדה החיפוש — ממוקד לפי מה שמסתנן ברשימה.
+  /// אייקון שדה החיפוש ומצבי הריק — ממוקד לפי מה שמסתנן ברשימה.
   final IconData searchIcon;
+
   final Widget? Function(dynamic item)? leadingIconBuilder;
   final String? Function(dynamic item)? subtitleBuilder;
   final String? Function(dynamic item)? subtitleTooltipBuilder;

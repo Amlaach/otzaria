@@ -569,7 +569,7 @@ class _CalendarSettingsTabState extends State<CalendarSettingsTab> {
 
                 // ── יומנים מקישור ICS ──
                 SettingsActionTile.text(
-                  icon: FluentIcons.link_24_regular,
+                  icon: OtzariaIcons.link_add_24_regular,
                   title: context.settingsText('יומן מקישור (ICS)'),
                   subtitle: isOfflineMode
                       ? context.settingsText('מושבת במצב מנותק')

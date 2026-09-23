@@ -91,18 +91,21 @@ String? buildTextMarkLink(
 /// כלול כאן כדי למנוע כפילות.
 /// מחזיר 2 פריטים ללא טקסט מסומן, 3 פריטים עם טקסט מסומן לא-ריק.
 /// כל פריט מכיל label ו-link (link יכול להיות null אם הבנייה נכשלה).
-List<({String label, String? link})> buildDirectLinkSubmenuEntries({
+List<({DirectLinkKind kind, String label, String? link})>
+buildDirectLinkSubmenuEntries({
   required int bookId,
   BookSource source = BookSource.official,
   required int index,
   required String? selectedText,
 }) {
-  final entries = <({String label, String? link})>[
+  final entries = <({DirectLinkKind kind, String label, String? link})>[
     (
+      kind: DirectLinkKind.section,
       label: 'העתק קישור למקטע זה',
       link: buildSectionLink(bookId, index, source: source),
     ),
     (
+      kind: DirectLinkKind.sectionMark,
       label: 'העתק קישור עם הדגשת המקטע',
       link: buildSectionMarkLink(bookId, index, source: source),
     ),
@@ -110,6 +113,7 @@ List<({String label, String? link})> buildDirectLinkSubmenuEntries({
 
   if (selectedText != null && selectedText.trim().isNotEmpty) {
     entries.add((
+      kind: DirectLinkKind.textMark,
       label: 'העתק קישור עם הדגשת הטקסט',
       link: buildTextMarkLink(
         bookId,
@@ -122,3 +126,7 @@ List<({String label, String? link})> buildDirectLinkSubmenuEntries({
 
   return entries;
 }
+
+/// סוג הקישור שכל פריט בתת-התפריט מייצר. הקובץ הזה הוא לוגיקה טהורה ואינו
+/// מכיר `IconData`, ולכן הוא מוסר את הסוג ושכבת ה-UI בוחרת לו אייקון.
+enum DirectLinkKind { section, sectionMark, textMark }

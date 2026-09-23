@@ -1,5 +1,5 @@
-import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -73,8 +73,8 @@ class _NotesSearchHeaderState extends State<NotesSearchHeader> {
                 children: [
                   Expanded(
                     child: OtzariaSearchField(
-                      icon: OtzariaIcons.search_in_the_document_24_regular,
                       controller: _searchController,
+                      icon: OtzariaIcons.search_in_the_document_24_regular,
                       hintText: 'חפש בהערות...',
                       onChanged: (value) {
                         context.read<PersonalNotesBloc>().add(

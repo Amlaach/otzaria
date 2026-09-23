@@ -90,7 +90,7 @@ void main() {
           home: Scaffold(
             body: OtzariaEmptyState(
               isCompact: true,
-              icon: OtzariaIcons.link_24_regular,
+              icon: OtzariaIcons.links_24_regular,
               title: 'אין קישורים',
               message: 'הסבר קצר',
             ),
@@ -98,7 +98,7 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(OtzariaIcons.link_24_regular), findsOneWidget);
+      expect(find.byIcon(OtzariaIcons.links_24_regular), findsOneWidget);
       expect(find.text('אין קישורים'), findsOneWidget);
       expect(find.text('הסבר קצר'), findsOneWidget);
     });

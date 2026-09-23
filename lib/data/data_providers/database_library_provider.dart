@@ -499,6 +499,7 @@ List<Map<String, dynamic>> _loadInverseSourceRows(
           sl.heRef as targetLineHeRef,
           sb.title as targetBookTitle,
           sb.categoryId as targetCategoryId,
+          sb.id as targetBookId,
           NULL as targetFileType,
           $rangeEndSelect
           $anchorSelect
@@ -542,6 +543,7 @@ List<Map<String, dynamic>> _loadInverseSourceRows(
         sl.heRef as targetLineHeRef,
         sb.title as targetBookTitle,
         sb.categoryId as targetCategoryId,
+        sb.id as targetBookId,
         NULL as targetFileType,
         $rangeEndSelect
         $anchorSelect

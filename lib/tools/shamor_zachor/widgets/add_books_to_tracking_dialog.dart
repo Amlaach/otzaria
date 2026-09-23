@@ -13,7 +13,7 @@ import 'package:otzaria/models/books.dart';
 import 'package:otzaria/utils/navigation/talmud_bavli_open_format.dart';
 import 'package:otzaria/widgets/controls/action_buttons.dart';
 import 'package:otzaria/widgets/misc/rtl_icon.dart';
-import 'package:otzaria/widgets/text/rtl_text_field.dart';
+import 'package:otzaria/widgets/text/otzaria_search_field.dart';
 import '../providers/shamor_zachor_data_provider.dart';
 
 /// פותח דיאלוג לבחירת ספרים מעץ הספרייה והוספתם למעקב בשמור וזכור.
@@ -202,22 +202,15 @@ class _AddBooksToTrackingDialogState extends State<AddBooksToTrackingDialog> {
   }
 
   Widget _buildSearchField() {
-    return RtlTextField(
+    return OtzariaSearchField(
       controller: _searchController,
       autofocus: true,
-      decoration: InputDecoration(
-        hintText: 'חיפוש ספר...',
-        prefixIcon: const Icon(OtzariaIcons.search_in_the_book_24_regular),
-        suffixIcon: _searchController.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(FluentIcons.dismiss_24_regular),
-                onPressed: () => setState(_searchController.clear),
-              ),
-        border: OutlineInputBorder(borderRadius: AppTokens.borderRadiusAll),
-        isDense: true,
-      ),
+      // מחפש בספרייה כולה, לא מסנן את הרשימה שעל המסך — ולכן העדשה
+      // הממוקדת, אותה אחת שנושא שדה החיפוש של מסך הספרייה.
+      icon: OtzariaIcons.search_in_the_library_24_regular,
+      hintText: 'חיפוש ספר...',
       onChanged: (_) => setState(() {}),
+      onClear: () => setState(() {}),
     );
   }
 

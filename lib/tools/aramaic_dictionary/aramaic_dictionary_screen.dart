@@ -161,6 +161,7 @@ class _AramaicDictionaryScreenState extends State<AramaicDictionaryScreen> {
             center: OtzariaSearchField(
               controller: _searchController,
               focusNode: _searchFocusNode,
+              icon: OtzariaIcons.search_in_the_text_24_regular,
               hintText: _isHebrewToAramaic
                   ? 'חפש מילה בעברית...'
                   : 'חפש מילה בארמית...',
@@ -237,7 +238,7 @@ class _AramaicDictionaryScreenState extends State<AramaicDictionaryScreen> {
   Widget _buildResultsList() {
     if (_searchController.text.isEmpty) {
       return const ToolEmptyState(
-        icon: OtzariaIcons.search_in_the_text_24_regular,
+        icon: OtzariaIcons.alef_near_alef_stam_24_regular,
         message: 'הזן מילה לחיפוש במילון',
       );
     }

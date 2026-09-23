@@ -219,7 +219,7 @@ class _DynamicShortcutForm extends StatelessWidget {
               ),
             ),
             SettingsActionTile.segmentedTile<HolyNameDisplay?>(
-              icon: FluentIcons.shield_keyhole_24_regular,
+              icon: OtzariaIcons.alef_lock_24_regular,
               title: t('שם הוי"ה'),
               options: [
                 SegmentOption(value: null, label: t('ללא שינוי')),
@@ -237,7 +237,7 @@ class _DynamicShortcutForm extends StatelessWidget {
             ),
             if (value.target == TextTarget.body && isDisplay)
               SettingsActionTile.segmentedTile<DynamicMarkChange?>(
-                icon: FluentIcons.text_footnote_24_regular,
+                icon: OtzariaIcons.alef_1_24_regular,
                 title: t('ציוני המפרשים'),
                 options: markOptions,
                 currentValue: change.anchorMarkers,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/widgets/controls/action_buttons.dart';
 import 'package:otzaria/widgets/layout/centered_scrollable_state.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
 
 /// ווידג'ט המוצג כאשר אין תוצאות בספרייה.
 /// מציג הודעה ראשית ופעולות עזר לניווט וחיפוש.
@@ -83,7 +84,7 @@ class LibraryEmptyStateWidget extends StatelessWidget {
             const SizedBox(height: 16),
             ActionButton.recommended(
               onPressed: onOpenLink,
-              icon: FluentIcons.link_24_regular,
+              icon: OtzariaIcons.link_24_regular,
               text: 'פתיחת קישור',
             ),
             const SizedBox(height: 12),

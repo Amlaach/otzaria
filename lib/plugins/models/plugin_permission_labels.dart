@@ -216,7 +216,7 @@ const Map<String, PluginPermissionInfo> _permissionLabels = {
   ),
   'library.links.read': PluginPermissionInfo(
     label: 'מפרשים וקישורים',
-    icon: FluentIcons.link_24_regular,
+    icon: OtzariaIcons.link_24_regular,
     description:
         'צפייה ברשימת המפרשים של ספר ובקישורים בין הספרים, בלי תוכן הספרים',
   ),

@@ -438,8 +438,8 @@ void _installGlobalErrorHandlers() {
 }
 
 Future<void> _initializeSentry() async {
-  // ⚠️ רק אחרי החשיפה: sentry_init (FFI סינכרוני) מפעיל את crashpad_handler.exe
-  // ומחכה לו; בסוכן סינון שמאט יצירת תהליכים זה חסם את ה-UI לדקות (issue #1192).
+  // ⚠️ רק אחרי החשיפה ובלי timeout: sentry_init (FFI סינכרוני) מחכה ל-crashpad_handler.exe
+  // וחוסם את ה-UI לדקות במחשבים איטיים — בדיוק שם החשיפה מתעכבת (issue #1192).
   await _mainWindowRevealedCompleter.future;
   // ה-uncloak רץ כ-task נייטיבי על אותו thread; חסימה לפניו משאירה את
   // החלון בלתי-נראה (נמדד גם אחרי שני endOfFrame) — נותנים לו לרוץ קודם.
