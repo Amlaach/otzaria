@@ -588,10 +588,11 @@ class PluginExtendedValidator {
   ///
   /// תואם ללוגיקה ב-`C:\Otzaria_Website\src\lib\pluginValidation.js`.
   /// [manifest] חייב להיות תקני (`PluginManifest.fromJson` עבר בהצלחה).
+  /// [directoryPath] null = אין קבצים לסרוק (תוסף שמוגש משרת פיתוח).
   static PluginValidationReport validate({
     required PluginManifest manifest,
     required Map<String, dynamic> manifestJson,
-    required String directoryPath,
+    required String? directoryPath,
   }) {
     final errors = <String>[];
     final warnings = <String>[];
@@ -609,7 +610,9 @@ class PluginExtendedValidator {
     _checkNameVsToolTabTitle(manifestJson, warnings);
     _validateHeadless(manifest, manifestJson, declaredPermissions, errors);
 
-    final files = _collectScannableFiles(directoryPath);
+    final files = directoryPath == null
+        ? const <String, File>{}
+        : _collectScannableFiles(directoryPath);
     final apiUsage = <String, Set<String>>{};
     final eventUsage = <String, Set<String>>{};
 

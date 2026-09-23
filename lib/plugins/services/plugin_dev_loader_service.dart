@@ -36,11 +36,13 @@ class PluginDevLoaderService {
       skipFileValidation: skipFileValidation,
       skipAppVersionValidation: true,
     );
+    // ב-localhost ה"תיקייה" היא URL — Directory.existsSync עליו זורק ב-Windows.
+    final scanPath = skipFileValidation ? null : directoryPath;
     final report = await Isolate.run(
       () => PluginExtendedValidator.validate(
         manifest: manifest,
         manifestJson: manifestJson,
-        directoryPath: directoryPath,
+        directoryPath: scanPath,
       ),
     );
     if (report.hasErrors) throw Exception(report.errors.join('\n'));
