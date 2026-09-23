@@ -17,6 +17,7 @@ import 'package:otzaria/plugins/models/plugin_book_identity.dart';
 import 'package:otzaria/plugins/models/plugin_manifest.dart';
 import 'package:otzaria/plugins/repository/plugin_registry_repository.dart';
 import 'package:otzaria/plugins/services/plugin_file_server.dart';
+import 'package:otzaria/plugins/services/plugin_user_folder_grants.dart';
 import 'package:otzaria/search/search_repository.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
 import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
@@ -132,6 +133,8 @@ void main() {
   late HttpClient client;
   String? pickedFolder;
   var folderPickerCalls = 0;
+  var consent = true;
+  final consentDialogs = <({String title, String content, String subtitle})>[];
 
   setUpAll(() async {
     await Settings.init(cacheProvider: MemoryCacheProvider());
@@ -144,6 +147,8 @@ void main() {
     client = HttpClient();
     pickedFolder = null;
     folderPickerCalls = 0;
+    consent = true;
+    consentDialogs.clear();
   });
 
   tearDown(() async {
@@ -166,7 +171,14 @@ void main() {
       themePayloadBuilder: () => <String, dynamic>{},
       showConfirmDialog: ({required title, required content}) async => true,
       showWarningDialog:
-          ({required title, required content, required subtitle}) async => true,
+          ({required title, required content, required subtitle}) async {
+            consentDialogs.add((
+              title: title,
+              content: content,
+              subtitle: subtitle,
+            ));
+            return consent;
+          },
       pickFolder: ({title}) async {
         folderPickerCalls++;
         return pickedFolder;
@@ -227,6 +239,34 @@ void main() {
         isTrue,
       );
       expect(folderPickerCalls, 2);
+      expect(
+        consentDialogs,
+        hasLength(1),
+        reason: 'תיקייה שכבר אושרה חוזרת בלי דיאלוג ההסכמה',
+      );
+    });
+
+    test('דיאלוג ההסכמה: קבוע, שם התוסף והתיקייה, ואישור מתמיד', () async {
+      await grantedFolder();
+      final dialog = consentDialogs.single;
+      expect(dialog.title, 'גישה קבועה לתיקייה');
+      expect(
+        dialog.content,
+        'התוסף „Test Plugin” מבקש גישה קבועה לתיקייה „שיעורים”: לקרוא ולכתוב '
+        'בה גם בהפעלות הבאות של אוצריא, בלי לשאול שוב.',
+      );
+      expect(dialog.subtitle, 'אפשר לבטל את הגישה בכל עת בהגדרות התוסף.');
+      expect(registry.kv['_internal/user_folder_grants'], isNotNull);
+    });
+
+    test('סירוב בדיאלוג ההסכמה — cancelled ושום דבר לא נשמר', () async {
+      final root = Directory(p.join(temp.path, 'שיעורים'))..createSync();
+      pickedFolder = root.path;
+      consent = false;
+      final res = await buildAdapter().execute('fs', 'pickUserFolder', {});
+      expect(res, {'cancelled': true});
+      expect(consentDialogs, hasLength(1));
+      expect(registry.kv['_internal/user_folder_grants'], isNull);
     });
 
     test('תיקייה מוגנת נדחית ב-error.forbidden', () async {
@@ -428,6 +468,82 @@ void main() {
       expect(resolved['token'], file['token']);
     },
   );
+
+  group('גישה קבועה כוללת את ההרשאה של ui.pickFolder', () {
+    test(
+      'אחרי מופע חדש: מחיקה והעברה בתוך התיקייה מותרות, מחוצה לה לא',
+      () async {
+        final g = await grantedFolder();
+        final outside = File(p.join(temp.path, 'outside.txt'))
+          ..writeAsStringSync('x');
+
+        // מופע חדש = הפעלה מחדש; אין ui.pickFolder בריצה הזו.
+        final adapter = buildAdapter();
+        final notes = p.join(g.root.path, 'notes.txt');
+        expect(
+          await adapter.execute('fs', 'deleteFile', {'path': notes}),
+          isTrue,
+        );
+        expect(File(notes).existsSync(), isFalse);
+        expect(
+          await adapter.execute('fs', 'moveEntry', {
+            'from': p.join(g.root.path, 'בראשית.docx'),
+            'to': p.join(g.root.path, 'חורף', 'בראשית.docx'),
+          }),
+          isTrue,
+        );
+        expect(
+          File(p.join(g.root.path, 'חורף', 'בראשית.docx')).existsSync(),
+          isTrue,
+        );
+
+        await expectLater(
+          adapter.execute('fs', 'deleteFile', {'path': outside.path}),
+          _throwsCode('error.forbidden'),
+        );
+        await expectLater(
+          adapter.execute('fs', 'moveEntry', {
+            'from': p.join(g.root.path, 'חורף', 'נח.docx'),
+            'to': p.join(temp.path, 'נח.docx'),
+          }),
+          _throwsCode('error.forbidden'),
+        );
+        expect(outside.existsSync(), isTrue);
+        expect(consentDialogs, hasLength(1));
+      },
+    );
+
+    test('revokeFolder מסיר גם את הקבועה וגם את זו של ui.pickFolder', () async {
+      final g = await grantedFolder();
+      pickedFolder = g.root.path;
+      expect(
+        await g.adapter.execute('ui', 'pickFolder', {}),
+        {'path': g.root.path},
+      );
+      await g.adapter.execute('fs', 'revokeFolder', {'folderToken': g.token});
+
+      final notes = p.join(g.root.path, 'notes.txt');
+      await expectLater(
+        g.adapter.execute('fs', 'deleteFile', {'path': notes}),
+        _throwsCode('error.forbidden'),
+      );
+      await expectLater(
+        buildAdapter().execute('fs', 'deleteFile', {'path': notes}),
+        _throwsCode('error.forbidden'),
+      );
+      expect(File(notes).existsSync(), isTrue);
+    });
+
+    test('ביטול חיצוני (מסך ההגדרות) חל על מופע שכבר רץ', () async {
+      final g = await grantedFolder();
+      final notes = p.join(g.root.path, 'notes.txt');
+      await PluginUserFolderGrants(registry).revoke('test.plugin', g.token);
+      await expectLater(
+        g.adapter.execute('fs', 'deleteFile', {'path': notes}),
+        _throwsCode('error.forbidden'),
+      );
+    });
+  });
 
   group('library.getTree types / library.openBookFile', () {
     late File personalDocx;

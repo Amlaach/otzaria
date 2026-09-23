@@ -8,8 +8,10 @@ import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
 import 'package:otzaria/plugins/models/plugin_permission_labels.dart';
 import 'package:otzaria/plugins/models/plugin_valid_permissions.dart';
 import 'package:otzaria/plugins/repository/plugin_registry_repository.dart';
+import 'package:otzaria/plugins/services/plugin_user_folder_grants.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/settings/widgets/settings_card.dart';
+import 'package:path/path.dart' as p;
 
 /// פונקציה משותפת לדיאלוג אישור מחיקת תוסף — קוראת מ-tools_management_panel
 /// ומ-PluginSettingsScreen.
@@ -89,7 +91,9 @@ class PluginSettingsScreen extends StatefulWidget {
 class _PluginSettingsScreenState extends State<PluginSettingsScreen> {
   final _repo = PluginRegistryRepository();
   static final RegExp _pathSeparatorRegExp = RegExp(r'[/\\]');
+  late final _folderGrants = PluginUserFolderGrants(_repo);
   Map<String, bool> _permissions = {};
+  List<PluginUserFolderGrant> _userFolders = const [];
 
   static String _formatPathForDisplay(String path) =>
       path.replaceAllMapped(_pathSeparatorRegExp, (m) => '${m[0]!}\u200E');
@@ -98,6 +102,20 @@ class _PluginSettingsScreenState extends State<PluginSettingsScreen> {
   void initState() {
     super.initState();
     _loadPermissions();
+    _loadUserFolders();
+  }
+
+  Future<void> _loadUserFolders() async {
+    final folders = await _folderGrants.list(widget.plugin.pluginId);
+    if (!mounted) return;
+    setState(() => _userFolders = folders);
+  }
+
+  /// ביטול גישה קבועה — אותה פעולה כמו `fs.revokeFolder`. אינו מוחק דבר מהדיסק,
+  /// ולכן אין דיאלוג אישור.
+  Future<void> _revokeUserFolder(PluginUserFolderGrant folder) async {
+    await _folderGrants.revoke(widget.plugin.pluginId, folder.token);
+    await _loadUserFolders();
   }
 
   Future<void> _loadPermissions() async {
@@ -200,6 +218,36 @@ class _PluginSettingsScreenState extends State<PluginSettingsScreen> {
                           },
                         );
                       }).toList(),
+                ),
+              ],
+              if (_userFolders.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                SettingsCard(
+                  title: 'תיקיות עם גישה קבועה',
+                  subtitle:
+                      'התוסף קורא וכותב בתיקיות אלה בלי לשאול שוב. הסרה מבטלת '
+                      'את הגישה ואינה מוחקת דבר מהדיסק.',
+                  children: [
+                    for (final folder in _userFolders)
+                      SettingsActionTile.path(
+                        key: ValueKey(folder.token),
+                        icon: FluentIcons.folder_24_regular,
+                        iconColor: Theme.of(context).colorScheme.primary,
+                        title: p.basename(folder.path).isEmpty
+                            ? folder.path
+                            : p.basename(folder.path),
+                        path: folder.path,
+                        placeholder: '',
+                        pinnedTrailing: IconButton(
+                          icon: const Icon(
+                            FluentIcons.dismiss_24_regular,
+                            size: 18,
+                          ),
+                          tooltip: 'הסר גישה',
+                          onPressed: () => _revokeUserFolder(folder),
+                        ),
+                      ),
+                  ],
                 ),
               ],
               const SizedBox(height: 32),

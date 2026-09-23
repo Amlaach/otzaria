@@ -1630,7 +1630,10 @@ export interface BookFileHandle extends UserFileHandle {
   source: 'library' | 'user' | 'attached';
 }
 
-/** תוצאת `fs.pickUserFolder` (מ-0.9.98). */
+/**
+ * תוצאת `fs.pickUserFolder` (מ-0.9.98). `cancelled: true` — המשתמש ביטל את
+ * בחירת התיקייה או סירב בדיאלוג הגישה הקבועה של אוצריא.
+ */
 export type PickUserFolderResult =
   | { cancelled: true }
   | {
@@ -2055,7 +2058,11 @@ export interface OtzariaGlobal {
     payload: OpenBookFileArgs
   ): Promise<OtzariaResponse<BookFileHandle>>;
 
-  /** בחירת תיקייה עם הרשאת עיון וקריאה קבועה. */
+  /**
+   * בחירת תיקייה עם גישה קבועה, אחרי דיאלוג הסכמה של אוצריא (תיקייה שכבר
+   * אושרה חוזרת בלי הדיאלוג). כוללת גם את מה ש-`ui.pickFolder` מעניק.
+   * המשתמש מבטל בהגדרות התוסף.
+   */
   call(
     method: 'fs.pickUserFolder',
     payload?: { title?: string }
@@ -2073,7 +2080,7 @@ export interface OtzariaGlobal {
     payload: OpenFolderFileArgs
   ): Promise<OtzariaResponse<PickUserFileResult>>;
 
-  /** הסרת תיקייה מאושרת. idempotent. */
+  /** הסרת תיקייה מאושרת (גם הרשאת `ui.pickFolder` שלה בריצה הזו). idempotent. */
   call(
     method: 'fs.revokeFolder',
     payload: { folderToken: string }
