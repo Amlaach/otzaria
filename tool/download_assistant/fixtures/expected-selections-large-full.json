@@ -1,0 +1,104 @@
+{
+  "platformChoices": [
+    "windows",
+    "macos",
+    "linux",
+    "android"
+  ],
+  "architectureChoices": {
+    "windows": [
+      "x64",
+      "arm64"
+    ],
+    "macos": [],
+    "linux": [
+      "x64",
+      "arm64"
+    ],
+    "android": []
+  },
+  "packageFormatChoices": {
+    "linux/x64": [
+      "deb",
+      "rpm",
+      "portable"
+    ],
+    "linux/arm64": [
+      "deb",
+      "rpm",
+      "portable"
+    ]
+  },
+  "defaultPackageFormat": {
+    "ubuntu": "deb",
+    "linuxmint": "deb",
+    "fedora": "rpm",
+    "opensuse-tumbleweed": "rpm",
+    "arch": "portable",
+    "not-linux": "deb"
+  },
+  "targets": [
+    {
+      "target": {
+        "platform": "windows",
+        "architecture": "x64",
+        "packageFormat": ""
+      },
+      "offeredComponents": [
+        "otzaria-windows-portable-x64",
+        "otzaria-windows-x64",
+        "otzaria-windows-full-indexed",
+        "library-full-indexed"
+      ],
+      "presets": [
+        {
+          "id": "full",
+          "members": [
+            "otzaria-windows-full-indexed",
+            "library-full-indexed"
+          ],
+          "outputFiles": [
+            "otzaria-0.10.3-windows-full-indexed.exe",
+            "otzaria-0.10.3-library-full-indexed.tar.zst.part-000",
+            "otzaria-0.10.3-library-full-indexed.tar.zst.part-001",
+            "otzaria-0.10.3-library-full-indexed.tar.zst.part-002"
+          ],
+          "outputSubfolder": "אוצריא להתקנה ל-Windows"
+        },
+        {
+          "id": "basic",
+          "members": [
+            "otzaria-windows-x64"
+          ],
+          "outputFiles": [
+            "otzaria-0.10.3-windows.exe"
+          ],
+          "outputSubfolder": ""
+        }
+      ]
+    },
+    {
+      "target": {
+        "platform": "windows",
+        "architecture": "arm64",
+        "packageFormat": ""
+      },
+      "offeredComponents": [
+        "otzaria-windows-arm64",
+        "otzaria-windows-portable-arm64"
+      ],
+      "presets": [
+        {
+          "id": "basic",
+          "members": [
+            "otzaria-windows-arm64"
+          ],
+          "outputFiles": [
+            "otzaria-0.10.3-windows_arm64.exe"
+          ],
+          "outputSubfolder": ""
+        }
+      ]
+    }
+  ]
+}

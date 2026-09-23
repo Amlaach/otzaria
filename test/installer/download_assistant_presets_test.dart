@@ -33,6 +33,7 @@ Map<String, Object?> _manifest(List<ComponentSpec> specs) => {
         'architecture': ?spec.architecture,
         'packageFormat': ?spec.packageFormat,
         'dependsOn': spec.dependsOn,
+        if (spec.installedBy.isNotEmpty) 'installedBy': spec.installedBy,
         'downloadSize': 1,
         'assets': const <Object>[],
       },
@@ -72,18 +73,34 @@ void main() {
       );
       expect(
         body,
+        contains('MembersContain(CompInstalledBy[I], CompId[Bundle])'),
+        reason: 'החבילה מגיעה עם מה שהיא מתקינה, כמו ב-buildPresets',
+      );
+      expect(
+        body,
+        isNot(contains('ComponentFitsTarget(')),
+        reason: 'ההצעות בנויות רק ממה שמוצע ביעד (ComponentIsOffered)',
+      );
+      expect(
+        body,
         contains('(CompDownloadSize[I] > CompDownloadSize[Bundle])'),
         reason: 'החבילה הגדולה ביותר נבחרת, כמו ב-buildPresets',
       );
       final calls = RegExp(
         r"CollectByTypes\('([^']*)',\s*(False|True)\)",
       ).allMatches(body).map((m) => '${m.group(1)}|${m.group(2)}').toList();
-      expect(calls, [
-        'application,library,dependency,|False',
-        'application,|False',
-        '|True',
-        'application,|False',
-      ], reason: 'הרשימות חייבות להתאים ל-buildPresets — מלאה, בסיסית, עדכון');
+      expect(
+        calls,
+        [
+          'application,library,dependency,|False',
+          'library,|False',
+          'application,|False',
+          '|True',
+          'application,|False',
+        ],
+        reason:
+            'הרשימות חייבות להתאים ל-buildPresets — מלאה (ורק עם ספרייה), בסיסית, עדכון',
+      );
       final ids = RegExp(
         r"AddPreset\('([a-z]+)'",
       ).allMatches(body).map((m) => m.group(1)).toList();
@@ -106,9 +123,36 @@ void main() {
       );
     });
 
-    test('סגירת התלויות מדלגת על תלות שאינה מתאימה ליעד', () {
+    test('רכיב מוצע: מתאים, ניתן להרצה, ויש מי שמתקין אותו', () {
+      final offered = _routine(_script(), 'function ComponentIsOffered(');
+      expect(offered, contains('ComponentFitsTarget(Index)'));
+      expect(offered, contains('ComponentIsRunnable(Index)'));
+      expect(offered, contains('InstallerFor(Index) >= 0'));
+      expect(
+        _routine(_script(), 'function ComponentIsRunnable('),
+        contains('(AssetSize[A] >= MaxSingleOutputFileSize)'),
+      );
+      for (final routine in const [
+        'function CollectByTypes(',
+        'procedure RefreshCustomPage();',
+      ]) {
+        expect(
+          _routine(_script(), routine),
+          contains('ComponentIsOffered(I)'),
+          reason: routine,
+        );
+      }
+    });
+
+    test('בחירה אישית נסגרת כמו ההצעות', () {
+      final next = _routine(_script(), 'function NextButtonClick(');
+      expect(next, contains('Members := WithDependencies(Members);'));
+    });
+
+    test('סגירת התלויות: dependsOn שמוצע, והמתקין של מה שנבחר', () {
       final closure = _routine(_script(), 'function WithDependencies(');
-      expect(closure, contains('ComponentFitsTarget(Idx)'));
+      expect(closure, contains('ComponentIsOffered(Idx)'));
+      expect(closure, contains('Idx := InstallerFor(I);'));
       expect(
         _routine(_script(), 'function CanonicalMembers('),
         contains('MembersContain(Members, CompId[I])'),
@@ -156,17 +200,25 @@ void main() {
   });
 
   group('כל הצעה נשארת בעלת תוכן', () {
-    test('ל-x64 "מלאה" היא חבילה אחת; ל-ARM64 — התוכנה והספרייה', () {
+    test('"מלאה" היא המתקין המלא של אותה ארכיטקטורה', () {
       final x64 = _presets(kKnownComponents, _windowsTargets[0]);
       final arm64 = _presets(kKnownComponents, _windowsTargets[1]);
 
       expect(x64['full'], hasLength(1));
       expect(x64['basic'], contains('otzaria-windows-x64'));
-      expect(arm64['full'], [
-        'otzaria-windows-arm64',
-        'library-full-indexed',
-      ]);
+      expect(arm64['full'], ['otzaria-windows-full-arm64']);
       expect(arm64['basic'], contains('otzaria-windows-arm64'));
+    });
+
+    test('בלי מתקין מלא ל-ARM64 — אין "מלאה", ולא מתקין x64', () {
+      final arm64 = _presets(
+        kKnownComponents
+            .where((s) => s.id != 'otzaria-windows-full-arm64')
+            .toList(),
+        _windowsTargets[1],
+      );
+      expect(arm64.keys, ['basic']);
+      expect(arm64['basic'], ['otzaria-windows-arm64']);
     });
 
     test('"בסיסית" ו"עדכון" מתלכדות כשאין רכיב required נוסף', () {

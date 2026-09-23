@@ -81,6 +81,7 @@ dart run tool/release/generate_release_manifest.dart \
     {
       "id": "library-full-indexed",
       "type": "library",
+      "installedBy": ["otzaria-windows-full-indexed"], // מי שקורא אותו מהתיקייה
       "downloadSize": 4200000000,           // סכום החלקים
       "compatibility": {                    // מפה גנרית; מפתחות מה-provenance
         "libraryReleaseTag": "v27",
@@ -124,6 +125,11 @@ dart run tool/release/generate_release_manifest.dart \
   בסוג שאינו מוכר לו מציג אותו לפי `name`/`description` ואינו נופל.
 * `origin` הוא תיעוד רישוי/ייחוס בלבד ואינו משפיע על נתיב ההורדה.
 * `dependsOn` מצביע רק על מזהים שקיימים באותו מניפסט — נאכף באימות.
+* **`installedBy`** (אופציונלי) — הרכיבים שמתקינים את הרכיב הזה: מתקין שקורא
+  אותו מהתיקייה שלצדו. **רכיב מסוג `library` חייב לשאת אותו**, כל מזהה בו קיים
+  במניפסט, ומתקין שמופיע בו אינו נושא `installedBy` בעצמו (אין שרשראות) — נאכף
+  באימות. הגנרטור משמיט רכיב שאף מתקין שלו לא נבנה, כמו רכיב שנכסיו חסרים.
+  המשמעות למסייעים בפרק "ההצעות" שבחוזה המשותף.
 * **שדות הסינון** `platform`, `architecture` ו-`packageFormat` אופציונליים,
   ואם קיימים — מחרוזת לא ריקה (נאכף). המשמעות שלהם בפרק "חוזה משותף".
 
@@ -148,6 +154,9 @@ ComponentSpec(
 `--external` — קובץ JSON ובו רשימת רכיבים בצורה הסופית, שעוברים את אותו אימות.
 
 **אין שינוי קוד בצד הצרכן.** האשף קורא את `components` כפי שהם.
+
+רכיב שאינו מותקן בעצמו — ספרייה, אינדקס — נושא `installedBy` עם המתקינים
+שקוראים אותו. בלעדיו המסייע היה מצרף אותו למתקין שמתעלם ממנו.
 
 ## איך מוסיפים נכס מפוצל (בעתיד)
 
@@ -175,11 +184,13 @@ Windows מחובר מכין דיסק-און-קי ל-Linux מנותק, וכן ה�
 
 **מימוש הייחוס** של כללי הבחירה הוא `tool/release/download_assistant_selection.dart`.
 ממנו נגזרים קובצי הייחוס `tool/download_assistant/fixtures/release-manifest.json`
-ו-`expected-selections.json` (בפקודה
+ו-`expected-selections.json`, וזוג הווריאנט `release-manifest-large-full.json` /
+`expected-selections-large-full.json` — אותו release כששני מתקיני ה-FULL מפוצלים
+בגודל 4 GiB בדיוק (בפקודה
 `dart run tool/download_assistant/fixtures/generate_fixtures.dart`), ו-
 `test/release/download_assistant_selection_test.dart` נכשל כשהם מתיישנים. מסייעי
-macOS ו-Linux מריצים בבדיקות שלהם את אותו מניפסט ומשווים ל-`expected-selections.json`
-— אותם רכיבים מתאימים, אותן הצעות, אותם קובצי פלט ואותה תת-תיקייה. במסייע Inno
+macOS ו-Linux מריצים בבדיקות שלהם את שני המניפסטים ומשווים לקובצי ה-`expected-selections`
+— אותם רכיבים מוצעים, אותן הצעות, אותם קובצי פלט ואותה תת-תיקייה. במסייע Inno
 אין הרצת בדיקות, והוא מאומת מולם ידנית.
 
 ### נכסי המסייעים
@@ -215,14 +226,17 @@ macOS ו-Linux מריצים בבדיקות שלהם את אותו מניפסט �
 
 | פלטפורמה | `application` | `application-portable` | `application-bundle` |
 |---|---|---|---|
-| Windows | מתקין x64 / ARM64 | ZIP x64 / ARM64 | מתקין FULL, מתקין FULL מאונדקס (x64) |
+| Windows | מתקין x64 / ARM64 | ZIP x64 / ARM64 | מתקין FULL x64 / ARM64, מתקין FULL מאונדקס (x64) |
 | Linux | DEB x64/ARM64, RPM x64/ARM64 | ZIP raw (רק כשה-DEB נכשל) | `otzaria-linux-full[-arm64].tar.zst` |
 | macOS | `otzaria-macos.dmg` | — | `otzaria-macos-full.tar.zst` |
 | Android | ה-APK | — | `otzaria-android-full.zip` |
 
-`library-full-indexed` נשאר `any`: הוא נארז עם הוראה לפרוס אותו ולבחור בו
-כתיקיית הספרים, בכל מערכת. `otzaria-macos.zip` אינו רכיב — הוא ערוץ העדכון
-הפנימי. לכל חבילה מלאה יש גם תבנית `split`, כמו ל-Windows FULL, כדי שלא תיעלם
+`library-full-indexed` הוא `any` בשדות הסינון, אבל `installedBy` שלו הוא
+`otzaria-windows-full-indexed` — המתקין היחיד שקורא את החלקים לצדו
+(`LocalIndexedPartsAreComplete`). לכן הוא מוצע רק ל-Windows x64. המתקין הרגיל
+אינו נוגע בחלקים, ומסך הייבוא של התוכנה אינו קורא את הארכיון הזה (`.zst` נקרא
+שם כ-`seforim.db` דחוס, והאינדקס אינו מיובא כלל) — כך שבשום יעד אחר אין מי
+שיתקין אותו. `otzaria-macos.zip` אינו רכיב — הוא ערוץ העדכון הפנימי. לכל חבילה מלאה יש גם תבנית `split`, כמו ל-Windows FULL, כדי שלא תיעלם
 מהמניפסט ביום שתחצה 2 GiB.
 
 ### בחירת היעד
@@ -254,11 +268,39 @@ macOS ו-Linux מריצים בבדיקות שלהם את אותו מניפסט �
 ### ההצעות
 
 **אותה גזירה בדיוק** של הטבלה ב"ההצעות נגזרות מהמניפסט" למטה (מלאה / בסיסית /
-עדכון בלבד / בחירה אישית), על הרכיבים שמתאימים ליעד. `buildPresets` היא ההגדרה
-המדויקת: החבילה הגדולה ביותר ל"מלאה"; סגירת `dependsOn` שמדלגת בשקט על תלות
-שאינה מתאימה ליעד; הצעה ריקה או זהה להצעה קודמת אינה מוצגת. ב-Android: "מלאה"
-= `otzaria-android-full.zip`, "בסיסית" = ה-APK. ב-Linux עם `portable`: רק "מלאה"
-(החבילה הניידת עם הספרייה), כי אין רכיב תוכנה נייד בלי ספרייה.
+עדכון בלבד / בחירה אישית), על הרכיבים **המוצעים** ליעד (`componentIsOffered`):
+
+1. מתאים ליעד בשלושת שדות הסינון;
+2. אין בו exe בגודל 4 GiB ומעלה — Windows אינו מריץ אותו, ולכן רכיב כזה אינו
+   מוצע גם בבחירה האישית;
+3. אם יש לו `installedBy` — אחד ממתקיניו עומד בשני התנאים הקודמים.
+
+`buildPresets` היא ההגדרה המדויקת: "מלאה" היא החבילה הגדולה ביותר **יחד עם כל
+רכיב מוצע שהיא ב-`installedBy` שלו**; בלי חבילה — התוכנה עם הספרייה, ו**בלי
+ספרייה אין "מלאה"** (אחרת "התקנה מלאה" הייתה התוכנה לבדה). הסגירה
+(`withDependencies`) מוסיפה כל `dependsOn` מוצע, ולכל רכיב שאף מתקין שלו אינו
+בבחירה — את הראשון המוצע ב-`installedBy` (`installerFor`). אותה סגירה חלה על
+הבחירה האישית, כך שספרייה שסומנה לבדה מגיעה עם המתקין שקורא אותה. הצעה ריקה או
+זהה להצעה קודמת אינה מוצגת. ב-Android: "מלאה" = `otzaria-android-full.zip`,
+"בסיסית" = ה-APK. ב-Linux עם `portable`: רק "מלאה" (החבילה הניידת עם הספרייה),
+כי אין רכיב תוכנה נייד בלי ספרייה.
+
+**החוזה נבדק על כל יעד** (`כל הצעה ניתנת להתקנה` ב-
+`test/release/download_assistant_selection_test.dart`, על שני זוגות הייחוס): כל
+חבר בהצעה מוצע ביעד, כל ספרייה נושאת `installedBy`, כל רכיב עם `installedBy`
+נמצא באותה הצעה עם אחד ממתקיניו, ו"מלאה" מכילה חבילה או ספרייה.
+
+**Windows ARM64.** "מלאה" היא `otzaria-windows-full-arm64`
+(`otzaria-<ver>-windows_arm64-full.exe`, מתקין ARM64 נייטיבי עם הספרייה). כל עוד
+הנכס אינו ב-release אין ל-ARM64 "מלאה" — רק "בסיסית". הספרייה המאונדקסת אינה
+מוצעת שם, והמסייע אינו נופל למתקין x64: `otzaria_full.iss` הוא
+`x64compatible` ורץ באמולציה, אבל תוספים (WebView2 במסלול composition) אינם
+עובדים באוצריא x64 על ARM, ומשתמש ARM מקבל ממילא את המתקין הנייטיבי.
+
+**מתקין FULL של 4 GiB ומעלה.** הוא נשאר חלקים (`shouldAssembleSplitAsset`) ואינו
+רץ, ולכן אינו מוצע. "מלאה" עוברת לחבילה הבאה — ב-x64 `otzaria-windows-full-indexed`
+יחד עם `library-full-indexed` שהוא מתקין: תיקייה ובה המתקין המאונדקס וחלקי
+הספרייה, שהוא קורא מהתיקייה שלצדו בלי אינטרנט. ב-ARM64 — "בסיסית" בלבד.
 
 ### הפלט
 
@@ -277,7 +319,9 @@ macOS ו-Linux מריצים בבדיקות שלהם את אותו מניפסט �
   ל-4 GiB, וארכיון נשאר חלקים (המתקין קורא אותם). כל יעד אחר — כל נכס מתחת
   ל-4 GiB מורכב, כי המשתמש פורס אותו בעצמו; מ-4 GiB ומעלה (FAT32 אינו מחזיק קובץ
   כזה) החלקים נשארים, ועמוד הסיום מציג את פקודת החיבור (`cat …part-* > <שם>`).
-* **סיום** — הניסוח נגזר ממספר הקבצים שנוצרו בפועל, כמו ב-Windows. תיבת "הצג את
+* **סיום** — הניסוח נגזר ממספר הקבצים שנוצרו בפועל, כמו ב-Windows. בתיקייה
+  של כמה קבצים הוא נוקב בשם ה-exe שמפעילים (המתקין המאונדקס לצד חלקי
+  הספרייה), ובהיעדרו — "קובץ ההתקנה". תיבת "הצג את
   הקובץ/התיקייה שהוכנו" **מסומנת מראש**: Windows `explorer /select`; macOS
   `NSWorkspace.activateFileViewerSelecting`; Linux
   `org.freedesktop.FileManager1.ShowItems` ב-D-Bus (GDBus, חלק מ-GIO), ובכישלון
@@ -448,7 +492,9 @@ ISCC installer\download_assistant.iss     # -> installer\Otzaria-Download-Assist
 כמו ב-`AssistantTarget` של מימוש הייחוס.
 
 `ComponentFitsTarget` בודק את שלושת השדות דרך `IsWildcard` (ריק או `any` מתאים
-לכל יעד; ערך לא מוכר אינו מתאים לאף יעד). `PlatformChoices`,
+לכל יעד; ערך לא מוכר אינו מתאים לאף יעד). `ComponentIsOffered` מוסיף עליו את
+`ComponentIsRunnable` (אין exe של 4 GiB ומעלה) ואת `InstallerFor`, וכל רשימה
+שהמשתמש רואה — ההצעות, `CollectByTypes`, הבחירה האישית — נבנית ממנו. `PlatformChoices`,
 `ArchitectureChoices`, `PackageFormatChoices`, `BuildPresets`,
 `ShouldAssembleSingleFile`, `OutputSubFolderName` ו-`PlannedOutputNames` הם
 התרגום של הפונקציות באותו שם ב-`download_assistant_selection.dart`.
@@ -464,7 +510,9 @@ ISCC /DDevManifestFile=C:\...\fixtures\release-manifest.json `
 `DevManifestFile` קורא את המניפסט מקובץ מקומי במקום מ-GitHub (גם להרצה אמיתית
 מול מניפסט שנבנה ידנית). `DevSelectionDump` מריץ את כללי הבחירה של הסקריפט
 עצמו על כל יעד, כותב את הרכיבים המתאימים, ההצעות, קובצי הפלט ותת-התיקייה לקובץ,
-ויוצא בלי אשף — להשוואה מול `expected-selections.json`. כל עשרת היעדים תואמים.
+ויוצא בלי אשף — להשוואה מול `expected-selections.json`. כל עשרת היעדים תואמים,
+וגם שני היעדים של `expected-selections-large-full.json` (הרצה שנייה עם
+`DevManifestFile` של הווריאנט).
 
 ### ההצעות נגזרות מהמניפסט
 
@@ -473,7 +521,7 @@ ISCC /DDevManifestFile=C:\...\fixtures\release-manifest.json `
 
 | הצעה | הכלל |
 |---|---|
-| התקנה מלאה ומומלצת | רכיב `application-bundle` הגדול ביותר שתואם ליעד; אם אין — כל ה-`application` + `library` + `dependency` |
+| התקנה מלאה ומומלצת | רכיב `application-bundle` הגדול ביותר שמוצע ליעד, עם כל רכיב מוצע שהוא ב-`installedBy` שלו; אם אין — כל ה-`application` + `library` + `dependency`, ורק כשיש ביניהם ספרייה |
 | התקנה בסיסית (תוכנה בלבד) | כל `application` תואם + כל רכיב `required` |
 | עדכון התוכנה בלבד | כל `application` תואם |
 | בחירה אישית | האפשרות היחידה שאינה נגזרת; תמיד אחרונה |
@@ -483,7 +531,9 @@ ISCC /DDevManifestFile=C:\...\fixtures\release-manifest.json `
 המתקין היה מוריד קובץ מיותר והופך את התוצאה מקובץ אחד לתיקייה. רכיב `required`
 נכנס ל"בסיסית" בכל מקרה, גם אם סוגו חדש ואינו מוכר לסקריפט.
 
-על כל הצעה נסגרת גם סגירת ה-`dependsOn` שלה. הצעה שיצאה **ריקה**, או שיצאה
+על כל הצעה נסגרת גם סגירת ה-`dependsOn` וה-`installedBy` שלה — וכך גם הבחירה
+האישית (`NextButtonClick` מריץ עליה `WithDependencies`), כדי שספרייה שסומנה
+לבדה תגיע עם המתקין שקורא אותה. הצעה שיצאה **ריקה**, או שיצאה
 **זהה** להצעה קודמת אחרי נרמול, אינה מוצגת — בדיוק כמו רכיב שאינו במניפסט,
 שהוא פשוט נעדר ולא שורה מעומעמת. במניפסט הנוכחי "בסיסית" ו"עדכון בלבד"
 מכילות אותו רכיב, ולכן מוצגות שתי הצעות בלבד.
@@ -564,18 +614,22 @@ ISCC /DDevManifestFile=C:\...\fixtures\release-manifest.json `
 * **`>= 4 GiB`** — Windows מסרב להריץ קובץ הפעלה בגודל 4 GiB ומעלה
   (`ERROR_BAD_EXE_FORMAT`; נבדק: ‎2^32-1‎ רץ, ‎2^32‎ נכשל), ו-FAT32 אינו מחזיק
   קובץ כזה. החלקים נשארים כפי שהם בתיקיית היעד; ביעד שאינו Windows עמוד הסיום
-  מציג את פקודת החיבור (`cat <שם>.part-* > <שם>`).
+  מציג את פקודת החיבור (`cat <שם>.part-* > <שם>`). **exe** כזה אינו מוצע כלל
+  (`ComponentIsRunnable`) — חלקים של מתקין שאי אפשר להריץ אינם התקנה, ו"מלאה"
+  עוברת למתקין המאונדקס עם חלקי הספרייה (פרק "ההצעות" בחוזה המשותף).
 * **יעד Windows, נכס שאינו `.exe`** (למשל `…tar.zst` של הספרייה) אינו מורכב:
   המתקין שצורך אותו מצפה למצוא את **החלקים** לצדו, בדיוק כפי ש-`otzaria_full.iss`
   קורא אותם (`LocalIndexedPartsAreComplete`).
 
 `otzaria-<ver>-windows-full.exe` שוקל 2,012,390,081 בתים — ‎93.7%‎ ממגבלת ה-2
 GiB — ולכן הוא המקרה הראשון שיתפצל, והוא נופל בדיוק בענף "מרכיבים": `.exe`
-ומתחת ל-4 GiB.
+ומתחת ל-4 GiB. הגידול שאחריו, 4 GiB ומעלה, מדומה בזוג הייחוס
+`*-large-full.json`.
 
 ### תוצאה במחשב המנותק
 
-תיקיית היעד מכילה קובצי הפעלה בלבד (או חלקים + מתקין במקרה החריג שלמעלה).
+תיקיית היעד מכילה קובצי הפעלה בלבד — או, כשמתקין ה-FULL גדול מכדי לרוץ, את
+המתקין המאונדקס ולצדו חלקי הספרייה שהוא קורא.
 אין צורך באינטרנט, ב-7-Zip, ב-PowerShell או בקובץ נוסף כלשהו לצידם.
 
 **לאן נשמר.** ברירת המחדל היא התיקייה שממנה הופעל המסייע
@@ -715,6 +769,18 @@ Linux ARM64 — הטבלה ב"נכסי המסייעים") כל אחד בנפרד
   `*windows-full.exe.manifest.json` נתפסים **לפני** `*windows-full*.exe`
   (שדורש סיומת `.exe` ולכן לא היה תופס אותם ממילא, אבל הסדר מתועד ונבדק).
 
+### מתקין FULL ל-ARM64
+
+`otzaria-<ver>-windows_arm64-full.exe` נבנה בסוף `build_windows_arm64` מאותו
+`otzaria_full.iss` עם `/DAppArch=arm64`, ונכסי הספרייה יורדים לשתי הארכיטקטורות
+מ-`installer/download_full_installer_assets.ps1`. השלב **אינו חוסם שחרור**
+(`continue-on-error` + `timeout-minutes`): כישלון מוציא גרסה בלי הנכס הזה ועם
+אזהרה ב-"Organize release files". לולאת הפיצול מכסה אותו כמו את ה-x64, ובהערות
+השחרור שלושת הענפים שלו (`.part-*`, `.manifest.json`, `.exe`) קודמים ל-
+`*windows_arm64*.exe` — אחרת הוא היה מוצג כמתקין ה-ARM הרגיל. בדיקות:
+`test/installer/installer_scripts_test.dart` ("מתקין FULL ל-Windows ARM64") ו-
+`test/installer/release_packaging_test.dart` ("מתקין FULL ל-ARM64 בשחרור").
+
 ### הערות השחרור
 
 המסייעים מקושרים במקטע נפרד בסופן, "## כלי עזר": משפט הסבר אחד שאינו משתמע
@@ -806,9 +872,10 @@ cd tool/download_assistant/macos && swift test
 ### בדיקות (XCTest)
 
 * `FixtureTests` — `release-manifest.json` מול `expected-selections.json`: הפלטפורמות,
-  הארכיטקטורות, הפורמטים, ברירת המחדל מ-os-release, והרכיבים המתאימים, ההצעות, קובצי
+  הארכיטקטורות, הפורמטים, ברירת המחדל מ-os-release, והרכיבים המוצעים, ההצעות, קובצי
   הפלט ותת-התיקייה לכל אחד מעשרת היעדים — וגם שהתוכנית שהמסייע מבצע מפיקה בדיוק את
-  אותם קבצים. דוגמאות ה-os-release מועתקות מ-`generate_fixtures.dart`, והבדיקה נכשלת
+  אותם קבצים. `testLargeFullVariant` עושה את אותו הדבר מול זוג ה-`-large-full`, ו-
+  `testLibraryBringsItsInstaller` בודק שספרייה שנבחרה לבדה מגיעה עם המתקין שלה. דוגמאות ה-os-release מועתקות מ-`generate_fixtures.dart`, והבדיקה נכשלת
   כשהמפתחות נפרדים.
 * המשך מול 200/206 (כולל כתיבת גוף ה-200 על קובץ חלקי ישן), כללי Content-Range
   וניסיונות חוזרים, חותם המטמון ומצביו, הרכבה (שרשור, מחיקת חלקים, המשך אחרי קטיעה,
@@ -860,7 +927,7 @@ cd tool/download_assistant/macos && swift test
 ```bash
 cd tool/download_assistant/linux
 make                 # build/Otzaria-Download-Assistant
-make test            # מול fixtures/expected-selections.json, JSON, HTTP, חותם, הרכבה
+make test            # מול שני זוגות ה-fixtures, JSON, HTTP, חותם, הרכבה
 make check-needed    # נכשל על כל NEEDED מחוץ ל-GTK/GLib/GIO/Pango/Cairo/GDK/libc
 make test-asan       # אותן בדיקות תחת AddressSanitizer/UBSan
 make dist DIST_ARCH=x64
@@ -1033,7 +1100,43 @@ Windows, תיקיית ההתקנה **ברת-כתיבה** (התקנת מנהל נ
 6. אוצריא נסגרת, המעדכן ממתין ל-pid שלה, מחליף, ומפעיל מחדש.
 
 כל הטקסטים יושבים ב-`lib/core/messages/library_messages.dart`
-(`smallUpdateDialog*`, `smallUpdateAwaitingClose*`) — אין ליטרל בנקודת הקריאה.
+(`smallUpdateDialog*`, `smallUpdateAwaitingClose*`, `smallUpdateGaveUp`) — אין
+ליטרל בנקודת הקריאה.
+
+**כשחלון מסרב להיסגר.** המעדכן ממתין `waitTimeout` (2 דקות) ומוותר **לפני**
+שנגע בדבר: הוא כותב `updater-gave-up` לצד התוכנית ואינו מפעיל את אוצריא
+(היא עדיין רצה). החלון הראשי, שמציג "סגור את החלונות שנותרו", בודק את הסימן
+(`watchForUpdaterGiveUp`), חוזר ל-"מוכן להתקנה" עם אותו staging ומודיע
+`smallUpdateGaveUp`. שיגור חוזר כותב תוכנית חדשה ומוחק סימן ישן.
+
+### ההחלפה — אף רגע בלי קובץ, ושחזור שאינו תלוי באוצריא
+
+המעדכן (`tool/updater/updater_swap.dart`) נהרג לפעמים באמצע — כיבוי, קריסה,
+אנטי-וירוס. שני כללים מבטיחים שההתקנה תסתיים בגרסה אחת שלמה:
+
+* **הנתיב לעולם אינו ריק.** לכל קובץ: הישן **מועתק** לגיבוי, החדש מועתק
+  לצדו (`<file>.otzaria-incoming`, אותו כונן), ו-`rename` אחד מחליף ביניהם.
+  ב-Windows `File.rename` הוא `MoveFileEx` עם `REPLACE_EXISTING`: ניסוי של
+  3000 החלפות מול בודק מקביל (33,772 בדיקות קיום) לא מצא אף רגע שבו היעד
+  חסר; החלפה שנכשלה (קובץ פתוח) משאירה את הישן שלם. ה-staging נשאר מלא,
+  ולכן אפשר תמיד להשלים קדימה. ה-exe בשורש מוחלף אחרון, וההסרות אחריו.
+* **השחזור אינו צריך את אוצריא.** תערובת גרסאות (DLL חדש ו-exe ישן) עלולה
+  לקרוס לפני `main()`, ולכן השחזור מ-`_runDeferredSwapRecovery` לבדו אינו
+  רשת ביטחון. לפני השינוי הראשון המעדכן רושם `HKCU\…\RunOnce`
+  (`!OtzariaUpdateRecovery`) שמריץ את **העותק שב-temp** — זה שבהתקנה עשוי
+  להיות באמצע ההחלפה — עם `--recover`. ה-`!` משאיר את הערך עד שהפקודה
+  הסתיימה. כשל ברישום מבטל את ההחלפה לפני כל שינוי; הערך נמחק בכל סיום
+  שאינו `corrupted`.
+
+השחזור (`recoverInterruptedSwap`) גוזר את המצב מהדיסק בלבד, וכל צעד בו ניתן
+להרצה חוזרת: קדימה כשכל קובץ מותקן או זמין ב-staging, אחרת אחורה — ורק
+לקבצים שכבר השתנו, כי גיבוי שנקטע יושב תמיד לצד יעד שלם. קובץ מוחזק בידי
+תהליך חי (אוצריא שעלתה לפני ה-RunOnce) מחזיר `busy` בלי לגעת בדבר.
+`test/update/updater_swap_test.dart` הורג את התהליך בכל צעד של ההחלפה ובכל
+צעד של השחזור שאחריה, ובודק שאף יעד אינו חסר ושהסוף ישן כולו או חדש כולו.
+
+נותר: RunOnce רץ רק בכניסה למערכת. מעדכן שנהרג בזמן שהמשתמש מחובר (בלי
+כיבוי) משאיר תערובת עד הכניסה הבאה — או עד שאוצריא עולה ומשחזרת בעצמה.
 
 ### בחירת הבסיסים
 

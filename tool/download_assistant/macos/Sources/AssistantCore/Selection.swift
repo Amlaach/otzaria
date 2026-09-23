@@ -52,6 +52,35 @@ public func componentFitsTarget(_ component: ManifestComponent, _ target: Assist
     return true
 }
 
+/// Windows מסרב להריץ exe בגודל 4 GiB ומעלה.
+private func componentIsRunnable(_ component: ManifestComponent) -> Bool {
+    !component.assets.contains {
+        $0.name.lowercased().hasSuffix(".exe") && $0.size >= maxSingleOutputFileSize
+    }
+}
+
+/// המתקין שיתקין את [component] ביעד — הראשון ב-`installedBy` שמוצע בו, או nil.
+public func installerFor(
+    _ manifest: ReleaseManifest, _ component: ManifestComponent, _ target: AssistantTarget
+) -> ManifestComponent? {
+    for id in component.installedBy {
+        if let installer = manifest.components.first(where: { $0.id == id }),
+           componentFitsTarget(installer, target), componentIsRunnable(installer) {
+            return installer
+        }
+    }
+    return nil
+}
+
+/// מוצע ליעד (בהצעות ובבחירה האישית): מתאים, בלי exe שאי אפשר להריץ, ואם יש לו
+/// `installedBy` — אחד ממתקיניו מוצע.
+public func componentIsOffered(
+    _ manifest: ReleaseManifest, _ component: ManifestComponent, _ target: AssistantTarget
+) -> Bool {
+    guard componentFitsTarget(component, target), componentIsRunnable(component) else { return false }
+    return component.installedBy.isEmpty || installerFor(manifest, component, target) != nil
+}
+
 /// הפלטפורמות שיש להן לפחות רכיב ייעודי אחד (רכיב `any` לבדו אינו מספיק).
 public func platformChoices(_ manifest: ReleaseManifest) -> [String] {
     let present = Set(manifest.components.map { $0.platform })
@@ -131,17 +160,18 @@ public func defaultPackageFormat(_ osRelease: String?, _ choices: [String]) -> S
 }
 
 private func collect(
-    _ components: [ManifestComponent], _ target: AssistantTarget,
+    _ manifest: ReleaseManifest, _ target: AssistantTarget,
     types: Set<String>? = nil, requiredOnly: Bool = false
 ) -> [String] {
-    components.filter { component in
-        componentFitsTarget(component, target)
+    manifest.components.filter { component in
+        componentIsOffered(manifest, component, target)
             && (!requiredOnly || component.required)
             && (types == nil || types!.contains(component.type))
     }.map { $0.id }
 }
 
-/// סגירת dependsOn: תלות שאינה מתאימה ליעד מדולגת בשקט. התוצאה בסדר המניפסט.
+/// סגירת הבחירה: כל `dependsOn` שמוצע ביעד (שאינו מוצע — מדולג), ולכל רכיב עם
+/// `installedBy` שאף מתקין שלו אינו בבחירה — המתקין מ-installerFor. בסדר המניפסט.
 public func withDependencies(
     _ manifest: ReleaseManifest, _ members: [String], _ target: AssistantTarget
 ) -> [String] {
@@ -154,11 +184,19 @@ public func withDependencies(
     while changed {
         changed = false
         for id in Array(closed) {
-            for dependency in byId[id]?.dependsOn ?? [] {
-                guard let component = byId[dependency], componentFitsTarget(component, target) else {
+            guard let component = byId[id] else { continue }
+            for dependency in component.dependsOn {
+                guard let required = byId[dependency], componentIsOffered(manifest, required, target) else {
                     continue
                 }
                 if closed.insert(dependency).inserted { changed = true }
+            }
+            if component.installedBy.isEmpty || component.installedBy.contains(where: { closed.contains($0) }) {
+                continue
+            }
+            if let installer = installerFor(manifest, component, target),
+               closed.insert(installer.id).inserted {
+                changed = true
             }
         }
     }
@@ -171,10 +209,22 @@ public func buildPresets(_ manifest: ReleaseManifest, _ target: AssistantTarget)
 
     var bundle: ManifestComponent?
     for component in components
-    where componentFitsTarget(component, target) && component.type == "application-bundle" {
+    where componentIsOffered(manifest, component, target) && component.type == "application-bundle" {
         if bundle == nil || component.downloadSize > bundle!.downloadSize {
             bundle = component
         }
+    }
+
+    // בלי חבילה, "מלאה" היא התוכנה עם ספרייה — ובלי ספרייה אין "מלאה".
+    let full: [String]
+    if let bundle = bundle {
+        full = [bundle.id] + components.filter {
+            $0.installedBy.contains(bundle.id) && componentIsOffered(manifest, $0, target)
+        }.map { $0.id }
+    } else {
+        let collected = collect(manifest, target, types: ["application", "library", "dependency"])
+        let hasLibrary = components.contains { collected.contains($0.id) && $0.type == "library" }
+        full = hasLibrary ? collected : []
     }
 
     let candidates: [(id: String, caption: String, description: String, members: [String])] = [
@@ -182,21 +232,20 @@ public func buildPresets(_ manifest: ReleaseManifest, _ target: AssistantTarget)
             "full",
             "התקנה מלאה ומומלצת",
             "התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.",
-            bundle.map { [$0.id] }
-                ?? collect(components, target, types: ["application", "library", "dependency"])
+            full
         ),
         (
             "basic",
             "התקנה בסיסית (תוכנה בלבד)",
             "התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.",
-            collect(components, target, types: ["application"])
-                + collect(components, target, requiredOnly: true)
+            collect(manifest, target, types: ["application"])
+                + collect(manifest, target, requiredOnly: true)
         ),
         (
             "update",
             "עדכון התוכנה בלבד",
             "קובץ ההתקנה של הגרסה החדשה, לעדכון התקנה קיימת.",
-            collect(components, target, types: ["application"])
+            collect(manifest, target, types: ["application"])
         ),
     ]
 

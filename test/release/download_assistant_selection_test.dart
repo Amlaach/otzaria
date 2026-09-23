@@ -39,6 +39,101 @@ void main() {
             'run: dart run tool/download_assistant/fixtures/generate_fixtures.dart',
       );
     });
+
+    test('הווריאנט של FULL בגודל 4 GiB תואם למימוש הייחוס', () {
+      final manifest = buildLargeFullFixtureManifest();
+      expect(
+        File(
+          '$kFixtureDir/release-manifest-large-full.json',
+        ).readAsStringSync(),
+        encodeFixture(manifest),
+        reason:
+            'run: dart run tool/download_assistant/fixtures/generate_fixtures.dart',
+      );
+      expect(
+        File(
+          '$kFixtureDir/expected-selections-large-full.json',
+        ).readAsStringSync(),
+        encodeFixture(
+          buildExpectedSelections(manifest, targets: kLargeFullTargets),
+        ),
+        reason:
+            'run: dart run tool/download_assistant/fixtures/generate_fixtures.dart',
+      );
+    });
+  });
+
+  group('כל הצעה ניתנת להתקנה', () {
+    List<AssistantTarget> allTargets(Map<String, Object?> manifest) => [
+      for (final platform in platformChoices(manifest))
+        for (final arch in [
+          ...architectureChoices(manifest, platform),
+          if (architectureChoices(manifest, platform).isEmpty) '',
+        ])
+          for (final format in [
+            ...packageFormatChoices(manifest, platform, arch),
+            if (packageFormatChoices(manifest, platform, arch).isEmpty) '',
+          ])
+            AssistantTarget(
+              platform: platform,
+              architecture: arch,
+              packageFormat: format,
+            ),
+    ];
+
+    // חוזה: כל רכיב שמותקן על ידי אחר מגיע עם מי שמתקין אותו, אין בהצעה
+    // exe שאי אפשר להריץ, ו"מלאה" מביאה ספרייה (בחבילה או לצד התוכנה).
+    for (final entry in {
+      'release-manifest.json': buildFixtureManifest,
+      'release-manifest-large-full.json': buildLargeFullFixtureManifest,
+    }.entries) {
+      test(entry.key, () {
+        final manifest = entry.value();
+        final byId = {
+          for (final c
+              in (manifest['components'] as List).cast<Map<String, Object?>>())
+            c['id']: c,
+        };
+        for (final target in allTargets(manifest)) {
+          for (final preset in buildPresets(manifest, target)) {
+            final label = '${target.toJson()} ${preset.id}';
+            for (final id in preset.members) {
+              final component = byId[id]!;
+              expect(
+                componentIsOffered(manifest, component, target),
+                isTrue,
+                reason: '$label: $id',
+              );
+              final installers =
+                  (component['installedBy'] as List?)?.cast<String>() ??
+                  const <String>[];
+              expect(
+                component['type'] != 'library' || installers.isNotEmpty,
+                isTrue,
+                reason: '$label: הספרייה $id בלי מתקין',
+              );
+              if (installers.isEmpty) continue;
+              expect(
+                preset.members.any(installers.contains),
+                isTrue,
+                reason: '$label: $id בלי המתקין שלו',
+              );
+            }
+            if (preset.id == 'full') {
+              expect(
+                preset.members.any(
+                  (id) =>
+                      byId[id]!['type'] == 'application-bundle' ||
+                      byId[id]!['type'] == 'library',
+                ),
+                isTrue,
+                reason: '$label: "מלאה" בלי ספרייה',
+              );
+            }
+          }
+        }
+      });
+    }
   });
 
   group('componentFitsTarget', () {
@@ -193,37 +288,117 @@ void main() {
       bool required = false,
       int size = 1,
       List<String> dependsOn = const [],
+      List<String>? installedBy,
+      List<Map<String, Object?>> assets = const [],
     }) => {
       'id': id,
       'type': type,
       'required': required,
       'downloadSize': size,
       'dependsOn': dependsOn,
+      'installedBy': ?installedBy,
       'platform': ?platform,
       'architecture': ?architecture,
+      'assets': assets,
     };
 
-    test('תלות שאינה מתאימה ליעד מדולגת ואינה מפילה את ההצעה', () {
-      final presets = buildPresets(
-        manifest([
-          component(
-            'app-arm',
-            'application',
-            platform: 'windows',
-            architecture: 'arm64',
-          ),
-          component(
-            'app-x64',
-            'application',
-            platform: 'windows',
-            architecture: 'x64',
-            required: true,
-          ),
-          component('lib', 'library', platform: 'any', dependsOn: ['app-x64']),
-        ]),
-        const AssistantTarget(platform: 'windows', architecture: 'arm64'),
+    const x64 = AssistantTarget(platform: 'windows', architecture: 'x64');
+    const arm64 = AssistantTarget(platform: 'windows', architecture: 'arm64');
+
+    List<Map<String, Object?>> windowsWithLibrary({int fullSize = 90}) => [
+      component(
+        'app-arm',
+        'application',
+        platform: 'windows',
+        architecture: 'arm64',
+      ),
+      component(
+        'app-x64',
+        'application',
+        platform: 'windows',
+        architecture: 'x64',
+        required: true,
+      ),
+      component(
+        'full',
+        'application-bundle',
+        platform: 'windows',
+        architecture: 'x64',
+        size: fullSize,
+        assets: [
+          {'kind': 'split', 'name': 'full.exe', 'size': fullSize},
+        ],
+      ),
+      component(
+        'indexed',
+        'application-bundle',
+        platform: 'windows',
+        architecture: 'x64',
+        size: 5,
+      ),
+      component(
+        'lib',
+        'library',
+        platform: 'any',
+        size: 80,
+        installedBy: ['indexed'],
+      ),
+    ];
+
+    test('תלות שאינה מוצעת ביעד מדולגת', () {
+      expect(
+        withDependencies(
+          manifest([
+            component(
+              'app-arm',
+              'application',
+              platform: 'windows',
+              architecture: 'arm64',
+              dependsOn: ['app-x64'],
+            ),
+            component(
+              'app-x64',
+              'application',
+              platform: 'windows',
+              architecture: 'x64',
+            ),
+          ]),
+          ['app-arm'],
+          arm64,
+        ),
+        ['app-arm'],
       );
-      expect(presets.first.members, ['app-arm', 'lib']);
+    });
+
+    // ספרייה שרק מתקין x64 קורא צורפה פעם למתקין ARM64 הרגיל.
+    test('ספרייה שאין לה מתקין ביעד אינה מוצעת ואינה ב"מלאה"', () {
+      final m = manifest(windowsWithLibrary());
+      final library = (m['components'] as List).last as Map<String, Object?>;
+      expect(componentIsOffered(m, library, arm64), isFalse);
+      final presets = buildPresets(m, arm64);
+      expect(presets.map((p) => p.id), ['basic']);
+      expect(presets.single.members, ['app-arm']);
+    });
+
+    test('בחירה אישית של הספרייה מביאה את המתקין שקורא אותה', () {
+      expect(withDependencies(manifest(windowsWithLibrary()), ['lib'], x64), [
+        'indexed',
+        'lib',
+      ]);
+    });
+
+    test('exe של 4 GiB אינו מוצע; "מלאה" עוברת למתקין שקורא את הספרייה', () {
+      final m = manifest(
+        windowsWithLibrary(fullSize: kMaxSingleOutputFileSize),
+      );
+      final full = (m['components'] as List).cast<Map<String, Object?>>()[2];
+      expect(componentIsOffered(m, full, x64), isFalse);
+      expect(buildPresets(m, x64).first.members, ['indexed', 'lib']);
+
+      final runnable = manifest(
+        windowsWithLibrary(fullSize: kMaxSingleOutputFileSize - 1),
+      );
+      expect(buildPresets(runnable, x64).first.members, ['full']);
     });
 
     test('החבילה הגדולה ביותר נבחרת להצעה המלאה', () {

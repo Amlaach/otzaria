@@ -31,6 +31,15 @@ const char *otz_platform_display_name(const char *platform);
 
 gboolean otz_component_fits_target(const OtzComponent *component,
                                    const OtzTarget *target);
+/* The first installedBy entry offered for the target, or NULL. */
+const OtzComponent *otz_installer_for(const OtzManifest *manifest,
+                                      const OtzComponent *component,
+                                      const OtzTarget *target);
+/* Shown in the presets and the custom list: fits, carries no unrunnable exe,
+ * and when installedBy is set one of its installers is offered. */
+gboolean otz_component_is_offered(const OtzManifest *manifest,
+                                  const OtzComponent *component,
+                                  const OtzTarget *target);
 
 /* All the following return arrays of owned char*. */
 GPtrArray *otz_platform_choices(const OtzManifest *manifest);

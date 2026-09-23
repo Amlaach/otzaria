@@ -144,7 +144,7 @@ var
   LoadErrorTech: String;
 
   CompId, CompName, CompDesc, CompType, CompPlatform, CompArch, CompFormat,
-    CompDependsOn: TArrayOfString;
+    CompDependsOn, CompInstalledBy: TArrayOfString;
   CompRequired, CompSelected: array of Boolean;
   CompDownloadSize: TInt64Array;
   CompAssetStart, CompAssetCount: array of Integer;
@@ -737,13 +737,27 @@ end;
 
 { ========================= קריאת המניפסט ========================= }
 
+{ מערך JSON של מזהים כרשימה מופרדת בפסיקים ('' כשהמפתח חסר). }
+function JIdList(const Raw: AnsiString; ObjPos: Integer;
+  const Key: AnsiString): String;
+var
+  P: Integer;
+begin
+  Result := '';
+  P := JArrFirst(Raw, JFind(Raw, ObjPos, Key));
+  while P > 0 do
+  begin
+    if Raw[P] = '"' then
+      Result := Result + Utf8Decode(JRawString(Raw, P)) + ',';
+    P := JArrNext(Raw, P);
+  end;
+end;
+
 function ParseManifest(const Raw: AnsiString): Boolean;
 var
   CompPos, AssetPos, PartPos, ArrPos: Integer;
   NC, NA, NP: Integer;
   Schema: Int64;
-  Deps, Dep: String;
-  DepPos: Integer;
 begin
   Result := False;
   Schema := JInt(Raw, 1, 'schemaVersion');
@@ -781,6 +795,7 @@ begin
     SetArrayLength(CompArch, NC + 1);
     SetArrayLength(CompFormat, NC + 1);
     SetArrayLength(CompDependsOn, NC + 1);
+    SetArrayLength(CompInstalledBy, NC + 1);
     SetArrayLength(CompRequired, NC + 1);
     SetArrayLength(CompSelected, NC + 1);
     SetArrayLength(CompDownloadSize, NC + 1);
@@ -798,18 +813,8 @@ begin
     CompDownloadSize[NC] := JInt(Raw, CompPos, 'downloadSize');
     CompSelected[NC] := False;
 
-    Deps := '';
-    DepPos := JArrFirst(Raw, JFind(Raw, CompPos, 'dependsOn'));
-    while DepPos > 0 do
-    begin
-      if Raw[DepPos] = '"' then
-      begin
-        Dep := Utf8Decode(JRawString(Raw, DepPos));
-        Deps := Deps + Dep + ',';
-      end;
-      DepPos := JArrNext(Raw, DepPos);
-    end;
-    CompDependsOn[NC] := Deps;
+    CompDependsOn[NC] := JIdList(Raw, CompPos, 'dependsOn');
+    CompInstalledBy[NC] := JIdList(Raw, CompPos, 'installedBy');
 
     CompAssetStart[NC] := NA;
     AssetPos := JArrFirst(Raw, JFind(Raw, CompPos, 'assets'));
@@ -1256,7 +1261,59 @@ begin
   Result := Pos(',' + Id + ',', ',' + Members) > 0;
 end;
 
-{ סוגר את הרכיבים שהרכיב תלוי בהם; תלות שאינה מתאימה ליעד נדלגת בשקט. }
+{ exe בגודל 4 GiB ומעלה אינו רץ, ולכן רכיב שנושא כזה אינו מוצע. }
+function ComponentIsRunnable(Index: Integer): Boolean;
+var
+  A: Integer;
+begin
+  Result := True;
+  for A := CompAssetStart[Index] to CompAssetStart[Index] + CompAssetCount[Index] - 1 do
+    if IsExecutableName(AssetName[A]) and
+       (AssetSize[A] >= MaxSingleOutputFileSize) then
+      Result := False;
+end;
+
+{ המתקין הראשון ב-installedBy שמוצע ביעד, או -1. }
+function InstallerFor(Index: Integer): Integer;
+var
+  Parts: TArrayOfString;
+  J, Idx: Integer;
+begin
+  Result := -1;
+  Parts := StringSplitEx(CompInstalledBy[Index], [','], #0, stExcludeEmpty);
+  for J := 0 to GetArrayLength(Parts) - 1 do
+  begin
+    Idx := IndexOfComponent(Parts[J]);
+    if (Idx >= 0) and ComponentFitsTarget(Idx) and ComponentIsRunnable(Idx) then
+    begin
+      Result := Idx;
+      exit;
+    end;
+  end;
+end;
+
+{ מה שמוצע ביעד, בהצעות ובבחירה האישית: מתאים, ניתן להרצה, ואם מישהו אחר
+  מתקין אותו (installedBy) — אחד מהם מוצע. }
+function ComponentIsOffered(Index: Integer): Boolean;
+begin
+  Result := ComponentFitsTarget(Index) and ComponentIsRunnable(Index) and
+    ((CompInstalledBy[Index] = '') or (InstallerFor(Index) >= 0));
+end;
+
+function AnyMember(const Members, Ids: String): Boolean;
+var
+  Parts: TArrayOfString;
+  J: Integer;
+begin
+  Result := False;
+  Parts := StringSplitEx(Ids, [','], #0, stExcludeEmpty);
+  for J := 0 to GetArrayLength(Parts) - 1 do
+    if MembersContain(Members, Parts[J]) then
+      Result := True;
+end;
+
+{ סוגר את dependsOn (תלות שאינה מוצעת ביעד נדלגת), ולכל רכיב שמתקין שלו
+  אינו בבחירה — את המתקין מ-InstallerFor. }
 function WithDependencies(const Members: String): String;
 var
   Changed: Boolean;
@@ -1276,10 +1333,20 @@ begin
       for J := 0 to GetArrayLength(Parts) - 1 do
       begin
         Idx := IndexOfComponent(Parts[J]);
-        if (Idx >= 0) and ComponentFitsTarget(Idx) and
+        if (Idx >= 0) and ComponentIsOffered(Idx) and
            not MembersContain(Result, Parts[J]) then
         begin
           Result := Result + Parts[J] + ',';
+          Changed := True;
+        end;
+      end;
+      if (CompInstalledBy[I] <> '') and
+         not AnyMember(Result, CompInstalledBy[I]) then
+      begin
+        Idx := InstallerFor(I);
+        if Idx >= 0 then
+        begin
+          Result := Result + CompId[Idx] + ',';
           Changed := True;
         end;
       end;
@@ -1340,7 +1407,7 @@ begin
   Result := '';
   for I := 0 to GetArrayLength(CompId) - 1 do
   begin
-    if not ComponentFitsTarget(I) then
+    if not ComponentIsOffered(I) then
       Continue;
     if RequiredOnly and not CompRequired[I] then
       Continue;
@@ -1360,16 +1427,27 @@ begin
   SetArrayLength(PresetDesc, 0);
   SetArrayLength(PresetMembers, 0);
 
-  { מלאה: חבילה אחת שכוללת הכול אם קיימת כזו, אחרת התוכנה עם הספרייה. }
+  { מלאה: החבילה הגדולה ביותר עם מה שהיא מתקינה, אחרת התוכנה עם הספרייה —
+    ובלי ספרייה אין "מלאה". }
   Bundle := -1;
   for I := 0 to GetArrayLength(CompId) - 1 do
-    if ComponentFitsTarget(I) and (CompType[I] = 'application-bundle') and
+    if ComponentIsOffered(I) and (CompType[I] = 'application-bundle') and
        ((Bundle < 0) or (CompDownloadSize[I] > CompDownloadSize[Bundle])) then
       Bundle := I;
   if Bundle >= 0 then
-    Members := CompId[Bundle] + ','
+  begin
+    Members := CompId[Bundle] + ',';
+    for I := 0 to GetArrayLength(CompId) - 1 do
+      if MembersContain(CompInstalledBy[I], CompId[Bundle]) and
+         ComponentIsOffered(I) then
+        Members := Members + CompId[I] + ',';
+  end
   else
+  begin
     Members := CollectByTypes('application,library,dependency,', False);
+    if CollectByTypes('library,', False) = '' then
+      Members := '';
+  end;
   AddPreset('full', 'התקנה מלאה ומומלצת',
     'התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.', Members);
 
@@ -1494,10 +1572,10 @@ begin
         TargetFormat := Formats[F];
         Line := '';
         for I := 0 to GetArrayLength(CompId) - 1 do
-          if ComponentFitsTarget(I) then
+          if ComponentIsOffered(I) then
             Line := Line + CompId[I] + ',';
         Text := Text + 'target ' + TargetPlatform + '/' + TargetArchitecture +
-          '/' + TargetFormat + ' fitting=' + Line + #10;
+          '/' + TargetFormat + ' offered=' + Line + #10;
         BuildPresets();
         for I := 0 to GetArrayLength(PresetId) - 1 do
         begin
@@ -1549,7 +1627,7 @@ begin
   N := 0;
   for I := 0 to GetArrayLength(CompId) - 1 do
   begin
-    if not ComponentFitsTarget(I) then
+    if not ComponentIsOffered(I) then
       Continue;
     if CompRequired[I] then
       Extra := ' (נדרש)'
@@ -2232,7 +2310,7 @@ end;
 function PrepareOutput(): Boolean;
 var
   C, A, P, Total: Integer;
-  Notes, PartsNote, SingleName, JoinNote: String;
+  Notes, PartsNote, SingleName, JoinNote, FirstExe: String;
   Produced: Integer;
 begin
   Result := False;
@@ -2240,6 +2318,7 @@ begin
   Notes := '';
   SingleName := '';
   JoinNote := '';
+  FirstExe := '';
   Produced := 0;
   RunAfterExe := '';
   RevealPath := '';
@@ -2300,6 +2379,9 @@ begin
           SingleName := AssetName[A];
           Produced := Produced + 1;
         end;
+        if IsExecutableName(AssetName[A]) and (FirstExe = '') and
+           ((AssetKind[A] <> 'split') or ShouldAssembleSingleFile(A)) then
+          FirstExe := AssetName[A];
         if IsThisComputerMode() and IsExecutableName(AssetName[A]) and
            (RunAfterExe = '') then
           RunAfterExe := OutputDir() + '\' + AssetName[A];
@@ -2330,9 +2412,9 @@ begin
       'העתק את כל התיקייה הזאת לדיסק-און-קי ומשם למחשב המנותק (' +
       PlatformDisplayName(TargetPlatform) + '). הקבצים חייבים להישאר יחד ' +
       'באותה תיקייה.';
-    if TargetPlatform = 'windows' then
-      ResultText := ResultText + ' במחשב המנותק הפעל מתוכה את קובץ ההתקנה — ' +
-        'אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.';
+    if (TargetPlatform = 'windows') and (FirstExe <> '') then
+      ResultText := ResultText + ' במחשב המנותק הפעל מתוכה את ' + FirstExe +
+        ' — אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.';
     if JoinNote <> '' then
       ResultText := ResultText + #13#10#13#10 + 'חלק מהקבצים גדולים מדי ' +
         'לקובץ אחד ולכן נשארו מחולקים. במחשב היעד מחברים אותם בחלון מסוף ' +
@@ -2440,6 +2522,7 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 var
   I: Integer;
   Selected: Boolean;
+  Members: String;
   Free, Total, Needed: Int64;
 begin
   Result := True;
@@ -2457,17 +2540,23 @@ begin
     for I := 0 to GetArrayLength(CompId) - 1 do
       CompSelected[I] := False;
     Selected := False;
+    Members := '';
     for I := 0 to GetArrayLength(CustomIndex) - 1 do
-    begin
-      CompSelected[CustomIndex[I]] := CustomPage.Values[I];
       if CustomPage.Values[I] then
+      begin
+        Members := Members + CompId[CustomIndex[I]] + ',';
         Selected := True;
-    end;
+      end;
     if not Selected then
     begin
       MsgBox('יש לבחור לפחות רכיב אחד להורדה.', mbError, MB_OK);
       Result := False;
+      exit;
     end;
+    { ספרייה שנבחרה לבדה מגיעה עם המתקין שקורא אותה, כמו בהצעות. }
+    Members := WithDependencies(Members);
+    for I := 0 to GetArrayLength(CompId) - 1 do
+      CompSelected[I] := MembersContain(Members, CompId[I]);
     exit;
   end;
 

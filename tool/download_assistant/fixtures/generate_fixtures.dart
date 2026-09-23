@@ -25,6 +25,7 @@ const Map<String, int> _singleFiles = {
   'otzaria-windows.zip': 45,
   'otzaria-windows_arm64.zip': 44,
   'otzaria-0.10.3-windows-full-indexed.exe': 60,
+  'otzaria-0.10.3-windows_arm64-full.exe': 1990,
   'otzaria-0.10.3+143-linux.deb': 96,
   'otzaria-0.10.3+143-linux-arm64.deb': 87,
   'otzaria-0.10.3+143-143.x86_64.rpm': 132,
@@ -80,6 +81,16 @@ const List<AssistantTarget> kFixtureTargets = [
   ),
   AssistantTarget(platform: 'android'),
 ];
+
+/// היעדים של הווריאנט שבו מתקין ה-FULL גדל ל-4 GiB ומעלה.
+const List<AssistantTarget> kLargeFullTargets = [
+  AssistantTarget(platform: 'windows', architecture: 'x64'),
+  AssistantTarget(platform: 'windows', architecture: 'arm64'),
+];
+
+/// גודלי החלקים של מתקין FULL בגודל 4 GiB בדיוק — הגודל הראשון ש-Windows
+/// מסרב להריץ. כל חלק מתחת למגבלת GitHub.
+const List<int> kLargeFullPartSizes = [2000000000, 2000000000, 294967296];
 
 /// דוגמאות os-release (null = המסייע אינו רץ ב-Linux).
 const Map<String, String?> kOsReleaseSamples = {
@@ -146,8 +157,44 @@ Map<String, Object?> buildFixtureManifest() {
   }
 }
 
+/// המניפסט המדומה, כששני מתקיני ה-FULL (x64 ו-ARM64) מפוצלים וגדולים מכדי
+/// לרוץ. הקבצים עצמם אינם נוצרים — רק הגדלים, שהם כל מה שכללי הבחירה קוראים.
+Map<String, Object?> buildLargeFullFixtureManifest() {
+  final manifest = buildFixtureManifest();
+  final total = kLargeFullPartSizes.fold(0, (a, b) => a + b);
+  for (final full
+      in (manifest['components'] as List).cast<Map<String, Object?>>().where(
+        (c) =>
+            c['id'] == 'otzaria-windows-full' ||
+            c['id'] == 'otzaria-windows-full-arm64',
+      )) {
+    final asset = (full['assets'] as List).cast<Map<String, Object?>>().single;
+    final name = asset['name'] as String;
+    asset
+      ..['kind'] = 'split'
+      ..['size'] = total
+      ..['manifestAsset'] = '$name.manifest.json'
+      ..['githubAssetLimit'] = kGithubAssetLimit
+      ..['parts'] = [
+        for (var i = 0; i < kLargeFullPartSizes.length; i++)
+          {
+            'name': '$name.part-${i.toString().padLeft(3, '0')}',
+            'size': kLargeFullPartSizes[i],
+            'sha256': asset['sha256'],
+          },
+      ];
+    full['downloadSize'] = total;
+  }
+  final errors = validateReleaseManifest(manifest);
+  if (errors.isNotEmpty) throw StateError(errors.join('; '));
+  return manifest;
+}
+
 /// התוצאה הצפויה של החוזה על המניפסט — כל מה שמסייע מציג ומפיק.
-Map<String, Object?> buildExpectedSelections(Map<String, Object?> manifest) {
+Map<String, Object?> buildExpectedSelections(
+  Map<String, Object?> manifest, {
+  List<AssistantTarget> targets = kFixtureTargets,
+}) {
   final components = (manifest['components'] as List)
       .cast<Map<String, Object?>>();
   return {
@@ -172,12 +219,13 @@ Map<String, Object?> buildExpectedSelections(Map<String, Object?> manifest) {
         ),
     },
     'targets': [
-      for (final target in kFixtureTargets)
+      for (final target in targets)
         {
           'target': target.toJson(),
-          'fittingComponents': [
+          'offeredComponents': [
             for (final component in components)
-              if (componentFitsTarget(component, target)) component['id'],
+              if (componentIsOffered(manifest, component, target))
+                component['id'],
           ],
           'presets': [
             for (final preset in buildPresets(manifest, target))
@@ -213,7 +261,12 @@ void main() {
   File(
     '$kFixtureDir/expected-selections.json',
   ).writeAsStringSync(encodeFixture(buildExpectedSelections(manifest)));
-  print(
-    'Wrote $kFixtureDir/release-manifest.json and expected-selections.json',
+  final large = buildLargeFullFixtureManifest();
+  File(
+    '$kFixtureDir/release-manifest-large-full.json',
+  ).writeAsStringSync(encodeFixture(large));
+  File('$kFixtureDir/expected-selections-large-full.json').writeAsStringSync(
+    encodeFixture(buildExpectedSelections(large, targets: kLargeFullTargets)),
   );
+  print('Wrote the fixtures to $kFixtureDir');
 }

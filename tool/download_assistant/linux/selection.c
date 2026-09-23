@@ -70,6 +70,41 @@ gboolean otz_component_fits_target(const OtzComponent *component,
   return TRUE;
 }
 
+/* Windows refuses to run an exe of 4 GiB or more. */
+static gboolean component_is_runnable(const OtzComponent *component) {
+  for (guint a = 0; a < component->assets->len; a++) {
+    const OtzAsset *asset = g_ptr_array_index(component->assets, a);
+    g_autofree char *lower = g_ascii_strdown(asset->name, -1);
+    if (g_str_has_suffix(lower, ".exe") &&
+        asset->size >= OTZ_MAX_SINGLE_OUTPUT_FILE_SIZE)
+      return FALSE;
+  }
+  return TRUE;
+}
+
+const OtzComponent *otz_installer_for(const OtzManifest *manifest,
+                                      const OtzComponent *component,
+                                      const OtzTarget *target) {
+  for (guint i = 0; i < component->installed_by->len; i++) {
+    const OtzComponent *installer = otz_manifest_find(
+        manifest, g_ptr_array_index(component->installed_by, i));
+    if (installer != NULL && otz_component_fits_target(installer, target) &&
+        component_is_runnable(installer))
+      return installer;
+  }
+  return NULL;
+}
+
+gboolean otz_component_is_offered(const OtzManifest *manifest,
+                                  const OtzComponent *component,
+                                  const OtzTarget *target) {
+  if (!otz_component_fits_target(component, target) ||
+      !component_is_runnable(component))
+    return FALSE;
+  return component->installed_by->len == 0 ||
+         otz_installer_for(manifest, component, target) != NULL;
+}
+
 GPtrArray *otz_platform_choices(const OtzManifest *manifest) {
   GPtrArray *choices = new_strings();
   for (gsize p = 0; otz_assistant_platforms[p] != NULL; p++) {
@@ -201,10 +236,20 @@ GPtrArray *otz_with_dependencies(const OtzManifest *manifest,
       for (guint d = 0; d < component->depends_on->len; d++) {
         const OtzComponent *dependency = otz_manifest_find(
             manifest, g_ptr_array_index(component->depends_on, d));
-        if (dependency == NULL || !otz_component_fits_target(dependency, target))
+        if (dependency == NULL ||
+            !otz_component_is_offered(manifest, dependency, target))
           continue;
         if (g_hash_table_add(closed, dependency->id)) changed = TRUE;
       }
+      gboolean installed = component->installed_by->len == 0;
+      for (guint d = 0; !installed && d < component->installed_by->len; d++)
+        installed = g_hash_table_contains(
+            closed, g_ptr_array_index(component->installed_by, d));
+      if (installed) continue;
+      const OtzComponent *installer =
+          otz_installer_for(manifest, component, target);
+      if (installer != NULL && g_hash_table_add(closed, installer->id))
+        changed = TRUE;
     }
   }
   GPtrArray *result = new_strings();
@@ -225,7 +270,7 @@ static void collect(GPtrArray *out, const OtzManifest *manifest,
                     gboolean required_only) {
   for (guint i = 0; i < manifest->components->len; i++) {
     const OtzComponent *component = g_ptr_array_index(manifest->components, i);
-    if (otz_component_fits_target(component, target) &&
+    if (otz_component_is_offered(manifest, component, target) &&
         (!required_only || component->required) && type_in(component, types))
       g_ptr_array_add(out, g_strdup(component->id));
   }
@@ -245,11 +290,12 @@ GPtrArray *otz_build_presets(const OtzManifest *manifest,
   static const char *const full_types[] = {"application", "library",
                                            "dependency", NULL};
   static const char *const application_types[] = {"application", NULL};
+  static const char *const library_types[] = {"library", NULL};
 
   const OtzComponent *bundle = NULL;
   for (guint i = 0; i < manifest->components->len; i++) {
     const OtzComponent *component = g_ptr_array_index(manifest->components, i);
-    if (!otz_component_fits_target(component, target)) continue;
+    if (!otz_component_is_offered(manifest, component, target)) continue;
     if (strcmp(component->type, "application-bundle") != 0) continue;
     if (bundle == NULL || component->download_size > bundle->download_size)
       bundle = component;
@@ -269,10 +315,22 @@ GPtrArray *otz_build_presets(const OtzManifest *manifest,
       {"update", "עדכון התוכנה בלבד",
        "קובץ ההתקנה של הגרסה החדשה, לעדכון התקנה קיימת.", new_strings()},
   };
-  if (bundle != NULL)
+  if (bundle != NULL) {
+    /* The bundle comes with whatever it installs from the folder beside it. */
     g_ptr_array_add(candidates[0].members, g_strdup(bundle->id));
-  else
-    collect(candidates[0].members, manifest, target, full_types, FALSE);
+    for (guint i = 0; i < manifest->components->len; i++) {
+      const OtzComponent *component = g_ptr_array_index(manifest->components, i);
+      if (otz_string_array_contains(component->installed_by, bundle->id) &&
+          otz_component_is_offered(manifest, component, target))
+        g_ptr_array_add(candidates[0].members, g_strdup(component->id));
+    }
+  } else {
+    g_autoptr(GPtrArray) libraries = new_strings();
+    collect(libraries, manifest, target, library_types, FALSE);
+    /* Without a library there is no "full" install. */
+    if (libraries->len > 0)
+      collect(candidates[0].members, manifest, target, full_types, FALSE);
+  }
   collect(candidates[1].members, manifest, target, application_types, FALSE);
   collect(candidates[1].members, manifest, target, NULL, TRUE);
   collect(candidates[2].members, manifest, target, application_types, FALSE);

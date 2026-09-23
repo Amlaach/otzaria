@@ -183,7 +183,7 @@ struct AssistantView: View {
     private var customPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("ליד כל רכיב מופיע גודל ההורדה שלו.").foregroundColor(.secondary)
-            ForEach(model.fittingComponents, id: \.id) { component in
+            ForEach(model.offeredComponents, id: \.id) { component in
                 Toggle(isOn: Binding(
                     get: { model.customChecked.contains(component.id) },
                     set: { checked in
@@ -357,7 +357,7 @@ struct FinishedView: View {
                 } else {
                     Text("ההתקנה מוכנה בתיקייה:")
                     PathText(path: result.outputDirectory.path)
-                    Text("העתק את כל התיקייה הזאת לדיסק-און-קי, ובמחשב המנותק הפעל מתוכה את קובץ ההתקנה. הקבצים חייבים להישאר יחד באותה תיקייה. אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.")
+                    Text(folderAdvice(result.producedFiles.map { $0.lastPathComponent }))
                         .fixedSize(horizontal: false, vertical: true)
                     Text("הקבצים שהוכנו:")
                     ForEach(result.producedFiles, id: \.self) { file in
@@ -376,6 +376,13 @@ struct FinishedView: View {
                     .padding(.top, 8)
             }
         }
+    }
+
+    /// נוקב בשם המתקין שמפעילים, כשיש כזה בתיקייה.
+    private func folderAdvice(_ names: [String]) -> String {
+        let installer = names.first { $0.lowercased().hasSuffix(".exe") } ?? "קובץ ההתקנה"
+        return "העתק את כל התיקייה הזאת לדיסק-און-קי, ובמחשב המנותק הפעל מתוכה את \(installer). "
+            + "הקבצים חייבים להישאר יחד באותה תיקייה. אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות."
     }
 
     private func singleAdvice(_ name: String) -> String {

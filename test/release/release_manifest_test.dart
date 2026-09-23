@@ -373,7 +373,9 @@ void main() {
 
       final library = componentById(manifest, 'library-full-indexed');
       expect(library['type'], 'library');
-      expect(library['dependsOn'], ['otzaria-windows-x64']);
+      // המתקין המאונדקס הוא היחיד שקורא את החלקים לצדו; המתקין הרגיל לא.
+      expect(library['installedBy'], ['otzaria-windows-full-indexed']);
+      expect(library['dependsOn'], isEmpty);
       // גודל ההורדה הוא סכום החלקים, לא גודל הארכיון בלבד.
       expect(library['downloadSize'], 42);
 
@@ -475,6 +477,7 @@ void main() {
             'origin': 'built',
             'installOrder': 35,
             'dependsOn': const <String>[],
+            'installedBy': const ['otzaria-windows-full-indexed'],
             'downloadSize': 100,
             'assets': [
               {
@@ -494,6 +497,118 @@ void main() {
       final asset = (external['assets'] as List).single as Map<String, Object?>;
       expect(asset['repository'], 'Otzaria/SeforimLibrary');
       expect(asset['releaseTag'], 'v27');
+    });
+  });
+
+  group('who installs a library (installedBy)', () {
+    test('a library whose installer was not built is left out', () {
+      writeRealisticRelease();
+      File('${dir.path}/otzaria-0.9.97-windows-full-indexed.exe').deleteSync();
+      final manifest = build();
+      expect(validateReleaseManifest(manifest), isEmpty);
+      final ids = (manifest['components'] as List).map((c) => (c as Map)['id']);
+      expect(ids, isNot(contains('library-full-indexed')));
+    });
+
+    test('the ARM64 FULL installer is its own component', () {
+      writeRealisticRelease();
+      writeFile('otzaria-0.9.97-windows_arm64-full.exe', 'full-arm');
+      final manifest = build();
+      String assetOf(String id) =>
+          ((componentById(manifest, id)['assets'] as List).single
+                  as Map)['name']
+              as String;
+      expect(
+        assetOf('otzaria-windows-full-arm64'),
+        'otzaria-0.9.97-windows_arm64-full.exe',
+      );
+      expect(
+        assetOf('otzaria-windows-arm64'),
+        'otzaria-0.9.97-windows_arm64.exe',
+      );
+      expect(
+        assetOf('otzaria-windows-full'),
+        'otzaria-0.9.97-windows-full.exe',
+      );
+      final arm = componentById(manifest, 'otzaria-windows-full-arm64');
+      expect(arm['type'], 'application-bundle');
+      expect(arm['architecture'], 'arm64');
+    });
+
+    Map<String, Object?> component(
+      String id, {
+      String type = 'application',
+      Object? installedBy,
+    }) => {
+      'id': id,
+      'name': id,
+      'description': id,
+      'type': type,
+      'required': false,
+      'origin': 'built',
+      'installOrder': 1,
+      'dependsOn': const <String>[],
+      'installedBy': ?installedBy,
+      'downloadSize': 10,
+      'assets': [
+        {
+          'kind': 'single',
+          'repository': 'Otzaria/otzaria',
+          'releaseTag': '1',
+          'name': '$id.bin',
+          'size': 10,
+          'sha256': hex(0x11),
+        },
+      ],
+    };
+
+    List<String> errorsOf(List<Map<String, Object?>> components) =>
+        validateReleaseManifest({
+          'schemaVersion': 1,
+          'releaseTag': '1',
+          'releaseVersion': '1',
+          'components': components,
+        });
+
+    test('a library must name who installs it', () {
+      expect(errorsOf([component('lib', type: 'library')]), isNotEmpty);
+      expect(
+        errorsOf([
+          component('setup'),
+          component('lib', type: 'library', installedBy: const ['setup']),
+        ]),
+        isEmpty,
+      );
+    });
+
+    test('installedBy must point at an existing, final installer', () {
+      expect(
+        errorsOf([
+          component('lib', type: 'library', installedBy: const ['missing']),
+        ]),
+        isNotEmpty,
+      );
+      expect(
+        errorsOf([
+          component('lib', type: 'library', installedBy: const ['lib']),
+        ]),
+        isNotEmpty,
+      );
+      expect(
+        errorsOf([
+          component('setup'),
+          component('mid', installedBy: const ['setup']),
+          component('lib', type: 'library', installedBy: const ['mid']),
+        ]),
+        isNotEmpty,
+        reason: 'שרשרת מתקינים',
+      );
+      expect(
+        errorsOf([
+          component('lib', type: 'library', installedBy: const <String>[]),
+        ]),
+        isNotEmpty,
+      );
     });
   });
 

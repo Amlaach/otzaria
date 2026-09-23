@@ -56,6 +56,7 @@ class ComponentSpec {
     this.architecture,
     this.packageFormat,
     this.dependsOn = const [],
+    this.installedBy = const [],
     this.origin = 'built',
     this.installedSize,
     this.compatibilityFromLibraryIndexProvenance = false,
@@ -75,6 +76,10 @@ class ComponentSpec {
   /// חבילות. רכיב בלעדיו מתאים לכל פורמט שנבחר.
   final String? packageFormat;
   final List<String> dependsOn;
+
+  /// הרכיבים שמתקינים את הרכיב הזה (למשל מתקין שקורא את חלקי הספרייה לצדו).
+  /// המסייע מציע אותו רק כשאחד מהם מוצע, ומוריד אותו יחד איתו.
+  final List<String> installedBy;
 
   /// תיעוד מקור בלבד (רישוי/ייחוס) — אינו משפיע על נתיב ההורדה.
   final String origin;
@@ -145,6 +150,25 @@ const List<ComponentSpec> kKnownComponents = [
       AssetSpec(pattern: r'^otzaria-.+-windows-full\.exe$'),
       AssetSpec(
         pattern: r'^otzaria-.+-windows-full\.exe\.manifest\.json$',
+        split: true,
+      ),
+    ],
+  ),
+  ComponentSpec(
+    id: 'otzaria-windows-full-arm64',
+    name: 'אוצריא ל-Windows עם ספרייה מלאה (ARM64)',
+    description:
+        'מתקין הכולל את התוכנה ואת הספרייה המלאה, למחשבי ARM64, בלי אינדקס '
+        'חיפוש בנוי מראש.',
+    type: 'application-bundle',
+    required: false,
+    platform: 'windows',
+    architecture: 'arm64',
+    installOrder: 20,
+    assets: [
+      AssetSpec(pattern: r'^otzaria-.+-windows_arm64-full\.exe$'),
+      AssetSpec(
+        pattern: r'^otzaria-.+-windows_arm64-full\.exe\.manifest\.json$',
         split: true,
       ),
     ],
@@ -341,7 +365,8 @@ const List<ComponentSpec> kKnownComponents = [
     required: false,
     platform: 'any',
     installOrder: 30,
-    dependsOn: ['otzaria-windows-x64'],
+    // רק המתקין המאונדקס קורא את החלקים לצדו; ל-ARM64 אין צרכן.
+    installedBy: ['otzaria-windows-full-indexed'],
     compatibilityFromLibraryIndexProvenance: true,
     assets: [
       AssetSpec(
@@ -431,6 +456,7 @@ Map<String, Object?> buildReleaseManifest({
       if (spec.packageFormat != null) 'packageFormat': spec.packageFormat,
       'installOrder': spec.installOrder,
       'dependsOn': spec.dependsOn,
+      if (spec.installedBy.isNotEmpty) 'installedBy': spec.installedBy,
       'downloadSize': downloadSize,
       if (spec.installedSize != null) 'installedSize': spec.installedSize,
       if (spec.compatibilityFromLibraryIndexProvenance && provenance != null)
@@ -438,6 +464,16 @@ Map<String, Object?> buildReleaseManifest({
       'assets': assets,
     });
   }
+
+  // רכיב שאף מתקין שלו לא נבנה אינו שמיש — מושמט כמו רכיב שנכסיו חסרים.
+  final built = {for (final c in components) c['id']};
+  components.removeWhere((component) {
+    final installers = component['installedBy'] as List<String>?;
+    if (installers == null) return false;
+    final present = installers.where(built.contains).toList();
+    component['installedBy'] = present;
+    return present.isEmpty;
+  });
 
   for (final external in externalComponents) {
     components.add(Map<String, Object?>.from(external));
@@ -735,6 +771,21 @@ List<String> validateReleaseManifest(Object? manifest) {
     if (dependsOn is! List || dependsOn.any((d) => d is! String)) {
       errors.add('component $label: dependsOn must be a list of ids');
     }
+    final installedBy = component['installedBy'];
+    if (installedBy != null &&
+        (installedBy is! List ||
+            installedBy.isEmpty ||
+            installedBy.any((d) => d is! String))) {
+      errors.add(
+        'component $label: installedBy must be a non-empty list of ids',
+      );
+    }
+    if (component['type'] == 'library' && installedBy is! List) {
+      errors.add(
+        'component $label: a library must name the components that install '
+        'it (installedBy)',
+      );
+    }
     final compatibility = component['compatibility'];
     if (compatibility != null && compatibility is! Map) {
       errors.add('component $label: compatibility must be a map');
@@ -750,14 +801,37 @@ List<String> validateReleaseManifest(Object? manifest) {
     }
   }
 
+  final byId = {
+    for (final component in components.whereType<Map>())
+      if (component['id'] is String) component['id'] as String: component,
+  };
   for (final component in components.whereType<Map>()) {
     final dependsOn = component['dependsOn'];
-    if (dependsOn is! List) continue;
-    for (final dependency in dependsOn.whereType<String>()) {
-      if (!ids.contains(dependency)) {
+    if (dependsOn is List) {
+      for (final dependency in dependsOn.whereType<String>()) {
+        if (!ids.contains(dependency)) {
+          errors.add(
+            'component ${component['id']}: dependsOn unknown component '
+            '$dependency',
+          );
+        }
+      }
+    }
+    final installedBy = component['installedBy'];
+    if (installedBy is! List) continue;
+    for (final installer in installedBy.whereType<String>()) {
+      final target = byId[installer];
+      if (target == null) {
         errors.add(
-          'component ${component['id']}: dependsOn unknown component '
-          '$dependency',
+          'component ${component['id']}: installedBy unknown component '
+          '$installer',
+        );
+      } else if (installer == component['id'] ||
+          target['installedBy'] != null) {
+        // שרשרת מתקינים הייתה מחייבת את המסייעים לפתור רקורסיה.
+        errors.add(
+          'component ${component['id']}: installedBy $installer must be a '
+          'component that is not itself installed by another',
         );
       }
     }

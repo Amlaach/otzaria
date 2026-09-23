@@ -78,19 +78,21 @@ public struct ManifestComponent: Decodable, Equatable {
     public let architecture: String
     public let packageFormat: String
     public let dependsOn: [String]
+    /// הרכיבים שמתקינים את הרכיב הזה (מתקין שקורא אותו מהתיקייה שלצדו).
+    public let installedBy: [String]
     public let downloadSize: Int64
     public let assets: [ManifestAsset]
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, type, required, platform, architecture
-        case packageFormat, dependsOn, downloadSize, assets
+        case packageFormat, dependsOn, installedBy, downloadSize, assets
     }
 
     public init(
         id: String, name: String = "", description: String = "", type: String,
         required: Bool = false, platform: String = "", architecture: String = "",
-        packageFormat: String = "", dependsOn: [String] = [], downloadSize: Int64 = 0,
-        assets: [ManifestAsset] = []
+        packageFormat: String = "", dependsOn: [String] = [], installedBy: [String] = [],
+        downloadSize: Int64 = 0, assets: [ManifestAsset] = []
     ) {
         self.id = id
         self.name = name
@@ -101,6 +103,7 @@ public struct ManifestComponent: Decodable, Equatable {
         self.architecture = architecture
         self.packageFormat = packageFormat
         self.dependsOn = dependsOn
+        self.installedBy = installedBy
         self.downloadSize = downloadSize
         self.assets = assets
     }
@@ -117,6 +120,7 @@ public struct ManifestComponent: Decodable, Equatable {
         architecture = try c.decodeIfPresent(String.self, forKey: .architecture) ?? ""
         packageFormat = try c.decodeIfPresent(String.self, forKey: .packageFormat) ?? ""
         dependsOn = try c.decodeIfPresent([String].self, forKey: .dependsOn) ?? []
+        installedBy = try c.decodeIfPresent([String].self, forKey: .installedBy) ?? []
         downloadSize = try c.decodeIfPresent(Int64.self, forKey: .downloadSize) ?? 0
         assets = try c.decode([ManifestAsset].self, forKey: .assets)
     }

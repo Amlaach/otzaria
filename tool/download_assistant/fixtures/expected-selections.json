@@ -44,7 +44,7 @@
         "architecture": "x64",
         "packageFormat": ""
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-windows-portable-x64",
         "otzaria-windows-x64",
         "otzaria-windows-full",
@@ -80,25 +80,21 @@
         "architecture": "arm64",
         "packageFormat": ""
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-windows-arm64",
         "otzaria-windows-portable-arm64",
-        "library-full-indexed"
+        "otzaria-windows-full-arm64"
       ],
       "presets": [
         {
           "id": "full",
           "members": [
-            "otzaria-windows-arm64",
-            "library-full-indexed"
+            "otzaria-windows-full-arm64"
           ],
           "outputFiles": [
-            "otzaria-0.10.3-windows_arm64.exe",
-            "otzaria-0.10.3-library-full-indexed.tar.zst.part-000",
-            "otzaria-0.10.3-library-full-indexed.tar.zst.part-001",
-            "otzaria-0.10.3-library-full-indexed.tar.zst.part-002"
+            "otzaria-0.10.3-windows_arm64-full.exe"
           ],
-          "outputSubfolder": "אוצריא להתקנה ל-Windows"
+          "outputSubfolder": ""
         },
         {
           "id": "basic",
@@ -118,10 +114,9 @@
         "architecture": "",
         "packageFormat": ""
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-macos",
-        "otzaria-macos-full",
-        "library-full-indexed"
+        "otzaria-macos-full"
       ],
       "presets": [
         {
@@ -152,10 +147,9 @@
         "architecture": "x64",
         "packageFormat": "deb"
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-linux-deb-x64",
-        "otzaria-linux-full-x64",
-        "library-full-indexed"
+        "otzaria-linux-full-x64"
       ],
       "presets": [
         {
@@ -186,10 +180,9 @@
         "architecture": "x64",
         "packageFormat": "rpm"
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-linux-rpm-x64",
-        "otzaria-linux-full-x64",
-        "library-full-indexed"
+        "otzaria-linux-full-x64"
       ],
       "presets": [
         {
@@ -220,9 +213,8 @@
         "architecture": "x64",
         "packageFormat": "portable"
       },
-      "fittingComponents": [
-        "otzaria-linux-full-x64",
-        "library-full-indexed"
+      "offeredComponents": [
+        "otzaria-linux-full-x64"
       ],
       "presets": [
         {
@@ -243,10 +235,9 @@
         "architecture": "arm64",
         "packageFormat": "deb"
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-linux-deb-arm64",
-        "otzaria-linux-full-arm64",
-        "library-full-indexed"
+        "otzaria-linux-full-arm64"
       ],
       "presets": [
         {
@@ -277,10 +268,9 @@
         "architecture": "arm64",
         "packageFormat": "rpm"
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-linux-rpm-arm64",
-        "otzaria-linux-full-arm64",
-        "library-full-indexed"
+        "otzaria-linux-full-arm64"
       ],
       "presets": [
         {
@@ -311,9 +301,8 @@
         "architecture": "arm64",
         "packageFormat": "portable"
       },
-      "fittingComponents": [
-        "otzaria-linux-full-arm64",
-        "library-full-indexed"
+      "offeredComponents": [
+        "otzaria-linux-full-arm64"
       ],
       "presets": [
         {
@@ -334,10 +323,9 @@
         "architecture": "",
         "packageFormat": ""
       },
-      "fittingComponents": [
+      "offeredComponents": [
         "otzaria-android",
-        "otzaria-android-full",
-        "library-full-indexed"
+        "otzaria-android-full"
       ],
       "presets": [
         {

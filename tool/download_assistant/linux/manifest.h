@@ -33,8 +33,9 @@ typedef struct {
   char *architecture;   /* "" when absent */
   char *package_format; /* "" when absent */
   gint64 download_size;
-  GPtrArray *depends_on; /* char* */
-  GPtrArray *assets;     /* OtzAsset* */
+  GPtrArray *depends_on;   /* char* */
+  GPtrArray *installed_by; /* char*: components that install this one */
+  GPtrArray *assets;       /* OtzAsset* */
 } OtzComponent;
 
 typedef struct {

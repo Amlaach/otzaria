@@ -62,6 +62,12 @@
         },
         "installOrder": { "type": "integer" },
         "dependsOn": { "type": "array", "items": { "type": "string" } },
+        "installedBy": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "מזהי הרכיבים שמתקינים את הרכיב הזה (מתקין שקורא אותו מהתיקייה שלצדו). המסייע מציע אותו רק ליעד שבו אחד מהם מוצע, ומוריד אותו יחד איתו. רכיב מסוג library חייב לשאת אותו; מתקין שמופיע כאן אינו נושא installedBy בעצמו."
+        },
         "downloadSize": { "type": "integer", "exclusiveMinimum": 0 },
         "installedSize": { "type": "integer", "exclusiveMinimum": 0 },
         "compatibility": {
@@ -73,7 +79,9 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/asset" }
         }
-      }
+      },
+      "if": { "properties": { "type": { "const": "library" } } },
+      "then": { "required": ["installedBy"] }
     },
     "asset": {
       "type": "object",

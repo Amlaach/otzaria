@@ -90,6 +90,47 @@ bool componentFitsTarget(
   return true;
 }
 
+List<String> _ids(Map<String, Object?> component, String key) =>
+    ((component[key] as List?) ?? const []).cast<String>();
+
+/// נכס שאי אפשר להפעיל: exe בגודל 4 GiB ומעלה, ש-Windows מסרב להריץ.
+bool _assetIsUnrunnable(Map<String, Object?> asset) =>
+    (asset['name'] as String).toLowerCase().endsWith('.exe') &&
+    (asset['size'] as int) >= kMaxSingleOutputFileSize;
+
+bool _fitsAndRunnable(Map<String, Object?> component, AssistantTarget target) =>
+    componentFitsTarget(component, target) &&
+    !((component['assets'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .any(_assetIsUnrunnable);
+
+/// המתקין שיתקין את [component] ביעד — הראשון ב-`installedBy` שמוצע בו.
+/// null כשאין לרכיב `installedBy`, או כשאף אחד ממתקיניו אינו מוצע ביעד.
+String? installerFor(
+  Map<String, Object?> manifest,
+  Map<String, Object?> component,
+  AssistantTarget target,
+) {
+  final byId = {for (final c in _components(manifest)) c['id']: c};
+  for (final id in _ids(component, 'installedBy')) {
+    final installer = byId[id];
+    if (installer != null && _fitsAndRunnable(installer, target)) return id;
+  }
+  return null;
+}
+
+/// רכיב שהמסייע מציע ליעד — בהצעות ובבחירה האישית: מתאים ליעד, אין בו exe
+/// שאי אפשר להפעיל, ואם יש לו `installedBy` — אחד ממתקיניו מוצע ביעד.
+bool componentIsOffered(
+  Map<String, Object?> manifest,
+  Map<String, Object?> component,
+  AssistantTarget target,
+) {
+  if (!_fitsAndRunnable(component, target)) return false;
+  if (_ids(component, 'installedBy').isEmpty) return true;
+  return installerFor(manifest, component, target) != null;
+}
+
 /// הפלטפורמות שיש להן לפחות רכיב ייעודי אחד (רכיב `any` לבדו אינו מספיק).
 List<String> platformChoices(Map<String, Object?> manifest) {
   final present = _components(
@@ -205,19 +246,20 @@ String defaultPackageFormat(String? osRelease, List<String> choices) {
 }
 
 List<String> _collect(
-  List<Map<String, Object?>> components,
+  Map<String, Object?> manifest,
   AssistantTarget target, {
   Set<String>? types,
   bool requiredOnly = false,
 }) => [
-  for (final component in components)
-    if (componentFitsTarget(component, target) &&
+  for (final component in _components(manifest))
+    if (componentIsOffered(manifest, component, target) &&
         (!requiredOnly || component['required'] == true) &&
         (types == null || types.contains(_field(component, 'type'))))
       component['id'] as String,
 ];
 
-/// סגירת dependsOn: תלות שאינה מתאימה ליעד מדולגת בשקט.
+/// סגירת הבחירה: כל `dependsOn` שמוצע ביעד (שאינו מוצע — מדולג), ולכל רכיב
+/// עם `installedBy` שאף מתקין שלו אינו בבחירה — המתקין מ-[installerFor].
 List<String> withDependencies(
   Map<String, Object?> manifest,
   Iterable<String> members,
@@ -230,14 +272,20 @@ List<String> withDependencies(
   while (changed) {
     changed = false;
     for (final id in closed.toList()) {
-      final dependsOn = (byId[id]?['dependsOn'] as List?) ?? const [];
-      for (final dependency in dependsOn.cast<String>()) {
-        final component = byId[dependency];
-        if (component == null || !componentFitsTarget(component, target)) {
+      final component = byId[id];
+      if (component == null) continue;
+      for (final dependency in _ids(component, 'dependsOn')) {
+        final required = byId[dependency];
+        if (required == null ||
+            !componentIsOffered(manifest, required, target)) {
           continue;
         }
         if (closed.add(dependency)) changed = true;
       }
+      final installers = _ids(component, 'installedBy');
+      if (installers.isEmpty || installers.any(closed.contains)) continue;
+      final installer = installerFor(manifest, component, target);
+      if (installer != null && closed.add(installer)) changed = true;
     }
   }
   return [
@@ -256,12 +304,34 @@ List<AssistantPreset> buildPresets(
 
   Map<String, Object?>? bundle;
   for (final component in components) {
-    if (!componentFitsTarget(component, target)) continue;
+    if (!componentIsOffered(manifest, component, target)) continue;
     if (_field(component, 'type') != 'application-bundle') continue;
     if (bundle == null ||
         (component['downloadSize'] as int) > (bundle['downloadSize'] as int)) {
       bundle = component;
     }
+  }
+
+  // בלי חבילה, "מלאה" היא התוכנה עם ספרייה — ובלי ספרייה אין "מלאה".
+  final List<String> full;
+  if (bundle != null) {
+    full = [
+      bundle['id'] as String,
+      for (final component in components)
+        if (_ids(component, 'installedBy').contains(bundle['id']) &&
+            componentIsOffered(manifest, component, target))
+          component['id'] as String,
+    ];
+  } else {
+    final collected = _collect(
+      manifest,
+      target,
+      types: const {'application', 'library', 'dependency'},
+    );
+    final hasLibrary = components.any(
+      (c) => collected.contains(c['id']) && _field(c, 'type') == 'library',
+    );
+    full = hasLibrary ? collected : const [];
   }
 
   final candidates = [
@@ -270,28 +340,22 @@ List<AssistantPreset> buildPresets(
       caption: 'התקנה מלאה ומומלצת',
       description:
           'התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.',
-      members: bundle != null
-          ? [bundle['id'] as String]
-          : _collect(
-              components,
-              target,
-              types: const {'application', 'library', 'dependency'},
-            ),
+      members: full,
     ),
     (
       id: 'basic',
       caption: 'התקנה בסיסית (תוכנה בלבד)',
       description: 'התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.',
       members: [
-        ..._collect(components, target, types: const {'application'}),
-        ..._collect(components, target, requiredOnly: true),
+        ..._collect(manifest, target, types: const {'application'}),
+        ..._collect(manifest, target, requiredOnly: true),
       ],
     ),
     (
       id: 'update',
       caption: 'עדכון התוכנה בלבד',
       description: 'קובץ ההתקנה של הגרסה החדשה, לעדכון התקנה קיימת.',
-      members: _collect(components, target, types: const {'application'}),
+      members: _collect(manifest, target, types: const {'application'}),
     ),
   ];
 

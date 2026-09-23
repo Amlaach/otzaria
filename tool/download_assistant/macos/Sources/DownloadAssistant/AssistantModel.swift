@@ -64,8 +64,9 @@ final class AssistantModel: ObservableObject {
         AssistantTarget(platform: platform, architecture: architecture, packageFormat: packageFormat)
     }
 
-    var fittingComponents: [ManifestComponent] {
-        manifest?.components.filter { componentFitsTarget($0, target) } ?? []
+    var offeredComponents: [ManifestComponent] {
+        guard let manifest = manifest else { return [] }
+        return manifest.components.filter { componentIsOffered(manifest, $0, target) }
     }
 
     var canGoBack: Bool {
@@ -119,14 +120,14 @@ final class AssistantModel: ObservableObject {
         case .presets:
             if presetId == customPresetId {
                 if customChecked.isEmpty {
-                    customChecked = Set(fittingComponents.filter { $0.required }.map { $0.id })
+                    customChecked = Set(offeredComponents.filter { $0.required }.map { $0.id })
                 }
                 go(.custom)
             } else {
                 go(.folder)
             }
         case .custom:
-            let valid = Set(fittingComponents.map { $0.id })
+            let valid = Set(offeredComponents.map { $0.id })
             customChecked.formIntersection(valid)
             if customChecked.isEmpty {
                 alert = AlertItem(title: "", message: "יש לבחור לפחות רכיב אחד להורדה.", onContinue: nil)

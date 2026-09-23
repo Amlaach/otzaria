@@ -32,6 +32,7 @@ static void free_component(gpointer data) {
   g_free(component->architecture);
   g_free(component->package_format);
   g_ptr_array_unref(component->depends_on);
+  g_ptr_array_unref(component->installed_by);
   g_ptr_array_unref(component->assets);
   g_free(component);
 }
@@ -148,6 +149,7 @@ static gboolean parse_component(const OtzJson *json, OtzComponent **out,
                                 GError **error) {
   OtzComponent *component = g_new0(OtzComponent, 1);
   component->depends_on = g_ptr_array_new_with_free_func(g_free);
+  component->installed_by = g_ptr_array_new_with_free_func(g_free);
   component->assets = g_ptr_array_new_with_free_func(free_asset);
   *out = component;
   if (json == NULL || json->type != OTZ_JSON_OBJECT)
@@ -173,6 +175,14 @@ static gboolean parse_component(const OtzJson *json, OtzComponent **out,
     if (dependency->type != OTZ_JSON_STRING)
       return invalid(error, component->id, "bad dependsOn");
     g_ptr_array_add(component->depends_on, g_strdup(dependency->string));
+  }
+
+  const OtzJson *installers = otz_json_get(json, "installedBy");
+  for (guint i = 0; i < otz_json_array_length(installers); i++) {
+    const OtzJson *installer = otz_json_array_get(installers, i);
+    if (installer->type != OTZ_JSON_STRING)
+      return invalid(error, component->id, "bad installedBy");
+    g_ptr_array_add(component->installed_by, g_strdup(installer->string));
   }
 
   const OtzJson *assets = otz_json_get(json, "assets");

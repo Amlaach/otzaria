@@ -215,7 +215,7 @@ static GPtrArray *selected_ids(Ui *ui) {
   for (guint i = 0; i < ui->manifest->components->len; i++) {
     const OtzComponent *component = g_ptr_array_index(ui->manifest->components, i);
     if (g_hash_table_contains(ui->custom_checked, component->id) &&
-        otz_component_fits_target(component, &target))
+        otz_component_is_offered(ui->manifest, component, &target))
       g_ptr_array_add(checked, component->id);
   }
   return otz_with_dependencies(ui->manifest, checked, &target);
@@ -368,7 +368,7 @@ static void prepare_custom(Ui *ui) {
   clear_container(ui->custom_list);
   for (guint i = 0; i < ui->manifest->components->len; i++) {
     const OtzComponent *component = g_ptr_array_index(ui->manifest->components, i);
-    if (!otz_component_fits_target(component, &target)) continue;
+    if (!otz_component_is_offered(ui->manifest, component, &target)) continue;
     g_autofree char *size = otz_human_size(component->download_size);
     g_autofree char *caption =
         g_strdup_printf("%s — %s%s", component->name, size,
@@ -590,13 +590,20 @@ static void show_success(Ui *ui) {
     ui->result_is_dir = FALSE;
     gtk_button_set_label(GTK_BUTTON(ui->finish_reveal), "הצג את הקובץ שהוכן");
   } else {
+    const char *installer = NULL;
+    for (guint i = 0; installer == NULL && i < files->len; i++) {
+      g_autofree char *lower = g_ascii_strdown(g_ptr_array_index(files, i), -1);
+      if (g_str_has_suffix(lower, ".exe")) installer = g_ptr_array_index(files, i);
+    }
+    g_autofree char *shown_installer =
+        installer != NULL ? otz_ltr_isolate(installer) : g_strdup("קובץ ההתקנה");
     g_string_append_printf(
         text,
         "ההתקנה מוכנה בתיקייה:\n%s\n\nהעתק את כל התיקייה הזאת לדיסק-און-קי, "
-        "ובמחשב המנותק הפעל מתוכה את קובץ ההתקנה. הקבצים חייבים להישאר יחד "
+        "ובמחשב המנותק הפעל מתוכה את %s. הקבצים חייבים להישאר יחד "
         "באותה תיקייה. אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.\n\n"
         "הקבצים שהוכנו:",
-        shown_dir);
+        shown_dir, shown_installer);
     for (guint i = 0; i < files->len; i++) {
       g_autofree char *shown = otz_ltr_isolate(g_ptr_array_index(files, i));
       g_string_append_printf(text, "\n• %s", shown);

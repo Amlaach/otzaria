@@ -351,14 +351,14 @@
       "architecture": "x64",
       "installOrder": 20,
       "dependsOn": [],
-      "downloadSize": 2019,
+      "downloadSize": 4294967296,
       "assets": [
         {
           "kind": "split",
           "repository": "Otzaria/otzaria",
           "releaseTag": "0.10.3+143",
           "name": "otzaria-0.10.3-windows-full.exe",
-          "size": 2019,
+          "size": 4294967296,
           "sha256": "5e2ef064cdca7d6e5a19363b1437e47d80d3205b413c2dc8d2d5cc1bed837b43",
           "manifestAsset": "otzaria-0.10.3-windows-full.exe.manifest.json",
           "githubAssetLimit": 2147483648,
@@ -366,13 +366,18 @@
           "parts": [
             {
               "name": "otzaria-0.10.3-windows-full.exe.part-000",
-              "size": 1500,
-              "sha256": "7538a633f8cfd9256f957383c8228607b1b1db5a1a487d84bb26e5034018741f"
+              "size": 2000000000,
+              "sha256": "5e2ef064cdca7d6e5a19363b1437e47d80d3205b413c2dc8d2d5cc1bed837b43"
             },
             {
               "name": "otzaria-0.10.3-windows-full.exe.part-001",
-              "size": 519,
-              "sha256": "9c7d93a1f49803f2cd42b7549e4aab29f3f7053a8e0a74959c932736c8b6953a"
+              "size": 2000000000,
+              "sha256": "5e2ef064cdca7d6e5a19363b1437e47d80d3205b413c2dc8d2d5cc1bed837b43"
+            },
+            {
+              "name": "otzaria-0.10.3-windows-full.exe.part-002",
+              "size": 294967296,
+              "sha256": "5e2ef064cdca7d6e5a19363b1437e47d80d3205b413c2dc8d2d5cc1bed837b43"
             }
           ]
         }
@@ -389,15 +394,34 @@
       "architecture": "arm64",
       "installOrder": 20,
       "dependsOn": [],
-      "downloadSize": 1990,
+      "downloadSize": 4294967296,
       "assets": [
         {
-          "kind": "single",
+          "kind": "split",
           "repository": "Otzaria/otzaria",
           "releaseTag": "0.10.3+143",
           "name": "otzaria-0.10.3-windows_arm64-full.exe",
-          "size": 1990,
-          "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839"
+          "size": 4294967296,
+          "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839",
+          "manifestAsset": "otzaria-0.10.3-windows_arm64-full.exe.manifest.json",
+          "githubAssetLimit": 2147483648,
+          "parts": [
+            {
+              "name": "otzaria-0.10.3-windows_arm64-full.exe.part-000",
+              "size": 2000000000,
+              "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839"
+            },
+            {
+              "name": "otzaria-0.10.3-windows_arm64-full.exe.part-001",
+              "size": 2000000000,
+              "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839"
+            },
+            {
+              "name": "otzaria-0.10.3-windows_arm64-full.exe.part-002",
+              "size": 294967296,
+              "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839"
+            }
+          ]
         }
       ]
     },

@@ -26,10 +26,18 @@ final class FixtureTests: XCTestCase {
     private var expected: [String: Any]!
 
     override func setUpWithError() throws {
-        let manifestData = try Data(contentsOf: Self.fixturesDirectory.appendingPathComponent("release-manifest.json"))
-        manifest = try ReleaseManifest.parse(manifestData)
-        let expectedData = try Data(contentsOf: Self.fixturesDirectory.appendingPathComponent("expected-selections.json"))
-        expected = try XCTUnwrap(JSONSerialization.jsonObject(with: expectedData) as? [String: Any])
+        let loaded = try Self.load("release-manifest.json", "expected-selections.json")
+        manifest = loaded.manifest
+        expected = loaded.expected
+    }
+
+    private static func load(_ manifestName: String, _ expectedName: String) throws
+        -> (manifest: ReleaseManifest, expected: [String: Any]) {
+        let manifestData = try Data(contentsOf: fixturesDirectory.appendingPathComponent(manifestName))
+        let expectedData = try Data(contentsOf: fixturesDirectory.appendingPathComponent(expectedName))
+        let manifest = try ReleaseManifest.parse(manifestData)
+        let expected = try XCTUnwrap(JSONSerialization.jsonObject(with: expectedData) as? [String: Any])
+        return (manifest, expected)
     }
 
     func testPlatformChoices() {
@@ -66,6 +74,29 @@ final class FixtureTests: XCTestCase {
     func testEveryTarget() throws {
         let targets = try XCTUnwrap(expected["targets"] as? [[String: Any]])
         XCTAssertEqual(targets.count, 10)
+        try checkTargets(manifest, targets)
+    }
+
+    /// מתקין ה-FULL הגיע ל-4 GiB ואינו רץ: "מלאה" עוברת למתקין המאונדקס וחלקי הספרייה.
+    func testLargeFullVariant() throws {
+        let large = try Self.load("release-manifest-large-full.json", "expected-selections-large-full.json")
+        let targets = try XCTUnwrap(large.expected["targets"] as? [[String: Any]])
+        XCTAssertEqual(targets.count, 2)
+        try checkTargets(large.manifest, targets)
+    }
+
+    /// ספרייה שנבחרה לבדה מגיעה עם המתקין שקורא אותה; ב-ARM64 אין מי שיתקין אותה.
+    func testLibraryBringsItsInstaller() throws {
+        let x64 = AssistantTarget(platform: "windows", architecture: "x64")
+        XCTAssertEqual(
+            withDependencies(manifest, ["library-full-indexed"], x64),
+            ["otzaria-windows-full-indexed", "library-full-indexed"]
+        )
+        let library = try XCTUnwrap(manifest.components.first { $0.id == "library-full-indexed" })
+        XCTAssertFalse(componentIsOffered(manifest, library, AssistantTarget(platform: "windows", architecture: "arm64")))
+    }
+
+    private func checkTargets(_ manifest: ReleaseManifest, _ targets: [[String: Any]]) throws {
         for entry in targets {
             let raw = try XCTUnwrap(entry["target"] as? [String: String])
             let target = AssistantTarget(
@@ -76,8 +107,8 @@ final class FixtureTests: XCTestCase {
             let label = "\(target.platform)/\(target.architecture)/\(target.packageFormat)"
 
             XCTAssertEqual(
-                manifest.components.filter { componentFitsTarget($0, target) }.map { $0.id },
-                entry["fittingComponents"] as? [String], label
+                manifest.components.filter { componentIsOffered(manifest, $0, target) }.map { $0.id },
+                entry["offeredComponents"] as? [String], label
             )
 
             let expectedPresets = try XCTUnwrap(entry["presets"] as? [[String: Any]])
