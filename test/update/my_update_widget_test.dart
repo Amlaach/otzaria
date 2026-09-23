@@ -458,6 +458,95 @@ void main() {
         'https://example.com/otzaria-0.9.96-windows.exe',
       );
     });
+
+    test('never selects the download assistant', () {
+      final withAssistant = [
+        ...fullReleaseAssets,
+        asset('Otzaria-Download-Assistant-windows.exe'),
+      ];
+      expect(
+        pickWindowsAssetUrl(
+          withAssistant,
+          preferredFormat: 'exe',
+          isArmMachine: false,
+        ),
+        'https://example.com/otzaria-0.9.96-windows.exe',
+      );
+      expect(
+        pickWindowsAssetUrl(
+          withAssistant,
+          preferredFormat: 'exe',
+          isArmMachine: true,
+        ),
+        'https://example.com/otzaria-0.9.96-windows_arm64.exe',
+      );
+    });
+
+    test('the download assistant is not chosen even as the only exe', () {
+      // גם השם הישן: שחרורים שכבר פורסמו נושאים אותו, והמעדכן חייב
+      // להמשיך לדלג עליהם.
+      for (final name in const [
+        'Otzaria-Download-Assistant-windows.exe',
+        'Otzaria-Download-Assistant-win.exe',
+        'otzaria_download_assistant_win.exe',
+      ]) {
+        expect(
+          pickWindowsAssetUrl(
+            [asset(name)],
+            preferredFormat: 'exe',
+            isArmMachine: false,
+          ),
+          isNull,
+          reason: name,
+        );
+        expect(
+          pickWindowsAssetUrl(
+            [asset(name)],
+            preferredFormat: 'zip',
+            isArmMachine: true,
+          ),
+          isNull,
+          reason: name,
+        );
+      }
+    });
+
+    test('differential update packages are never picked as the zip', () {
+      final assets = [
+        asset('otzaria-update-windows-x64-0.10.2_142-to-0.10.3_143.zip'),
+        asset('otzaria-update-windows-arm64-0.10.2_142-to-0.10.3_143.zip'),
+        asset('otzaria-windows.zip'),
+        asset('otzaria-windows_arm64.zip'),
+      ];
+      expect(
+        pickWindowsAssetUrl(
+          assets,
+          preferredFormat: 'zip',
+          isArmMachine: false,
+        ),
+        'https://example.com/otzaria-windows.zip',
+      );
+      expect(
+        pickWindowsAssetUrl(assets, preferredFormat: 'zip', isArmMachine: true),
+        'https://example.com/otzaria-windows_arm64.zip',
+      );
+    });
+
+    test('isDownloadAssistantAsset matches only the assistant', () {
+      expect(
+        isDownloadAssistantAsset('Otzaria-Download-Assistant-windows.exe'),
+        isTrue,
+      );
+      expect(
+        isDownloadAssistantAsset('Otzaria-Download-Assistant-win.exe'),
+        isTrue,
+      );
+      expect(isDownloadAssistantAsset('otzaria-0.9.97-windows.exe'), isFalse);
+      expect(
+        isDownloadAssistantAsset('otzaria-0.9.97-windows-full-indexed.exe'),
+        isFalse,
+      );
+    });
   });
 
   group('pickMacAssetUrl', () {

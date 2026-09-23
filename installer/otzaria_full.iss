@@ -19,7 +19,12 @@
 #define BundledPluginsDirName "bundled_plugins"
 
 #ifdef IndexedSplitFull
+  ; דרך משתנה סביבה: ‎/D‎ עם מרכאות מ-pwsh הגיע ל-ISPP עטוף בלוכסנים
+  ; (נמדד: ‎\0.10.0+139\‎), והכתובת שנבנתה ממנו הייתה שבורה.
   #ifndef IndexedReleaseTag
+    #define IndexedReleaseTag GetEnv("OTZARIA_INDEXED_RELEASE_TAG")
+  #endif
+  #if IndexedReleaseTag == ""
     #define IndexedReleaseTag MyAppVersion
   #endif
   #define IndexedArchiveName "otzaria-" + MyAppVersion + "-library-full-indexed.tar.zst"

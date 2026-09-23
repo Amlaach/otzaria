@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/core/app_paths.dart';
@@ -13,6 +14,11 @@ import 'package:otzaria/settings/settings_exports.dart';
 const _regular = 'otzaria.iss';
 const _full = 'otzaria_full.iss';
 const _scripts = [_regular, _full];
+
+/// מסייע ההורדה אינו מתקין, ולכן אינו נכלל ב-[_scripts]: האינוריאנטות של
+/// המתקינים (מסמנים, רישום, הסרה) אינן חלות עליו. הקבוצה הייעודית שלו
+/// בסוף הקובץ מאמתת את האינוריאנטות שכן חלות.
+const _assistant = 'download_assistant.iss';
 
 String _script(String name) =>
     File('installer/$name').readAsStringSync().replaceAll('\r\n', '\n');
@@ -1285,6 +1291,601 @@ void main() {
           '      Result := PrepareIndexedLibrary();',
         ),
       );
+    });
+  });
+
+  group('מסייע ההורדה — אינו מתקין', () {
+    test('$_assistant: אין התקנה לתיקיית תוכנה, קיצורים או רישום', () {
+      final script = _script(_assistant);
+
+      expect(script, contains('CreateAppDir=no'));
+      expect(
+        script,
+        isNot(
+          matches(
+            RegExp(
+              r'^\[(Files|Icons|Registry|Dirs|INI)\]\s*$',
+              multiLine: true,
+            ),
+          ),
+        ),
+        reason: 'הכלי אינו מתקין דבר — כל מקטע שמתקין הופך אותו למתקין',
+      );
+      for (final call in const [
+        'RegWriteStringValue',
+        'RegWriteDWordValue',
+        'RegWriteBinaryValue',
+      ]) {
+        expect(script, isNot(contains(call)), reason: 'כתיבה לרישום: $call');
+      }
+    });
+
+    test('$_assistant: אין מסיר ואין רשומה ב"הוספה או הסרה"', () {
+      final script = _script(_assistant);
+
+      expect(script, contains('Uninstallable=no'));
+      expect(script, contains('CreateUninstallRegKey=no'));
+      expect(
+        script,
+        isNot(matches(RegExp(r'^\[Uninstall[A-Za-z]*\]\s*$', multiLine: true))),
+      );
+      expect(script, isNot(contains('CurUninstallStepChanged')));
+    });
+
+    test('$_assistant: שם הפלט מדויק ואינו מבלבל את בוחרי הנכסים', () {
+      final script = _script(_assistant);
+      final match = RegExp(
+        r'^OutputBaseFilename=(.+)$',
+        multiLine: true,
+      ).firstMatch(script);
+
+      expect(match, isNotNull);
+      final name = _squeeze(match!.group(1)!);
+      expect(name, 'Otzaria-Download-Assistant-windows');
+      // GitHub מסנן שם נכס ל-[A-Za-z0-9._-] ומוחק תווים עבריים בלי תחליף.
+      expect(name, matches(RegExp(r'^[A-Za-z0-9._-]+$')));
+      expect(name.toLowerCase(), isNot(contains('full')));
+      expect(
+        name.toLowerCase(),
+        contains('download-assistant'),
+        reason: 'עליו נשענת ההחרגה של האשף מבחירת נכס העדכון',
+      );
+      expect(
+        File('lib/update/my_update_widget.dart').readAsStringSync(),
+        contains("name.contains('download-assistant')"),
+        reason: 'הפרדיקט שמחריג את האשף מבחירת נכס העדכון נעלם',
+      );
+    });
+
+    test('$_assistant: מאפייני הקובץ בעברית — שם הקובץ נשאר ASCII', () {
+      final script = _script(_assistant);
+      final hebrew = RegExp(r'[֐-׿]');
+
+      for (final key in const [
+        'VersionInfoProductName',
+        'VersionInfoDescription',
+      ]) {
+        final match = RegExp(
+          '^$key=(.+)\$',
+          multiLine: true,
+        ).firstMatch(script);
+        expect(match, isNotNull, reason: '$key חסר');
+        expect(
+          match!.group(1)!,
+          matches(hebrew),
+          reason: '$key הוא הזיהוי העברי היחיד שאפשרי — שם הנכס חייב ASCII',
+        );
+      }
+      expect(
+        RegExp(
+          r'^VersionInfoDescription=(.+)$',
+          multiLine: true,
+        ).firstMatch(script)!.group(1),
+        contains('אינו מתקין'),
+      );
+      expect(
+        script,
+        contains('VersionInfoProductTextVersion={#TagVersionPart}'),
+        reason: 'הגרסה המוצגת נגזרת מהתג המוטבע ואינה מומצאת',
+      );
+    });
+
+    test('$_assistant: ניסוחי ההתקנה של Inno נדרסים', () {
+      final messages = _section(_script(_assistant), 'Messages');
+
+      for (final id in const [
+        'SetupLdrStartupMessage',
+        'ButtonInstall',
+        'WizardReady',
+        'ReadyLabel1',
+        'ReadyLabel2a',
+        'ReadyLabel2b',
+        'WizardPreparing',
+        'PreparingDesc',
+        'WizardInstalling',
+        'InstallingLabel',
+        'StatusCreateDirs',
+        'StatusExtractFiles',
+        'StatusSavingUninstall',
+        'StatusRunProgram',
+        'FinishedLabel',
+        'FinishedLabelNoIcons',
+        'ClickFinish',
+        'SetupAborted',
+      ]) {
+        expect(
+          messages,
+          matches(RegExp('^$id=', multiLine: true)),
+          reason: 'ברירת המחדל של $id מנוסחת כמתקין',
+        );
+      }
+      // "התקנה" מותר כאובייקט שמכינים; אסור שהכלי יתאר את עצמו כמתקין.
+      for (final claim in const ['תוכנת ההתקנה', 'מתקין את', 'על מחשבך']) {
+        expect(messages, isNot(contains(claim)), reason: claim);
+      }
+    });
+
+    test('$_assistant: ברירת המחדל לשמירה היא תיקיית המסייע עצמו', () {
+      final script = _script(_assistant);
+      final assistantDir = _routine(script, 'function AssistantDir()');
+      final wizard = _routine(script, 'procedure InitializeWizard()');
+
+      expect(assistantDir, contains(r"ExpandConstant('{srcexe}')"));
+      expect(assistantDir, contains('ExtractFileDir'));
+      expect(
+        wizard,
+        contains('DefaultBase := AssistantDir();'),
+        reason: 'התוצאה נשמרת ליד הקובץ שהופעל, לא בתיקייה קבועה',
+      );
+      expect(
+        wizard,
+        contains('FolderPage.Values[0] := DefaultBase;'),
+        reason: 'ברירת המחדל היא העדפה — המשתמש עדיין בוחר',
+      );
+    });
+
+    test('$_assistant: הכתיבוּת נבדקת בכתיבה, ויש נסיגה מוסברת', () {
+      final script = _script(_assistant);
+      final probe = _routine(script, 'function DirIsWritable(');
+      final wizard = _routine(script, 'procedure InitializeWizard()');
+      final next = _routine(script, 'function NextButtonClick(');
+
+      expect(
+        probe,
+        contains('SaveStringToFile('),
+        reason: 'נתיב אינו מעיד על כתיבוּת — חובה לנסות לכתוב',
+      );
+      expect(probe, contains('DeleteFile(Probe)'));
+      expect(wizard, contains('if not DirIsWritable(DefaultBase) then'));
+      expect(wizard, contains('DefaultBase := FallbackOutputBase();'));
+      expect(
+        wizard,
+        contains('FolderNote'),
+        reason: 'הנסיגה חייבת להיאמר למשתמש בעברית פשוטה',
+      );
+      expect(
+        next,
+        contains('if DirIsWritable(FolderPage.Values[0]) then'),
+        reason: 'גם תיקייה שנבחרה ידנית נבדקת בכתיבה',
+      );
+      expect(next, contains('FolderPage.Values[0] := FallbackOutputBase();'));
+    });
+
+    test('$_assistant: מספר הקבצים שנוצרו קובע פריסה וניסוח', () {
+      final script = _script(_assistant);
+      final count = _routine(script, 'function ProducedFileCount()');
+      final outputDir = _routine(script, 'function OutputDir()');
+      final prepare = _routine(script, 'function PrepareOutput()');
+
+      expect(count, contains("AssetKind[A] = 'split'"));
+      expect(count, contains('ShouldAssembleSingleFile(A)'));
+      expect(count, contains('AssetPartCount[A]'));
+      expect(
+        outputDir,
+        contains('ProducedFileCount() > 1'),
+        reason: 'קובץ בודד ישירות בתיקייה; כמה קבצים בתת-תיקייה',
+      );
+      expect(outputDir, contains('OutputSubFolderName'));
+      expect(
+        script,
+        contains("OutputSubFolderName = 'אוצריא להתקנה'"),
+        reason: 'שם שמשתמש שאינו טכני מבין',
+      );
+
+      expect(
+        prepare,
+        contains('else if Produced = 1 then'),
+        reason: 'הניסוח נגזר ממה שנוצר בפועל, לא מהרכיב שנבחר',
+      );
+      final single = prepare.substring(prepare.indexOf('else if Produced = 1'));
+      final multi = single.substring(single.indexOf("'ההתקנה מוכנה בתיקייה:'"));
+      expect(single, contains("'הקובץ מוכן:' + #13#10 + SingleName"));
+      expect(
+        single.substring(0, single.indexOf("'ההתקנה מוכנה בתיקייה:'")),
+        isNot(contains('תיקייה הזאת')),
+      );
+      expect(multi, contains('העתק את כל התיקייה הזאת'));
+      expect(multi, contains('חייבים להישאר יחד'));
+      for (final jargon in const ['מניפסט', 'sha', 'hash', 'נכס']) {
+        expect(single, isNot(contains(jargon)), reason: jargon);
+      }
+    });
+
+    test('$_assistant: תיבת "הצג" מסומנת מראש ומסמנת את מה שנוצר', () {
+      final script = _script(_assistant);
+      final page = _routine(script, 'procedure CurPageChanged(');
+      final deinit = _routine(script, 'procedure DeinitializeSetup()');
+
+      expect(page, contains('RevealCheck.Checked := True;'));
+      expect(page, contains("RevealCheck.Caption := 'הצג את הקובץ שהוכן'"));
+      expect(page, contains("RevealCheck.Caption := 'הצג את התיקייה שהוכנה'"));
+      expect(
+        page,
+        contains('if RevealIsFile then'),
+        reason: 'התווית נגזרת ממה שנוצר, כמו ניסוח עמוד הסיום',
+      );
+
+      expect(deinit, contains('ExecAsOriginalUser('));
+      expect(deinit, contains(r"ExpandConstant('{win}\explorer.exe')"));
+      expect(
+        deinit,
+        contains("'/select,\"' + RevealPath + '\"'"),
+        reason: 'בלי /select נפתחת תיקייה כלשהי, ובלי מרכאות נשבר נתיב עם רווח',
+      );
+      expect(
+        deinit,
+        isNot(contains('MsgBox')),
+        reason: 'פתיחת הסייר היא נוחות — כישלון שלה אינו מפיל ואינו מבהיל',
+      );
+      expect(deinit, contains('Log('));
+    });
+
+    test('$_assistant: תמונת האשף הקטנה שטוחה על רקע לבן', () {
+      final match = RegExp(
+        r'^WizardSmallImageFile=(.+)$',
+        multiLine: true,
+      ).firstMatch(_script(_assistant));
+      expect(match, isNotNull);
+
+      final files = _squeeze(match!.group(1)!).split(',');
+      for (final name in files) {
+        expect(
+          name,
+          contains('_white'),
+          reason: 'תמונה משותפת עם המתקינים נשמרה מאייקון שקוף — רקע שחור',
+        );
+        final bytes = File('installer/$name').readAsBytesSync();
+        // BMP נשמר מלמטה למעלה: הפיקסל הראשון בנתונים הוא הפינה התחתונה-שמאלית.
+        final offset = bytes.buffer.asByteData().getUint32(10, Endian.little);
+        expect(bytes.sublist(offset, offset + 3), [255, 255, 255]);
+      }
+    });
+
+    test('$_assistant: אין רשימת שמות נכסים קשיחה', () {
+      final script = _script(_assistant);
+
+      // הרכיבים, הגדלים וה-hash מגיעים מהמניפסט; שם נכס קשיח היה מקבע את
+      // הכלי לגרסה אחת ומחייב שינוי קוד בכל רכיב חדש.
+      expect(script, isNot(contains('otzaria-')));
+      // explorer.exe הוא תוכנית מערכת שפותחת את התוצאה, לא נכס של release.
+      final literals = script.replaceAll(
+        r"ExpandConstant('{win}\explorer.exe')",
+        '',
+      );
+      expect(
+        literals,
+        isNot(matches(RegExp(r"'[^']+\.(exe|zip|tar\.zst)'"))),
+        reason: 'שם קובץ נכס ספציפי בתוך הסקריפט',
+      );
+    });
+
+    test('$_assistant: כל כתובת היא github.com בארגון Otzaria', () {
+      final script = _script(_assistant);
+      final urls = RegExp(
+        r"'(https?://[^']*)'",
+      ).allMatches(script).map((m) => m.group(1)!).toList();
+
+      expect(urls, isNotEmpty);
+      for (final url in urls) {
+        // 'https://github.com/' לבדה היא תחילית הבנייה ב-AssetUrl, שהמאגר
+        // שמצורף אליה כבר אומת.
+        expect(
+          url == 'https://github.com/' ||
+              url.startsWith('https://github.com/Otzaria/') ||
+              url.startsWith('https://api.github.com/repos/Otzaria/'),
+          isTrue,
+          reason: 'כתובת שאינה בארגון Otzaria ב-github.com: $url',
+        );
+      }
+      expect(script, isNot(contains('http://')));
+
+      final builder = _routine(script, 'function AssetUrl(');
+      expect(
+        builder.indexOf('IsOtzariaRepository'),
+        lessThan(builder.indexOf("'https://github.com/'")),
+        reason: 'הכתובת נבנית רק אחרי שהמאגר אומת כשייך לארגון',
+      );
+    });
+
+    test('$_assistant: להורדה תמיד מועבר hash מהמניפסט', () {
+      final script = _script(_assistant);
+      final adds = RegExp(
+        r'DownloadPage\.Add\(([^;]*)\);',
+      ).allMatches(script).map((m) => m.group(1)!).toList();
+
+      expect(adds, hasLength(1), reason: 'יותר ממסלול הורדה אחד');
+      expect(
+        adds.single,
+        contains('QueueSha[I]'),
+        reason: 'Add בלי hash מוריד קובץ שאי אפשר לאמת',
+      );
+      expect(
+        script,
+        isNot(matches(RegExp(r"DownloadPage\.Add\([^;]*,\s*''\s*\)"))),
+      );
+      // המניפסט עצמו יורד בלי hash (הוא מקור האמת), ולכן הוא לא עובר
+      // דרך עמוד ההורדה אלא דרך DownloadTemporaryFile.
+      expect(
+        RegExp('DownloadTemporaryFile').allMatches(script).length,
+        2,
+        reason: 'רק רשימת ה-release והמניפסט יורדים בלי hash',
+      );
+    });
+
+    test('$_assistant: קובץ זמני מקבל שם סופי רק אחרי אימות גודל ו-hash', () {
+      final promote = _routine(_script(_assistant), 'function PromoteToCache(');
+
+      final sizeCheck = promote.indexOf('Actual = Size');
+      final hashCheck = promote.indexOf('GetSHA256OfFile(Staged)');
+      final rename = promote.indexOf("RenameFile(Staged, CachePath(Name))");
+      expect(sizeCheck, greaterThanOrEqualTo(0));
+      expect(hashCheck, greaterThan(sizeCheck));
+      expect(
+        rename,
+        greaterThan(hashCheck),
+        reason: 'קובץ חלקי שקיבל שם סופי ייחשב בהרצה הבאה כקובץ שהורד',
+      );
+      expect(
+        promote,
+        contains("CachePath(Name) + '.tmp'"),
+        reason: 'ההורדה חייבת לנחות תחת שם זמני',
+      );
+
+      final assemble = _routine(_script(_assistant), 'function AssembleAsset(');
+      final verify = assemble.indexOf('GetSHA256OfFile(TmpPath)');
+      final promoteFinal = assemble.indexOf('RenameFile(TmpPath, FinalPath)');
+      expect(verify, greaterThanOrEqualTo(0));
+      expect(promoteFinal, greaterThan(verify));
+    });
+
+    test('$_assistant: קובץ שכבר במטמון נבדק בגודל וב-hash ולא יורד שוב', () {
+      final cached = _routine(
+        _script(_assistant),
+        'function CachedFileIsGood(',
+      );
+
+      expect(cached, contains('FileSize64('));
+      expect(cached, contains('GetSHA256OfFile('));
+
+      final queue = _routine(_script(_assistant), 'function BuildQueue(');
+      expect(
+        RegExp('CachedFileIsGood').allMatches(queue).length,
+        2,
+        reason: 'גם חלקים וגם נכס יחיד חייבים לדלג כשהם כבר מאומתים',
+      );
+      expect(queue, contains('Continue;'));
+    });
+
+    test('$_assistant: מעל 4 ג׳יגה לא מייצרים exe יחיד — כלל מחושב', () {
+      final script = _script(_assistant);
+
+      expect(
+        script,
+        contains('MaxRunnableExeSize = 4294967296'),
+        reason: 'Windows מסרב להריץ exe בגודל 4 GiB ומעלה',
+      );
+      final rule = _routine(script, 'function ShouldAssembleSingleFile(');
+      expect(rule, contains('IsExecutableName(AssetName[AssetIndex])'));
+      expect(rule, contains('AssetSize[AssetIndex] < MaxRunnableExeSize'));
+      expect(
+        rule,
+        isNot(contains('CompId')),
+        reason: 'הכלל נגזר מהנכס עצמו, לא ממזהה רכיב ספציפי',
+      );
+    });
+
+    test('$_assistant: ההרכבה מוחקת כל חלק מיד אחרי הוספתו', () {
+      final assemble = _routine(_script(_assistant), 'function AssembleAsset(');
+      final append = assemble.indexOf('AppendFileTo(TmpPath, PartPath)');
+      final delete = assemble.indexOf('DeleteFile(PartPath)');
+
+      expect(append, greaterThanOrEqualTo(0));
+      expect(
+        delete,
+        greaterThan(append),
+        reason: 'בלי המחיקה שיא הדיסק הוא פי שניים מגודל הקובץ המורכב',
+      );
+      expect(
+        _script(_assistant),
+        isNot(contains('powershell')),
+        reason: 'התוצאה חייבת להיווצר בלי PowerShell ובלי כלים חיצוניים',
+      );
+    });
+
+    test('$_assistant: תג ה-release נקבע פעם אחת לכל הריצה', () {
+      final load = _routine(
+        _script(_assistant),
+        'function LoadReleaseManifest(',
+      );
+
+      expect(load, contains("JStr(ApiRaw, 1, 'tag_name')"));
+      expect(
+        load,
+        contains("AssetUrl('Otzaria/otzaria', PinnedTag, ManifestAsset)"),
+        reason: 'המניפסט חייב לרדת מאותו תג שנקרא — לא מ-latest שוב',
+      );
+      expect(
+        _script(_assistant),
+        isNot(contains('releases/latest/download')),
+        reason: 'כתובת latest מתחלפת באמצע ההורדה ומערבבת שתי גרסאות',
+      );
+    });
+
+    test('$_assistant: מניפסט חסר או פגום אינו מפיל ואינו מוריד ללא אימות', () {
+      final init = _routine(_script(_assistant), 'function InitializeSetup()');
+
+      expect(init, contains('LoadErrorHeb'));
+      expect(
+        init,
+        contains('https://github.com/Otzaria/otzaria/releases/latest'),
+        reason: 'הנסיגה היחידה היא הפניית המשתמש לעמוד ההורדות',
+      );
+      expect(
+        init,
+        isNot(contains('DownloadPage')),
+        reason: 'בלי מניפסט אין hash — ולכן אין הורדה',
+      );
+      expect(init, contains('Result := False'));
+    });
+
+    test('$_assistant: הסקריפט אינו תלוי בעדכון הגרסה של המתקינים', () {
+      final script = _script(_assistant);
+
+      expect(
+        script,
+        isNot(contains('MyAppVersion')),
+        reason: 'הכלי חסר-גרסה: הוא קורא את התג בזמן ריצה',
+      );
+      for (final tool in const [
+        'tool/version/update_version.sh',
+        'tool/version/update_version.ps1',
+      ]) {
+        expect(
+          File(tool).readAsStringSync(),
+          isNot(contains(_assistant)),
+          reason: '$tool אינו אמור לגעת בסקריפט חסר-הגרסה',
+        );
+      }
+    });
+
+    test('$_assistant: אין שורה שמתחילה ב-# שאינו דירקטיבה', () {
+      // ISPP מפרש # בתחילת שורה גם אחרי הזחה — קבוע כמו #13#10 שנדחף
+      // לראש שורה שובר את הקומפילציה, והקובץ אינו נבנה בטסטים.
+      final offenders = <String>[];
+      final lines = _script(_assistant).split('\n');
+      final directive = RegExp(r'^\s*#(ifndef|ifdef|if|else|endif|define)\b');
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'^\s*#').hasMatch(lines[i]) &&
+            !directive.hasMatch(lines[i])) {
+          offenders.add('${i + 1}: ${lines[i].trim()}');
+        }
+      }
+      expect(offenders, isEmpty, reason: offenders.join('\n'));
+    });
+
+    test('$_assistant: התג מגיע ממשתנה סביבה, עם נסיגה בהיעדרו', () {
+      final script = _script(_assistant);
+      // התג המוטבע הוא ברירת המחדל; בלעדיו הכלי חוזר ל-/releases/latest.
+      expect(script, contains('#ifndef AssistantReleaseTag'));
+      // ‎/D‎ עם מרכאות מגיע ל-ISPP עטוף בלוכסנים; נמדד: ‎\0.10.0+139\‎.
+      expect(
+        script,
+        contains('GetEnv("OTZARIA_ASSISTANT_RELEASE_TAG")'),
+      );
+      expect(script, contains("Trim('{#AssistantReleaseTag}')"));
+      expect(script, contains("PinnedTag := LatestTag"));
+      expect(script, contains("PinnedTag := EmbeddedTag"));
+      expect(script, contains('/releases/'));
+    });
+
+    test('$_assistant: ההשוואה מתעלמת מסיומת ‎+build', () {
+      final script = _script(_assistant);
+      final versionPart = script.substring(
+        script.indexOf('function VersionPart('),
+        script.indexOf('function CompareVersionText('),
+      );
+      expect(versionPart, contains("Pos('+', Result)"));
+      expect(versionPart, contains('Copy(Result, 1, P - 1)'));
+      // רק גרסה גבוהה יותר דוחקת את התג המוטבע.
+      expect(
+        script,
+        contains('CompareVersionText(LatestTag, EmbeddedTag) > 0'),
+      );
+    });
+
+    test('ה-workflow מעביר את התג לבניית מסייע ההורדה', () {
+      final step = _workflowStep(
+        'Build Download Assistant (non-fatal helper tool)',
+      );
+      expect(step, contains(r'$env:OTZARIA_ASSISTANT_RELEASE_TAG = $tag'));
+      expect(step, contains(r'& "$env:ISCC" installer\download_assistant.iss'));
+      expect(step, isNot(contains('/DAssistantReleaseTag=')));
+      // אותו כלל תג שבו create_release משתמש.
+      expect(
+        step,
+        contains(
+          "if ('\${{ github.ref }}' -eq 'refs/heads/main') "
+          '{ \$version } else { "\$version+\${{ github.run_number }}" }',
+        ),
+      );
+    });
+  });
+
+  group('תג ה-release של המתקין המאונדקס', () {
+    // ‎/D‎ עם ערך במרכאות מגיע ל-ISPP עטוף בלוכסנים דרך pwsh, והכתובת
+    // שנבנית ממנו שבורה. נמדד מול ISCC אמיתי: ‎[\0.10.0+139\]‎.
+    test('$_full: התג מגיע ממשתנה סביבה, עם נפילה אחורה', () {
+      final script = _script(_full);
+      final flat = script.replaceAll(RegExp(r'\s+'), ' ');
+
+      expect(
+        flat,
+        contains(
+          '#ifndef IndexedReleaseTag '
+          '#define IndexedReleaseTag GetEnv("OTZARIA_INDEXED_RELEASE_TAG") '
+          '#endif',
+        ),
+        reason: '‎#ifndef‎ משאיר ל-‎/D‎ מפורש לנצח בבנייה מקומית',
+      );
+      expect(
+        flat,
+        contains(
+          '#if IndexedReleaseTag == "" '
+          '#define IndexedReleaseTag MyAppVersion '
+          '#endif',
+        ),
+        reason: 'בנייה בלי תג ובלי משתנה סביבה חייבת עדיין להתקמפל',
+      );
+      expect(
+        flat,
+        contains(
+          '#define IndexedReleaseBaseUrl '
+          '"https://github.com/Otzaria/otzaria/releases/download/" '
+          '+ IndexedReleaseTag',
+        ),
+      );
+    });
+
+    test('ה-workflow מעביר את התג בסביבה ולא ב-‎/D‎', () {
+      final step = _workflowStep('Build indexed FULL bootstrap installer');
+
+      expect(
+        step,
+        contains(r'$env:OTZARIA_INDEXED_RELEASE_TAG = $releaseTag'),
+      );
+      expect(
+        step,
+        contains(
+          '& "\$env:ISCC" \'/DIndexedSplitFull=1\' installer\\otzaria_full.iss',
+        ),
+      );
+      expect(
+        step,
+        isNot(contains('/DIndexedReleaseTag')),
+        reason: 'ערך שעובר ב-‎/D‎ דרך pwsh מגיע עטוף בלוכסנים',
+      );
+      // דגל בלי ערך — לא מושפע מהעיוות ונשאר כפי שהוא.
+      expect(step, contains("'/DIndexedSplitFull=1'"));
     });
   });
 }
