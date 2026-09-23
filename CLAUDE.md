@@ -182,6 +182,9 @@ Three parts, all mandatory:
 1. **`WindowRole.isSecondary` guard** for anything per-process or per-machine (registry, system
    notifications, update checks, error-report flush). Without it every extra window repeats it.
 2. **Reveal gate with a timeout** — never an unguarded `await` on the completer.
+   **Exception:** a step that makes a synchronous native call (e.g. `sentry_init` in
+   `_initializeSentry`) awaits the reveal with **no** timeout. Running it before reveal is the
+   #1192 block itself, and it would hit exactly the machines whose reveal is slow.
 3. **Non-fatal failure** — a startup step must never abort the boot. It logs through
    `_logNonFatalInitializationError` and returns.
 
