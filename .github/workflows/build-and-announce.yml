@@ -1455,6 +1455,8 @@ jobs:
       - name: Create Linux FULL portable bundle
         if: matrix.target == 'full'
         shell: bash
+        env:
+          SEFORIM_LIBRARY_DISPATCH_TOKEN: ${{ secrets.SEFORIM_LIBRARY_DISPATCH_TOKEN }}
         run: |
           set -euo pipefail
           BUNDLE_ROOT="full_installer/otzaria-linux-full"
@@ -1533,11 +1535,34 @@ jobs:
           esac
           [ ! -L "$BUNDLED_MARKER" ] || { echo "::error::Bundled marker must not be a symlink"; exit 1; }
           [ ! -e "$BUNDLED_MARKER" ] || rm -f -- "$BUNDLED_MARKER"
-          bash tool/release/fetch_prebuilt_library_index.sh \
-            "$INDEXED_LIBRARY_ROOT/index" \
-            full_installer/library_db/seforim.db.zst \
-            full_installer/library_db/talmud_bavli_latest.tar.zst \
-            pubspec.lock
+          # סכמת מנוע חדשה (יציאה 3): האינדקס נבנה מהריצה הזו עצמה — ה-raw
+          # וה-index-inputs שלה כבר הועלו — ואז מריצים שוב את המשימות שנכשלו.
+          rebuild_tag_file="$RUNNER_TEMP/prebuilt-index-rebuild-tag"
+          fetch_status=0
+          PREBUILT_INDEX_REBUILD_TAG_FILE="$rebuild_tag_file" \
+            bash tool/release/fetch_prebuilt_library_index.sh \
+              "$INDEXED_LIBRARY_ROOT/index" \
+              full_installer/library_db/seforim.db.zst \
+              full_installer/library_db/talmud_bavli_latest.tar.zst \
+              pubspec.lock || fetch_status=$?
+          if [ "$fetch_status" = 3 ]; then
+            rebuild_tag=$(cat "$rebuild_tag_file")
+            rebuild_hint="build-library-index.yml in Otzaria/SeforimLibrary (release_tag=$rebuild_tag, otzaria_run_id=$GITHUB_RUN_ID)"
+            if [ -z "$SEFORIM_LIBRARY_DISPATCH_TOKEN" ]; then
+              echo "::warning::SEFORIM_LIBRARY_DISPATCH_TOKEN is not set — dispatch $rebuild_hint manually, then rerun the failed jobs"
+            elif jq -nc --arg tag "$rebuild_tag" --arg run "$GITHUB_RUN_ID" --arg ref "$GITHUB_REF_NAME" \
+                '{ref: "otzaria", inputs: {release_tag: $tag, otzaria_run_id: $run, otzaria_ref: $ref}}' \
+              | curl -fsS -X POST \
+                  -H "Authorization: Bearer $SEFORIM_LIBRARY_DISPATCH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  --data-binary @- \
+                  https://api.github.com/repos/Otzaria/SeforimLibrary/actions/workflows/build-library-index.yml/dispatches; then
+              echo "::notice::Dispatched $rebuild_hint — rerun the failed jobs of this run once it finishes: https://github.com/Otzaria/SeforimLibrary/actions/workflows/build-library-index.yml"
+            else
+              echo "::warning::Could not dispatch $rebuild_hint — dispatch it manually, then rerun the failed jobs"
+            fi
+          fi
+          [ "$fetch_status" = 0 ] || exit "$fetch_status"
           touch "$INDEXED_LIBRARY_ROOT/index/.otzaria_prebuilt_index"
 
           cat > "$INDEXED_LIBRARY_ROOT/README.txt" << 'EOF'

@@ -226,6 +226,7 @@ packages:
             ],
           }),
         );
+    final rebuildTagFile = File(p.join(temp.path, 'rebuild-tag'));
 
     Future<ProcessResult> fetch({
       required String databaseSha256,
@@ -260,7 +261,10 @@ packages:
         database.path,
         talmud.path,
         lock.path,
-      ], environment: {'PREBUILT_LIBRARY_INDEX_BASE_URL': 'file://${dist.path}'});
+      ], environment: {
+        'PREBUILT_LIBRARY_INDEX_BASE_URL': 'file://${dist.path}',
+        'PREBUILT_INDEX_REBUILD_TAG_FILE': rebuildTagFile.path,
+      });
     }
 
     final installed = p.join(temp.path, 'installed', 'index');
@@ -300,8 +304,10 @@ packages:
       indexDirectory: p.join(temp.path, 'wrong-engine', 'index'),
       requiredSchema: 5,
     );
-    expect(wrongEngine.exitCode, isNot(0));
+    // יציאה 3 + תג ה-release: ה-workflow מפעיל מהם את בניית האינדקס מחדש.
+    expect(wrongEngine.exitCode, 3);
     expect(wrongEngine.stderr, contains('otzaria_search_engine requires'));
+    expect(rebuildTagFile.readAsStringSync().trim(), 'v28-20260910220310');
     expect(
       Directory(p.join(temp.path, 'wrong-engine', 'index')).existsSync(),
       isFalse,

@@ -5,6 +5,10 @@
 #   fetch_prebuilt_library_index.sh <index-dir> <seforim.db.zst> \
 #       <talmud_bavli_latest.tar.zst> <pubspec.lock>
 #
+# Exit 3 = only the engine's index schema differs, so an index built from THIS
+# run fixes it; the library release tag is then written to
+# $PREBUILT_INDEX_REBUILD_TAG_FILE when set. Any other failure exits 1.
+#
 # רקע: בעבר כל בנייה הריצה `otzaria build-release-index` על כל הספרייה —
 # ‏118 דקות מול 12 דקות לאותה חבילה בלי האינדקס (ריצה 34779834547), ושני jobs
 # נוספים המתינו לה. האינדקס תלוי רק ב-seforim.db ובמנוע החיפוש, ולכן הוא נבנה
@@ -131,8 +135,11 @@ index_meta="$work/extract/index/otzaria_index_meta.json"
 [ -f "$index_meta" ] || fail "$archive_name has no index/otzaria_index_meta.json"
 found_format=$(jq -er '.format' "$index_meta") || fail "otzaria_index_meta.json has no format"
 found_schema=$(jq -er '.schema_version' "$index_meta") || fail "otzaria_index_meta.json has no schema_version"
-[ "$found_format" = "$required_format" ] && [ "$found_schema" = "$required_schema" ] || fail \
-  "the stored index is $found_format schema $found_schema (engine $expected_engine) but this build's otzaria_search_engine requires $required_format schema $required_schema — rerun build-library-index.yml in Otzaria/SeforimLibrary with otzaria_run_id set to a build of this revision"
+if [ "$found_format" != "$required_format" ] || [ "$found_schema" != "$required_schema" ]; then
+  [ -z "${PREBUILT_INDEX_REBUILD_TAG_FILE:-}" ] || printf '%s\n' "$library_tag" > "$PREBUILT_INDEX_REBUILD_TAG_FILE"
+  echo "::error::the stored index is $found_format schema $found_schema (engine $expected_engine) but this build's otzaria_search_engine requires $required_format schema $required_schema — rerun build-library-index.yml in Otzaria/SeforimLibrary with otzaria_run_id set to a build of this revision" >&2
+  exit 3
+fi
 mv "$work/extract/index" "$index_dir"
 [ -n "$(find "$index_dir" -mindepth 1 -maxdepth 1 -print -quit)" ] \
   || fail "the extracted index is empty"
