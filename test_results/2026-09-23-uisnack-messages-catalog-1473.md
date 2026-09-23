@@ -3,8 +3,8 @@
 **ענף:** `fix/uisnack-messages-catalog-1473` על `upstream/dev` 780ae3f94 · **פלטפורמה:** macOS 27.0 · **Flutter:** 3.47.2 (זהה ל-CI) · **תאריך:** 23.9.2026
 
 ## הבאג
-`CLAUDE.md`: *"Never pass a hardcoded string literal to `UiSnack`. Every message lives in
-`lib/core/messages/`"*. תשע הודעות עקפו את הכלל — שמונה ב-`calendar_event_dialog.dart`
+הנחיות הפרויקט ב-`AGENTS.md` דורשות להשתמש בקטלוגים המרכזיים של `UiSnack`. תשע הודעות
+עקפו את ההנחיה — שמונה ב-`calendar_event_dialog.dart`
 ואחת ב-`empty_library_screen.dart`.
 
 ## מה שהופך את זה מסגנון לבאג ממתין
