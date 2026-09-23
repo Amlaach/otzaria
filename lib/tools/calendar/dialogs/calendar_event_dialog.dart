@@ -373,11 +373,11 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
       currentJewishYear: _selectedJewishDate.getJewishYear(),
     );
     if (parsed == null) {
-      UiSnack.showError('לא הצלחנו לפרש את התאריך.');
+      UiSnack.showError(ToolsMessages.eventDateUnparsable);
       return false;
     }
     if (!isJumpToDateInRange(parsed)) {
-      UiSnack.showError('התאריך מחוץ לטווח הנתמך.');
+      UiSnack.showError(ToolsMessages.eventDateOutOfRange);
       return false;
     }
     if (minDate != null && parsed.isBefore(minDate)) {
@@ -585,7 +585,7 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
     if (confirmed != true) return;
 
     if (qty <= 0) {
-      UiSnack.showError('יש להזין כמות חיובית.');
+      UiSnack.showError(ToolsMessages.alertAmountMustBePositive);
       return;
     }
 
@@ -594,13 +594,13 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
     // תקרה של 3 חודשים
     const maxAllowedMinutes = 3 * 30 * 24 * 60;
     if (rawMinutes > maxAllowedMinutes) {
-      UiSnack.showError('ניתן להגדיר לכל היותר 3 חודשים לפני האירוע.');
+      UiSnack.showError(ToolsMessages.alertAtMostThreeMonths);
       return;
     }
 
     if (_selectedRecurrenceType == RecurrenceType.none &&
         rawMinutes > _minutesUntilEvent()) {
-      UiSnack.showError('זמן ההתראה חייב להיות לפני מועד האירוע.');
+      UiSnack.showError(ToolsMessages.alertMustPrecedeEvent);
       return;
     }
 
@@ -614,7 +614,7 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
 
   void _submit() {
     if (_titleController.text.trim().isEmpty) {
-      UiSnack.showError('יש למלא כותרת לאירוע.');
+      UiSnack.showError(ToolsMessages.eventTitleRequired);
       return;
     }
 
@@ -622,7 +622,7 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
     if (_selectedRecurrenceType != RecurrenceType.none && !_recurForever) {
       recurringYears = int.tryParse(_yearsController.text.trim());
       if (recurringYears == null || recurringYears <= 0) {
-        UiSnack.showError('יש להזין מספר שנים חיובי עבור אירוע חוזר.');
+        UiSnack.showError(ToolsMessages.eventRecurringYearsInvalid);
         return;
       }
     }
@@ -660,7 +660,7 @@ class _CalendarEventDialogState extends State<CalendarEventDialog> {
       final endsOnAnotherDate =
           !isRecurring && endDate != null && endDate.isAfter(_selectedDate);
       if (endsAt == startsAt && !endsOnAnotherDate) {
-        UiSnack.showError('שעת הסיום חייבת להיות אחרי שעת ההתחלה.');
+        UiSnack.showError(ToolsMessages.eventEndTimeBeforeStart);
         return;
       }
     }
