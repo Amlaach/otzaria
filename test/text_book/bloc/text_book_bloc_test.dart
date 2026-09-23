@@ -1559,18 +1559,26 @@ void main() {
             loadCommentators: false,
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await _waitFor(
+          () => bloc.state is TextBookLoaded,
+          description: 'initial TextBookLoaded',
+        );
         expect((bloc.state as TextBookLoaded).pinLeftPane, isFalse);
 
         // המשתמש נועץ את החלונית
         bloc.add(const TogglePinLeftPane(true));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await _waitFor(
+          () =>
+              bloc.state is TextBookLoaded &&
+              (bloc.state as TextBookLoaded).pinLeftPane,
+          description: 'pinned left pane',
+        );
         expect((bloc.state as TextBookLoaded).pinLeftPane, isTrue);
 
         // רענון בגין שינוי גופן – מצפה שהנעיצה תישמר
         bloc.add(
           const LoadContent(
-            fontSize: 20,
+            fontSize: 21,
             showSplitView: false,
             removeNikud: false,
             preserveState: true,
@@ -1578,7 +1586,12 @@ void main() {
             loadCommentators: false,
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await _waitFor(
+          () =>
+              bloc.state is TextBookLoaded &&
+              (bloc.state as TextBookLoaded).fontSize == 21,
+          description: 'font refresh',
+        );
 
         expect(
           (bloc.state as TextBookLoaded).pinLeftPane,
@@ -1609,16 +1622,24 @@ void main() {
             loadCommentators: false,
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await _waitFor(
+          () => bloc.state is TextBookLoaded,
+          description: 'initial TextBookLoaded',
+        );
 
         bloc.add(const TogglePinLeftPane(true));
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await _waitFor(
+          () =>
+              bloc.state is TextBookLoaded &&
+              (bloc.state as TextBookLoaded).pinLeftPane,
+          description: 'pinned left pane',
+        );
         expect((bloc.state as TextBookLoaded).pinLeftPane, isTrue);
 
         // רענון בגין שינוי הגדרות ניקוד – מצפה שהנעיצה תישמר גם כן
         bloc.add(
           const LoadContent(
-            fontSize: 20,
+            fontSize: 21,
             showSplitView: false,
             removeNikud: false,
             preserveState: true,
@@ -1626,7 +1647,12 @@ void main() {
             loadCommentators: false,
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await _waitFor(
+          () =>
+              bloc.state is TextBookLoaded &&
+              (bloc.state as TextBookLoaded).fontSize == 21,
+          description: 'nikud settings refresh',
+        );
 
         expect(
           (bloc.state as TextBookLoaded).pinLeftPane,
@@ -2027,12 +2053,7 @@ void main() {
   });
 }
 
-/// ממתינה עד שהתנאי מתקיים, או נכשלת ב-timeout עם הודעה ברורה.
-///
-/// קיימים ב-bloc מספר awaits פנימיים (load content → resolve target titles
-/// → repository call), כך ש-`Future.delayed` קבוע לא דטרמיניסטי תחת עומס
-/// (במיוחד בטסט הראשון של הקובץ, לפני JIT warm-up). polling קצר וקצוב
-/// יציב יותר מבלי להאריך את הריצה במקרה הרגיל.
+/// ממתינה למצב המבוקש במקום להניח משך קבוע לפעולות האסינכרוניות ב-bloc.
 Future<void> _waitFor(
   bool Function() condition, {
   Duration timeout = const Duration(seconds: 5),
