@@ -348,6 +348,7 @@ void main() {
         expect(rows, hasLength(1));
         expect(rows.first['connectionTypeName'], 'SOURCE');
         expect(rows.first['targetBookTitle'], 'בראשית');
+        expect(rows.first['targetBookId'], 1);
         expect(rows.first['sourceLineIndex'], 5);
         expect(rows.first['targetLineIndex'], 0);
       } finally {

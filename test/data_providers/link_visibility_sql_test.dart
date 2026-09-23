@@ -367,6 +367,24 @@ void main() {
     });
   });
 
+  group('מזהה ספר היעד בזרוע ההפוכה', () {
+    test('שתי הזרועות נושאות את מזהה ספר המקור כ-targetBookId', () {
+      final path = buildDb(withTable: false);
+      expect(inverseRows(path).map((r) => r['targetBookId']).toSet(), {1});
+      final rangeRows =
+          DatabaseLibraryProvider.loadBookLinksRowsInRangeForTesting(
+            dbPath: path,
+            title: 'B',
+            categoryId: 1,
+            fileType: 'text',
+            startLineIndex: 0,
+            endLineIndex: 2,
+          );
+      expect(rangeRows, isNotEmpty);
+      expect(rangeRows.map((r) => r['targetBookId']).toSet(), {1});
+    });
+  });
+
   group('שברי ה-SQL', () {
     test('ריקים כשאין תמיכה — לא נפלט SQL', () {
       expect(suppressedSideFilter(false, displayedSide: 0), '');
