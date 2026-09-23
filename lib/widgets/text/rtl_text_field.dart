@@ -302,14 +302,10 @@ class _RtlTextFieldState extends State<RtlTextField> {
     final focusContext = FocusManager.instance.primaryFocus?.context;
     if (focusContext == null) return;
 
-    // בקטע LTR (תג, אנגלית, מספר בין אותיות לטיניות) ויזואלית-ימין הוא
-    // גם קדימה לוגית, ולכן אין מה להפוך.
     final selection = _effectiveController.selection;
-    final forward = selection.isValid
-        ? (isRtlRunAt(_effectiveController.text, selection.extentOffset)
-              ? !isVisualRight
-              : isVisualRight)
-        : !isVisualRight;
+    final forward = _isRtlAtCaret(focusContext, selection)
+        ? !isVisualRight
+        : isVisualRight;
 
     if (byWord) {
       Actions.invoke(
@@ -328,6 +324,24 @@ class _RtlTextFieldState extends State<RtlTextField> {
         ),
       );
     }
+  }
+
+  bool _isRtlAtCaret(BuildContext context, TextSelection selection) {
+    final length = _effectiveController.text.length;
+    if (!selection.isValid || length == 0) return true;
+    final index =
+        (selection.affinity == TextAffinity.downstream
+                ? selection.extentOffset
+                : selection.extentOffset - 1)
+            .clamp(0, length - 1);
+    // כיוון התו המעוצב כולל גם ספרות ופיסוק, בלי סריקה חוזרת של הטקסט.
+    final boxes = context
+        .findAncestorStateOfType<EditableTextState>()
+        ?.renderEditable
+        .getBoxesForSelection(
+          TextSelection(baseOffset: index, extentOffset: index + 1),
+        );
+    return boxes?.firstOrNull?.direction != TextDirection.ltr;
   }
 
   void _showContextMenu(

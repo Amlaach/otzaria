@@ -363,32 +363,3 @@ bool isTextInputContext(BuildContext context) {
   });
   return found;
 }
-
-/// תווים "חזקים" — מהם נגזר כיוון הקטע. ספרות, רווח וסימני פיסוק הם
-/// נייטרליים ולכן אינם קובעים.
-final RegExp _strongRtl = RegExp(
-  r'[֐-׿؀-ۿ܀-ݿ߀-ࣿ'
-  r'יִ-﷿ﹰ-﻿]',
-);
-final RegExp _strongLtr = RegExp(
-  r'[A-Za-zÀ-ɏͰ-֏Ḁ-῿Ⱡ-Ɀ꜠-ꟿ]',
-);
-
-/// כיוון הקטע שבו יושב הסמן, לפי התו החזק הקרוב ביותר אחורה ואז קדימה.
-///
-/// תג `<big>` או מילה באנגלית בתוך טקסט עברי הם קטע LTR: היפוך החיצים שם
-/// מזיז את הסמן לכיוון ההפוך ממה שהמשתמש רואה (issue #1470).
-bool isRtlRunAt(String text, int offset) {
-  final clamped = offset.clamp(0, text.length);
-  for (var i = clamped - 1; i >= 0; i--) {
-    final char = text[i];
-    if (_strongRtl.hasMatch(char)) return true;
-    if (_strongLtr.hasMatch(char)) return false;
-  }
-  for (var i = clamped; i < text.length; i++) {
-    final char = text[i];
-    if (_strongRtl.hasMatch(char)) return true;
-    if (_strongLtr.hasMatch(char)) return false;
-  }
-  return true;
-}

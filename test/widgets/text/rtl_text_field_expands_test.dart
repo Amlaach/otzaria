@@ -27,7 +27,11 @@ void main() {
     tester,
   ) async {
     final controller = ScrollController();
+    final textController = TextEditingController(
+      text: List.filled(80, 'שורה').join('\n'),
+    );
     addTearDown(controller.dispose);
+    addTearDown(textController.dispose);
 
     await tester.pumpWidget(
       host(
@@ -35,6 +39,7 @@ void main() {
           maxLines: null,
           expands: true,
           scrollController: controller,
+          controller: textController,
         ),
       ),
     );
@@ -43,5 +48,11 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).scrollController,
       same(controller),
     );
+    expect(controller.hasClients, isTrue);
+    expect(controller.position.maxScrollExtent, greaterThan(0));
+    final target = controller.position.maxScrollExtent / 2;
+    controller.jumpTo(target);
+    await tester.pump();
+    expect(controller.offset, closeTo(target, 0.01));
   });
 }
