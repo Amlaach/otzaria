@@ -1,0 +1,3 @@
+# Built with make on Linux (also from a Windows checkout under WSL): CRLF breaks
+# Makefile recipes, so everything here stays LF.
+* text=auto eol=lf

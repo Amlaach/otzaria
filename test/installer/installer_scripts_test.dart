@@ -1473,23 +1473,25 @@ void main() {
 
     test('$_assistant: מספר הקבצים שנוצרו קובע פריסה וניסוח', () {
       final script = _script(_assistant);
+      final planned = _routine(script, 'function PlannedOutputNames()');
       final count = _routine(script, 'function ProducedFileCount()');
       final outputDir = _routine(script, 'function OutputDir()');
       final prepare = _routine(script, 'function PrepareOutput()');
 
-      expect(count, contains("AssetKind[A] = 'split'"));
-      expect(count, contains('ShouldAssembleSingleFile(A)'));
-      expect(count, contains('AssetPartCount[A]'));
+      expect(planned, contains("AssetKind[A] = 'split'"));
+      expect(planned, contains('ShouldAssembleSingleFile(A)'));
+      expect(planned, contains('AssetPartCount[A]'));
+      expect(count, contains('GetArrayLength(PlannedOutputNames())'));
       expect(
         outputDir,
         contains('ProducedFileCount() > 1'),
         reason: 'קובץ בודד ישירות בתיקייה; כמה קבצים בתת-תיקייה',
       );
-      expect(outputDir, contains('OutputSubFolderName'));
+      expect(outputDir, contains('OutputSubFolderName()'));
+      // outputSubfolderName בחוזה: הפלטפורמה בשם, כדי ששני יעדים לא יתערבבו.
       expect(
-        script,
-        contains("OutputSubFolderName = 'אוצריא להתקנה'"),
-        reason: 'שם שמשתמש שאינו טכני מבין',
+        _routine(script, 'function OutputSubFolderName()'),
+        contains("'אוצריא להתקנה ל-' + PlatformDisplayName(TargetPlatform)"),
       );
 
       expect(
@@ -1565,8 +1567,19 @@ void main() {
       final script = _script(_assistant);
 
       // הרכיבים, הגדלים וה-hash מגיעים מהמניפסט; שם נכס קשיח היה מקבע את
-      // הכלי לגרסה אחת ומחייב שינוי קוד בכל רכיב חדש.
-      expect(script, isNot(contains('otzaria-')));
+      // הכלי לגרסה אחת ומחייב שינוי קוד בכל רכיב חדש. היוצא היחיד הוא שם
+      // המניפסט עצמו, שה-workflow כותב.
+      const manifestConst =
+          "ReleaseManifestAsset = 'otzaria-release-manifest.json';";
+      expect(script, contains(manifestConst));
+      expect(
+        File('.github/workflows/build-and-announce.yml').readAsStringSync(),
+        contains('--out release-files/otzaria-release-manifest.json'),
+      );
+      expect(
+        script.replaceAll(manifestConst, ''),
+        isNot(contains('otzaria-')),
+      );
       // explorer.exe הוא תוכנית מערכת שפותחת את התוצאה, לא נכס של release.
       final literals = script.replaceAll(
         r"ExpandConstant('{win}\explorer.exe')",
@@ -1632,42 +1645,93 @@ void main() {
       );
     });
 
-    test('$_assistant: קובץ זמני מקבל שם סופי רק אחרי אימות גודל ו-hash', () {
+    test('$_assistant: קובץ זמני מקבל שם סופי רק אחרי אימות, והחותם אחריו', () {
       final promote = _routine(_script(_assistant), 'function PromoteToCache(');
 
       final sizeCheck = promote.indexOf('Actual = Size');
-      final hashCheck = promote.indexOf('GetSHA256OfFile(Staged)');
-      final rename = promote.indexOf("RenameFile(Staged, CachePath(Name))");
+      final rename = promote.indexOf('RenameFile(Staged, CachePath(Name))');
+      final marker = promote.indexOf('WriteMarker(Name, Sha)');
       expect(sizeCheck, greaterThanOrEqualTo(0));
-      expect(hashCheck, greaterThan(sizeCheck));
       expect(
         rename,
-        greaterThan(hashCheck),
+        greaterThan(sizeCheck),
         reason: 'קובץ חלקי שקיבל שם סופי ייחשב בהרצה הבאה כקובץ שהורד',
+      );
+      expect(marker, greaterThan(rename));
+      expect(
+        promote.indexOf('DeleteFile(MarkerPath(Name))'),
+        lessThan(rename),
+        reason: 'חותם ישן לצד קובץ חדש היה מאשר תוכן שלא נבדק',
       );
       expect(
         promote,
-        contains("CachePath(Name) + '.tmp'"),
+        contains("CachePath(Name) + '.download'"),
         reason: 'ההורדה חייבת לנחות תחת שם זמני',
       );
+      // עמוד ההורדה כבר אימת את ה-sha256 — hash שני כאן עלה ~17 שניות ל-2GB.
+      expect(promote, isNot(contains('HashFile(')));
+      expect(promote, isNot(contains('GetSHA256OfFile(')));
 
       final assemble = _routine(_script(_assistant), 'function AssembleAsset(');
-      final verify = assemble.indexOf('GetSHA256OfFile(TmpPath)');
+      final sizeVerify = assemble.indexOf('Actual <> AssetSize[AssetIndex]');
       final promoteFinal = assemble.indexOf('RenameFile(TmpPath, FinalPath)');
-      expect(verify, greaterThanOrEqualTo(0));
-      expect(promoteFinal, greaterThan(verify));
+      expect(sizeVerify, greaterThanOrEqualTo(0));
+      expect(promoteFinal, greaterThan(sizeVerify));
+      expect(
+        assemble.indexOf('WriteMarker(AssetName[AssetIndex]'),
+        greaterThan(promoteFinal),
+      );
+      // כל חלק אומת מול ה-sha256 שלו; הקובץ המורכב נבדק בספירת בתים.
+      expect(assemble, isNot(contains('HashFile(')));
+      expect(
+        _routine(_script(_assistant), 'function AppendFileTo('),
+        contains('(Copied = Expected)'),
+      );
     });
 
-    test('$_assistant: קובץ שכבר במטמון נבדק בגודל וב-hash ולא יורד שוב', () {
-      final cached = _routine(
-        _script(_assistant),
-        'function CachedFileIsGood(',
+    test('$_assistant: hash מחושב במקום אחד בלבד, ונרשם ללוג', () {
+      final script = _script(_assistant);
+      expect(
+        RegExp(r'GetSHA256OfFile\(').allMatches(script).length,
+        1,
+        reason: 'כל hash עובר דרך HashFile כדי שהלוג יראה כמה פעמים חושב',
+      );
+      final hash = _routine(script, 'function HashFile(');
+      expect(hash, contains('GetSHA256OfFile(Path)'));
+      expect(hash, contains('Log('));
+    });
+
+    test('$_assistant: קובץ שכבר במטמון נסמך על החותם ולא יורד שוב', () {
+      final script = _script(_assistant);
+      final matches = _routine(script, 'function FileMatchesMarker(');
+      final cached = _routine(script, 'function CachedFileIsGood(');
+
+      expect(cached, contains('FileMatchesMarker(CachePath(Name)'));
+      expect(matches, contains('FileSize64('));
+      expect(matches, contains('ReadMarkerHex(Name)'));
+      expect(
+        matches,
+        contains('(FileStamp <= MarkerStamp)'),
+        reason: 'קובץ שהשתנה אחרי שנכתב החותם אינו מאומת עוד',
+      );
+      final hash = matches.indexOf('HashFile(Path)');
+      expect(hash, greaterThan(matches.indexOf('ReadMarkerHex(Name)')));
+      expect(
+        matches.indexOf('WriteMarker(Name, Sha)'),
+        greaterThan(hash),
+        reason: 'מטמון ישן בלי חותם עובר hash פעם אחת ומקבל חותם',
+      );
+      expect(
+        _routine(script, 'procedure WriteMarker('),
+        contains("Lowercase(Sha) + '  ' + Name + #10"),
+        reason: 'פורמט sha256sum, כמו במסייעי macOS ו-Linux',
+      );
+      expect(
+        _routine(script, 'function AssembledIsReady('),
+        contains('FileMatchesMarker('),
       );
 
-      expect(cached, contains('FileSize64('));
-      expect(cached, contains('GetSHA256OfFile('));
-
-      final queue = _routine(_script(_assistant), 'function BuildQueue(');
+      final queue = _routine(script, 'function BuildQueue(');
       expect(
         RegExp('CachedFileIsGood').allMatches(queue).length,
         2,
@@ -1681,12 +1745,17 @@ void main() {
 
       expect(
         script,
-        contains('MaxRunnableExeSize = 4294967296'),
-        reason: 'Windows מסרב להריץ exe בגודל 4 GiB ומעלה',
+        contains('MaxSingleOutputFileSize = 4294967296'),
+        reason: 'Windows מסרב להריץ exe בגודל 4 GiB ומעלה, ו-FAT32 אינו מחזיק',
       );
       final rule = _routine(script, 'function ShouldAssembleSingleFile(');
+      expect(
+        rule,
+        contains('AssetSize[AssetIndex] >= MaxSingleOutputFileSize'),
+      );
+      // shouldAssembleSplitAsset: ל-Windows רק exe; לכל יעד אחר כל נכס.
+      expect(rule, contains("if TargetPlatform = 'windows' then"));
       expect(rule, contains('IsExecutableName(AssetName[AssetIndex])'));
-      expect(rule, contains('AssetSize[AssetIndex] < MaxRunnableExeSize'));
       expect(
         rule,
         isNot(contains('CompId')),
@@ -1694,9 +1763,213 @@ void main() {
       );
     });
 
+    test('$_assistant: מטמון→יעד בקישור קשיח, ובכישלון העתקה', () {
+      final script = _script(_assistant);
+      expect(
+        script,
+        contains("external 'CreateHardLinkW@kernel32.dll stdcall'"),
+      );
+      final copy = _routine(script, 'function CopyToOutput(');
+      final link = copy.indexOf('CreateHardLink(Dest, CachePath(Name), 0)');
+      expect(link, greaterThanOrEqualTo(0));
+      expect(copy.indexOf('CopyFile(CachePath(Name), Dest'), greaterThan(link));
+    });
+
+    test('$_assistant: פס ההורדה מציג מהירות וזמן, ואינו קופא בלי הסבר', () {
+      final script = _script(_assistant);
+      final progress = _routine(script, 'function OnDownloadProgress(');
+      expect(script, contains("external 'GetTickCount@kernel32.dll stdcall'"));
+      expect(script, contains('SpeedWindowMs = 5000'));
+      expect(progress, contains('AddSpeedSample(Done)'));
+      expect(progress, contains('HumanRate(Speed)'));
+      expect(progress, contains('HumanDuration('));
+      final atMax = progress.indexOf('(Progress >= ProgressMax)');
+      expect(atMax, greaterThanOrEqualTo(0));
+      expect(
+        progress.indexOf("'בודק את הקובץ שירד'"),
+        greaterThan(atMax),
+        reason: 'Inno מחשב hash אחרי הבית האחרון בלי דיווח — הפס עומד על 100%',
+      );
+      expect(
+        _routine(script, 'function AppendFileTo('),
+        contains('WorkPage.SetProgress('),
+        reason: 'ההרכבה מדווחת התקדמות בבתים',
+      );
+    });
+
+    test('$_assistant: עמודי היעד — פלטפורמה, ארכיטקטורה ופורמט', () {
+      final script = _script(_assistant);
+      final skip = _routine(script, 'function ShouldSkipPage(');
+      final target = _routine(script, 'procedure UpdateTarget()');
+      final wizard = _routine(script, 'procedure InitializeWizard()');
+
+      // עמוד עם אפשרות אחת אינו מוצג; "במחשב הזה" מדלג על שלושתם.
+      for (final list in const ['PlatformList', 'ArchList', 'FormatList']) {
+        expect(
+          skip,
+          contains('IsThisComputerMode() or (GetArrayLength($list) <= 1)'),
+        );
+      }
+      expect(wizard, contains("DefaultIndex(PlatformList, 'windows')"));
+      expect(
+        wizard,
+        contains('PlatformPage := CreateInputOptionPage(ModePage.ID'),
+      );
+      expect(target, contains("TargetPlatform := 'windows';"));
+      expect(target, contains('TargetArchitecture := RunningArchitecture();'));
+      expect(target, contains("DefaultIndex(ArchList, 'x64')"));
+      expect(target, contains("DefaultIndex(FormatList, 'deb')"));
+      expect(
+        _routine(script, 'function RunningArchitecture()'),
+        contains('if IsArm64 then'),
+      );
+
+      final formats = _routine(script, 'function FormatDisplayName(');
+      for (final label in const [
+        'Ubuntu, Debian, Mint והפצות דומות (DEB)',
+        'Fedora, openSUSE והפצות דומות (RPM)',
+        'הפצה אחרת — ללא התקנה',
+      ]) {
+        expect(formats, contains("'$label'"));
+      }
+      expect(
+        _routine(script, 'function PrepareOutput()'),
+        contains(
+          'if IsThisComputerMode() and IsExecutableName(AssetName[A]) and',
+        ),
+        reason: 'מפעילים מתקין רק כשמתקינים במחשב הזה',
+      );
+    });
+
+    test('$_assistant: הרכבה חלקית ממשיכה רק מ-.tmp של אותו sha', () {
+      // שם הנכס חוזר בין בניות של אותה גרסה, וגודל החלק קבוע — גודל לבדו
+      // היה מקבל .tmp של בנייה אחרת ומייצר קובץ כלאיים עם חותם חדש.
+      final script = _script(_assistant);
+      final belongs = _routine(script, 'function AssemblyTmpBelongs(');
+      expect(belongs, contains("AssemblyTmpPath(AssetIndex) + '.sha256'"));
+      expect(belongs, contains('Lowercase(AssetSha[AssetIndex])'));
+
+      final consumed = _routine(script, 'function ConsumedPartCount(');
+      final check = consumed.indexOf('if not AssemblyTmpBelongs(AssetIndex)');
+      expect(check, greaterThanOrEqualTo(0));
+      expect(
+        consumed.indexOf('DeleteFile(TmpPath);', check),
+        greaterThan(check),
+      );
+      expect(consumed.indexOf('FileSize64(TmpPath, Size)'), greaterThan(check));
+
+      final assemble = _routine(script, 'function AssembleAsset(');
+      final sidecar = assemble.indexOf(
+        "SaveStringToFile(TmpPath + '.sha256'",
+      );
+      expect(sidecar, greaterThanOrEqualTo(0));
+      expect(
+        assemble.indexOf('AppendFileTo(TmpPath, PartPath,'),
+        greaterThan(sidecar),
+        reason: 'חותם הצד נכתב לפני הבית הראשון',
+      );
+      expect(
+        assemble.lastIndexOf("DeleteFile(TmpPath + '.sha256')"),
+        greaterThan(assemble.indexOf('RenameFile(TmpPath, FinalPath)')),
+      );
+    });
+
+    test('$_assistant: קובץ מטמון עם קישור נוסף אינו נסמך על החותם', () {
+      final script = _script(_assistant);
+      expect(
+        script,
+        contains("external 'GetFileInformationByHandle@kernel32.dll stdcall'"),
+      );
+      expect(
+        _routine(script, 'function LinkCount('),
+        contains('Result := Info.nNumberOfLinks;'),
+      );
+      expect(
+        _routine(script, 'function FileMatchesMarker('),
+        contains('(FileStamp <= MarkerStamp) and (LinkCount(Path) = 1)'),
+        reason: 'דריסת הקובץ ביעד משנה גם את המטמון בלי לקדם את זמן השינוי',
+      );
+    });
+
+    test('$_assistant: תג ושמות נכס וחלק נבדקים לפי החוזה', () {
+      final script = _script(_assistant);
+      final safe = _routine(script, 'function IsSafeName(');
+      for (final allowed in const [
+        "(C >= 'A') and (C <= 'Z')",
+        "(C >= 'a') and (C <= 'z')",
+        "(C >= '0') and (C <= '9')",
+        "(C = '.')",
+        "(C = '_')",
+        "(C = '+')",
+        "(C = '-')",
+      ]) {
+        expect(safe, contains(allowed));
+      }
+      expect(safe, contains('Result := not OnlyDots;'), reason: "'..'");
+      final url = _routine(script, 'function AssetUrl(');
+      expect(url, contains('not IsSafeName(Tag)'));
+      expect(url, contains('not IsSafeName(Name)'));
+      expect(
+        _routine(script, 'function ParseManifest('),
+        contains('if not IsSafeName(PartName[NP])'),
+      );
+    });
+
+    test('$_assistant: התג המוטבע אינו תלוי ב-API', () {
+      // מגבלת הקצב של api.github.com (403/429) משותפת לכל יוצאי אותה כתובת.
+      final load = _routine(
+        _script(_assistant),
+        'function LoadReleaseManifest(',
+      );
+      final branch = load.indexOf('if PinnedTag <> LatestTag then');
+      expect(branch, greaterThanOrEqualTo(0));
+      expect(
+        load.indexOf('ManifestAsset := ReleaseManifestAsset;', branch),
+        greaterThan(branch),
+      );
+      expect(load, isNot(contains("'tags/'")));
+      expect(load, contains('by direct URL'));
+    });
+
+    test('$_assistant: עמוד הפורמט אינו מפנה מברירת המחדל', () {
+      final wizard = _routine(
+        _script(_assistant),
+        'procedure InitializeWizard()',
+      );
+      final format = wizard.substring(wizard.indexOf('FormatPage :='));
+      final text = format.substring(0, format.indexOf(');'));
+      expect(text, isNot(contains('הפצה אחרת')));
+      expect(text, contains('השאר את הבחירה המסומנת'));
+    });
+
+    test('$_assistant: הגדרות הפיתוח לעולם אינן מוגדרות ב-CI', () {
+      final script = _script(_assistant);
+      final workflow = File(
+        '.github/workflows/build-and-announce.yml',
+      ).readAsStringSync();
+      for (final define in const [
+        'DevManifestFile',
+        'DevSelectionDump',
+        'DevApiBase',
+      ]) {
+        expect(workflow, isNot(contains(define)), reason: define);
+        expect(script, contains('#ifdef $define'));
+        expect(
+          script,
+          isNot(matches(RegExp('#define\\s+$define'))),
+          reason: 'הגדרת פיתוח מגיעה רק מ-/D בבנייה ידנית',
+        );
+      }
+      expect(
+        RegExp(r'GetEnv\("([^"]+)"\)').allMatches(script).map((m) => m[1]),
+        ['OTZARIA_ASSISTANT_RELEASE_TAG'],
+        reason: 'משתנה סביבה ב-runner לא יפעיל מצב פיתוח',
+      );
+    });
+
     test('$_assistant: ההרכבה מוחקת כל חלק מיד אחרי הוספתו', () {
       final assemble = _routine(_script(_assistant), 'function AssembleAsset(');
-      final append = assemble.indexOf('AppendFileTo(TmpPath, PartPath)');
+      final append = assemble.indexOf('AppendFileTo(TmpPath, PartPath,');
       final delete = assemble.indexOf('DeleteFile(PartPath)');
 
       expect(append, greaterThanOrEqualTo(0));

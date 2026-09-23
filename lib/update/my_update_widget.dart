@@ -219,6 +219,7 @@ String? pickMacAssetUrl(
         name.contains('mac');
     if (!isMacAsset) continue;
     if (name.contains('full')) continue;
+    if (isDownloadAssistantAsset(name)) continue;
 
     if (name.endsWith('.zip')) zip ??= url;
     if (name.endsWith('.dmg')) dmg ??= url;
@@ -228,6 +229,26 @@ String? pickMacAssetUrl(
     return zip ?? dmg;
   }
   return dmg;
+}
+
+/// בוחר את נכס העדכון ל-Linux: חבילת DEB, אחריה RPM, ובהיעדר שתיהן ZIP
+/// של Linux. מסייע ההורדה לעולם אינו נבחר.
+@visibleForTesting
+String? pickLinuxAssetUrl(List<Map<String, dynamic>> assets) {
+  String? firstWhere(bool Function(String name) matches) {
+    for (final asset in assets) {
+      final name = (asset['name'] as String).toLowerCase();
+      if (isDownloadAssistantAsset(name)) continue;
+      if (matches(name)) return asset['browser_download_url'] as String;
+    }
+    return null;
+  }
+
+  return firstWhere((n) => n.endsWith('.deb')) ??
+      firstWhere((n) => n.endsWith('.rpm')) ??
+      firstWhere(
+        (n) => (n.contains('linux') || n.contains('gnu')) && n.endsWith('.zip'),
+      );
 }
 
 /// האם ה-URL מצביע על מתקין Windows שמתקין שדרוג בשקט.
@@ -977,35 +998,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
         selfUpdateCapable: findInstalledMacAppBundlePath() != null,
       );
     } else if (platform == 'linux') {
-      for (final a in assets) {
-        final n = (a["name"] as String).toLowerCase();
-        final u = a["browser_download_url"] as String;
-        if (n.endsWith('.deb')) {
-          assetUrl = u;
-          break;
-        }
-      }
-      if (assetUrl == null) {
-        for (final a in assets) {
-          final n = (a["name"] as String).toLowerCase();
-          final u = a["browser_download_url"] as String;
-          if (n.endsWith('.rpm')) {
-            assetUrl = u;
-            break;
-          }
-        }
-      }
-      if (assetUrl == null) {
-        for (final a in assets) {
-          final n = (a["name"] as String).toLowerCase();
-          final u = a["browser_download_url"] as String;
-          if ((n.contains('linux') || n.contains('gnu')) &&
-              n.endsWith('.zip')) {
-            assetUrl = u;
-            break;
-          }
-        }
-      }
+      assetUrl = pickLinuxAssetUrl(assets);
     }
 
     if (assetUrl == null) {

@@ -191,6 +191,170 @@ void main() {
       expect(jsonEncode(manifest), isNot(contains('Download-Assistant')));
     });
 
+    test('the assistants of every platform are tools, never components', () {
+      writeRealisticRelease();
+      for (final name in const [
+        'Otzaria-Download-Assistant-windows.exe',
+        'Otzaria-Download-Assistant-macos.zip',
+        'Otzaria-Download-Assistant-linux-x64.tar.gz',
+        'Otzaria-Download-Assistant-linux-arm64.tar.gz',
+      ]) {
+        writeFile(name, 'assistant');
+      }
+      final manifest = build();
+      expect(jsonEncode(manifest), isNot(contains('Download-Assistant')));
+    });
+
+    test('Linux, macOS and Android assets become filterable components', () {
+      writeRealisticRelease();
+      writeFile('otzaria-0.9.97+789-linux.deb', 'deb');
+      writeFile('otzaria-0.9.97+789-linux-arm64.deb', 'deb-arm');
+      writeFile('otzaria-0.9.97+789-789.x86_64.rpm', 'rpm');
+      writeFile('otzaria-0.9.97+789-789.aarch64.rpm', 'rpm-arm');
+      writeFile('otzaria-linux-full.tar.zst', 'linux-full');
+      writeFile('otzaria-linux-full-arm64.tar.zst', 'linux-full-arm');
+      writeFile('otzaria-macos.dmg', 'dmg');
+      writeFile('otzaria-macos.zip', 'mac-update-zip');
+      writeFile('otzaria-macos-full.tar.zst', 'mac-full');
+      writeFile('app-release.apk', 'apk');
+      writeFile('otzaria-android-full.zip', 'android-full');
+
+      final manifest = build();
+      expect(validateReleaseManifest(manifest), isEmpty);
+
+      void expectComponent(
+        String id,
+        String asset, {
+        required String type,
+        required String platform,
+        String? architecture,
+        String? packageFormat,
+      }) {
+        final component = componentById(manifest, id);
+        expect(component['type'], type, reason: id);
+        expect(component['platform'], platform, reason: id);
+        expect(component['architecture'], architecture, reason: id);
+        expect(component['packageFormat'], packageFormat, reason: id);
+        expect(
+          ((component['assets'] as List).single as Map)['name'],
+          asset,
+          reason: id,
+        );
+      }
+
+      expectComponent(
+        'otzaria-linux-deb-x64',
+        'otzaria-0.9.97+789-linux.deb',
+        type: 'application',
+        platform: 'linux',
+        architecture: 'x64',
+        packageFormat: 'deb',
+      );
+      expectComponent(
+        'otzaria-linux-deb-arm64',
+        'otzaria-0.9.97+789-linux-arm64.deb',
+        type: 'application',
+        platform: 'linux',
+        architecture: 'arm64',
+        packageFormat: 'deb',
+      );
+      expectComponent(
+        'otzaria-linux-rpm-x64',
+        'otzaria-0.9.97+789-789.x86_64.rpm',
+        type: 'application',
+        platform: 'linux',
+        architecture: 'x64',
+        packageFormat: 'rpm',
+      );
+      expectComponent(
+        'otzaria-linux-rpm-arm64',
+        'otzaria-0.9.97+789-789.aarch64.rpm',
+        type: 'application',
+        platform: 'linux',
+        architecture: 'arm64',
+        packageFormat: 'rpm',
+      );
+      expectComponent(
+        'otzaria-linux-full-x64',
+        'otzaria-linux-full.tar.zst',
+        type: 'application-bundle',
+        platform: 'linux',
+        architecture: 'x64',
+      );
+      expectComponent(
+        'otzaria-linux-full-arm64',
+        'otzaria-linux-full-arm64.tar.zst',
+        type: 'application-bundle',
+        platform: 'linux',
+        architecture: 'arm64',
+      );
+      // Universal Binary ו-APK של כל ה-ABI — ללא ארכיטקטורה.
+      expectComponent(
+        'otzaria-macos',
+        'otzaria-macos.dmg',
+        type: 'application',
+        platform: 'macos',
+      );
+      expectComponent(
+        'otzaria-macos-full',
+        'otzaria-macos-full.tar.zst',
+        type: 'application-bundle',
+        platform: 'macos',
+      );
+      expectComponent(
+        'otzaria-android',
+        'app-release.apk',
+        type: 'application',
+        platform: 'android',
+      );
+      expectComponent(
+        'otzaria-android-full',
+        'otzaria-android-full.zip',
+        type: 'application-bundle',
+        platform: 'android',
+      );
+
+      // ה-zip של macOS הוא ערוץ העדכון הפנימי, לא רכיב להורדה.
+      expect(jsonEncode(manifest), isNot(contains('"otzaria-macos.zip"')));
+    });
+
+    test('a full bundle of any platform survives being split', () {
+      writeRealisticRelease();
+      writeFile('otzaria-linux-full.tar.zst.part-000', 'a' * 20);
+      writeFile('otzaria-linux-full.tar.zst.part-001', 'b' * 5);
+      writeJson('otzaria-linux-full.tar.zst.manifest.json', {
+        'schemaVersion': 1,
+        'archive': 'otzaria-linux-full.tar.zst',
+        'size': 25,
+        'sha256': hex(0xcd),
+        'partSizeLimit': 1992294400,
+        'githubAssetLimit': 2147483648,
+        'parts': [
+          {
+            'name': 'otzaria-linux-full.tar.zst.part-000',
+            'size': 20,
+            'sha256': hex(0x3c),
+          },
+          {
+            'name': 'otzaria-linux-full.tar.zst.part-001',
+            'size': 5,
+            'sha256': hex(0x4d),
+          },
+        ],
+      });
+
+      final manifest = build();
+      final full = componentById(manifest, 'otzaria-linux-full-x64');
+      final asset = (full['assets'] as List).single as Map<String, Object?>;
+      expect(asset['kind'], 'split');
+      expect(asset['name'], 'otzaria-linux-full.tar.zst');
+      // תבנית ה-x64 אינה בולעת את חבילת ה-ARM64.
+      expect(
+        (manifest['components'] as List).map((c) => (c as Map)['id']),
+        isNot(contains('otzaria-linux-full-arm64')),
+      );
+    });
+
     test('an absent component is omitted, never a placeholder', () {
       writeRealisticRelease(withFullInstaller: false);
       final manifest = build();
@@ -531,6 +695,17 @@ void main() {
       expect(errors, isNotEmpty);
     });
 
+    test('rejects an empty or non-string filter field', () {
+      writeRealisticRelease();
+      final manifest = build();
+      final app = componentById(manifest, 'otzaria-windows-x64');
+      app['packageFormat'] = '';
+      app['architecture'] = 64;
+      final errors = validateReleaseManifest(manifest);
+      expect(errors, contains(contains('packageFormat')));
+      expect(errors, contains(contains('architecture')));
+    });
+
     test('rejects a non-object manifest', () {
       expect(validateReleaseManifest('nope'), isNotEmpty);
       expect(validateReleaseManifest(null), isNotEmpty);
@@ -588,8 +763,15 @@ void main() {
       for (final spec in kKnownComponents) {
         expect(spec.name, isNot(contains('חלונות')), reason: spec.id);
         expect(spec.description, isNot(contains('חלונות')), reason: spec.id);
-        if (spec.platform == 'windows') {
-          expect(spec.name, contains('Windows'), reason: spec.id);
+        const displayNames = {
+          'windows': 'Windows',
+          'linux': 'Linux',
+          'macos': 'macOS',
+          'android': 'Android',
+        };
+        final displayName = displayNames[spec.platform];
+        if (displayName != null) {
+          expect(spec.name, contains(displayName), reason: spec.id);
         }
       }
     });

@@ -601,6 +601,67 @@ void main() {
       final zipOnly = [asset('otzaria-macos.zip')];
       expect(pickMacAssetUrl(zipOnly, selfUpdateCapable: false), isNull);
     });
+
+    test('never selects the macOS download assistant', () {
+      // שם המסייע מכיל "macos" ומסתיים ב-zip; הוא ממוין לפני otzaria-macos.zip.
+      final withAssistant = [
+        asset('Otzaria-Download-Assistant-macos.zip'),
+        ...fullReleaseAssets,
+      ];
+      expect(
+        pickMacAssetUrl(withAssistant, selfUpdateCapable: true),
+        'https://example.com/otzaria-macos.zip',
+      );
+      expect(
+        pickMacAssetUrl([
+          asset('Otzaria-Download-Assistant-macos.zip'),
+        ], selfUpdateCapable: true),
+        isNull,
+      );
+    });
+  });
+
+  group('pickLinuxAssetUrl', () {
+    Map<String, dynamic> asset(String name) => {
+      'name': name,
+      'browser_download_url': 'https://example.com/$name',
+    };
+
+    test('DEB first, then RPM, then a Linux zip', () {
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-0.9.97+789-789.x86_64.rpm'),
+          asset('otzaria-0.9.97+789-linux.deb'),
+        ]),
+        'https://example.com/otzaria-0.9.97+789-linux.deb',
+      );
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-linux-raw.zip'),
+          asset('otzaria-0.9.97+789-789.x86_64.rpm'),
+        ]),
+        'https://example.com/otzaria-0.9.97+789-789.x86_64.rpm',
+      );
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-windows.zip'),
+          asset('otzaria-linux-raw.zip'),
+        ]),
+        'https://example.com/otzaria-linux-raw.zip',
+      );
+    });
+
+    test('never selects the Linux download assistant', () {
+      for (final name in const [
+        'Otzaria-Download-Assistant-linux-x64.tar.gz',
+        'Otzaria-Download-Assistant-linux-arm64.tar.gz',
+        // גם אם ייארז יום אחד כ-zip או כ-deb, הוא אינו עדכון.
+        'Otzaria-Download-Assistant-linux-x64.zip',
+        'Otzaria-Download-Assistant-linux-x64.deb',
+      ]) {
+        expect(pickLinuxAssetUrl([asset(name)]), isNull, reason: name);
+      }
+    });
   });
 
   group('preferredWindowsFormatForInstall', () {

@@ -93,22 +93,44 @@ ExitSetupTitle=יציאה מהמסייע
 ExitSetupMessage=ההורדה לא הושלמה. קבצים שכבר ירדו יישמרו, והפעלה חוזרת תמשיך מהמקום שבו הפסקת.%n%nלצאת עכשיו?
 
 [Code]
+type
+  TByHandleFileInformation = record
+    dwFileAttributes: LongWord;
+    ftCreationTime, ftLastAccessTime, ftLastWriteTime: TFileTime;
+    dwVolumeSerialNumber, nFileSizeHigh, nFileSizeLow, nNumberOfLinks,
+      nFileIndexHigh, nFileIndexLow: LongWord;
+  end;
+
+function GetFileInformationByHandle(hFile: THandle;
+  var Info: TByHandleFileInformation): BOOL;
+  external 'GetFileInformationByHandle@kernel32.dll stdcall';
 function SetEndOfFile(hFile: THandle): BOOL;
   external 'SetEndOfFile@kernel32.dll stdcall';
+function CreateHardLink(lpFileName, lpExistingFileName: String;
+  lpSecurityAttributes: Integer): BOOL;
+  external 'CreateHardLinkW@kernel32.dll stdcall';
+function GetTickCount(): LongWord;
+  external 'GetTickCount@kernel32.dll stdcall';
 
 const
   { מגבלת GitHub לנכס בודד. נכס גדול ממנה מתפרסם כחלקים. }
   GithubAssetLimit = 2147483648;
-  { Windows מסרב להריץ קובץ הפעלה בגודל 4 GiB ומעלה (ERROR_BAD_EXE_FORMAT). }
-  MaxRunnableExeSize = 4294967296;
+  { Windows מסרב להריץ exe בגודל 4 GiB ומעלה (ERROR_BAD_EXE_FORMAT), ו-FAT32
+    אינו מחזיק קובץ כזה. }
+  MaxSingleOutputFileSize = 4294967296;
   CopyChunkSize = 4194304;
+  AppendSliceSize = 67108864;
   ManifestSchemaVersion = 1;
+  SpeedWindowMs = 5000;
 
   ModeThisComputer = 0;
   ModeOtherComputer = 1;
 
-  { תוצאה של כמה קבצים מקבלת תיקייה משלה, כדי שלא תתערבב במה שכבר נמצא שם. }
-  OutputSubFolderName = 'אוצריא להתקנה';
+  KnownPlatforms = 'windows,macos,linux,android';
+  PortableFormat = 'portable';
+  { השם שה-workflow כותב (--out). משמש לתג המוטבע בלי API: מגבלת הקצב של
+    api.github.com (403/429) משותפת לכל מי שיוצא מאותה כתובת, למשל בנטפרי. }
+  ReleaseManifestAsset = 'otzaria-release-manifest.json';
 
 type
   TInt64Array = array of Int64;
@@ -121,7 +143,7 @@ var
   LoadErrorHeb: String;
   LoadErrorTech: String;
 
-  CompId, CompName, CompDesc, CompType, CompPlatform, CompArch,
+  CompId, CompName, CompDesc, CompType, CompPlatform, CompArch, CompFormat,
     CompDependsOn: TArrayOfString;
   CompRequired, CompSelected: array of Boolean;
   CompDownloadSize: TInt64Array;
@@ -134,12 +156,19 @@ var
   PartName, PartSha: TArrayOfString;
   PartSize: TInt64Array;
 
+  { --- מחשב היעד: נקבע מהעמודים ב-UpdateTarget ונקרא רק מכאן --- }
+  TargetPlatform, TargetArchitecture, TargetFormat: String;
+  PlatformList, ArchList, FormatList: TArrayOfString;
+  ArchListFor, FormatListFor: String;
+
   { --- הצעות מוכנות, נגזרות מהמניפסט --- }
-  PresetLabel, PresetDesc, PresetMembers: TArrayOfString;
+  PresetId, PresetLabel, PresetDesc, PresetMembers: TArrayOfString;
 
   { --- מצב האשף --- }
   ModePage: TInputOptionWizardPage;
+  PlatformPage: TInputOptionWizardPage;
   ArchPage: TInputOptionWizardPage;
+  FormatPage: TInputOptionWizardPage;
   PresetPage: TInputOptionWizardPage;
   CustomPage: TInputOptionWizardPage;
   FolderPage: TInputDirWizardPage;
@@ -158,6 +187,8 @@ var
   QueueSize: TInt64Array;
   ProgressCaption: String;
   ProgressDone, ProgressTotal: Int64;
+  SampleTick, SampleBytes: TInt64Array;
+  VerifyStartTick: Int64;
 
 { ============================ עזרי טקסט ============================ }
 
@@ -190,11 +221,10 @@ begin
   Result := EndsWithText(Name, '.exe');
 end;
 
-{ ====================== קורא JSON מינימלי ======================
+{ ====================== קורא JSON מינימלי ====================== }
 
-  פועל על מחרוזת הבתים כפי שירדה. כל תווי המבנה של JSON הם ASCII וכל בית
-  של רצף UTF-8 רב-בתי הוא 80 ומעלה, ולכן סריקה בבתים בטוחה; רק הערכים
-  שחולצו עוברים Utf8Decode. }
+{ תווי המבנה של JSON הם ASCII וכל בית ברצף UTF-8 הוא 80 ומעלה, ולכן סריקה
+  בבתים בטוחה; רק הערכים שחולצו עוברים Utf8Decode. }
 
 { מיקום 0 הוא "לא נמצא" מכל העזרים כאן, ולכן הוא מתורגם למיקום שמעבר לסוף
   ולא לגישה מחוץ לתחום. }
@@ -430,10 +460,36 @@ begin
     (Pos('..', Repository) = 0);
 end;
 
+{ ‎^[A-Za-z0-9._+-]+$‎, ולא נקודות בלבד: השם משמש גם כנתיב קובץ, ו-'..' או '\'
+  היו כותבים מחוץ למטמון ולתיקיית היעד. }
+function IsSafeName(const Name: String): Boolean;
+var
+  I: Integer;
+  C: Char;
+  OnlyDots: Boolean;
+begin
+  Result := False;
+  if Name = '' then
+    exit;
+  OnlyDots := True;
+  for I := 1 to Length(Name) do
+  begin
+    C := Name[I];
+    if not (((C >= 'A') and (C <= 'Z')) or ((C >= 'a') and (C <= 'z')) or
+            ((C >= '0') and (C <= '9')) or (C = '.') or (C = '_') or
+            (C = '+') or (C = '-')) then
+      exit;
+    if C <> '.' then
+      OnlyDots := False;
+  end;
+  Result := not OnlyDots;
+end;
+
 function AssetUrl(const Repository, Tag, Name: String): String;
 begin
   Result := '';
-  if not IsOtzariaRepository(Repository) then
+  if not IsOtzariaRepository(Repository) or not IsSafeName(Tag) or
+     not IsSafeName(Name) then
     exit;
   Result := 'https://github.com/' + Repository + '/releases/download/' + Tag +
     '/' + Name;
@@ -441,6 +497,11 @@ end;
 
 function ReleaseApiUrl(const Path: String): String;
 begin
+#ifdef DevApiBase
+  { פיתוח בלבד (/DDevApiBase=<url/>): מדמה API שאינו עונה. }
+  Result := '{#DevApiBase}' + Path;
+  exit;
+#endif
   Result := 'https://api.github.com/repos/Otzaria/otzaria/releases/' + Path;
 end;
 
@@ -538,23 +599,117 @@ begin
   DeleteFile(Probe);
 end;
 
-{ קובץ במטמון נחשב מוכן רק כששני הגודל וה-sha256 תואמים למניפסט. }
-function CachedFileIsGood(const Name: String; Size: Int64; const Sha: String): Boolean;
-var
-  Actual: Int64;
+{ ============================ זמן ו-hash ============================ }
+
+function NowMs(): Int64;
 begin
-  Result := False;
-  if not FileExists(CachePath(Name)) then
-    exit;
-  if not FileSize64(CachePath(Name), Actual) then
-    exit;
-  if Actual <> Size then
-    exit;
-  Result := Lowercase(GetSHA256OfFile(CachePath(Name))) = Lowercase(Sha);
+  Result := GetTickCount();
 end;
 
-{ מעביר קובץ שירד אל המטמון: קודם כשם זמני, ורק אחרי אימות גודל ו-sha256
-  הוא מקבל את שמו הסופי. קובץ חלקי לעולם לא ייחשב כמי שהורד. }
+{ המקום היחיד שמחשב hash. GetSHA256OfFile עולה ~17 שניות ל-2GB, ולכן כל
+  קריאה נרשמת ללוג — כך אפשר לאמת שכל קובץ עובר hash פעם אחת לכל היותר. }
+function HashFile(const Path: String): String;
+var
+  Started: Int64;
+begin
+  Started := NowMs();
+  Result := Lowercase(GetSHA256OfFile(Path));
+  Log('DownloadAssistant: hashed ' + ExtractFileName(Path) + ' in ' +
+    IntToStr(NowMs() - Started) + ' ms');
+end;
+
+function FileWriteTime(const Path: String; var Stamp: Int64): Boolean;
+var
+  Rec: TFindRec;
+begin
+  Result := FindFirst(Path, Rec);
+  if not Result then
+    exit;
+  Stamp := Int64(Rec.LastWriteTime.dwHighDateTime) * 4294967296 +
+    Int64(Rec.LastWriteTime.dwLowDateTime);
+  FindClose(Rec);
+end;
+
+{ ============================ מטמון ============================ }
+
+{ החותם `<name>.sha256` בפורמט sha256sum מעיד שהקובץ כבר אומת. }
+function MarkerPath(const Name: String): String;
+begin
+  Result := CachePath(Name) + '.sha256';
+end;
+
+function ReadMarkerHex(const Name: String): String;
+var
+  Raw: AnsiString;
+begin
+  Result := '';
+  if not LoadStringFromFile(MarkerPath(Name), Raw) then
+    exit;
+  if Length(Raw) >= 64 then
+    Result := Lowercase(Copy(Raw, 1, 64));
+end;
+
+procedure WriteMarker(const Name, Sha: String);
+begin
+  if not SaveStringToFile(MarkerPath(Name),
+    Utf8Encode(Lowercase(Sha) + '  ' + Name + #10), False) then
+    Log('DownloadAssistant: cannot write marker for ' + Name);
+end;
+
+{ ‎-1‎ כשלא ניתן לדעת. }
+function LinkCount(const Path: String): Integer;
+var
+  F: TFileStream;
+  Info: TByHandleFileInformation;
+begin
+  Result := -1;
+  try
+    F := TFileStream.Create(Path, fmOpenRead or fmShareDenyNone);
+    try
+      if GetFileInformationByHandle(F.Handle, Info) then
+        Result := Info.nNumberOfLinks;
+    finally
+      F.Free;
+    end;
+  except
+    Result := -1;
+  end;
+end;
+
+{ קובץ שלא השתנה אחרי שנכתב לו חותם תואם — מוכן בלי hash. קובץ שחותמו מעיד
+  על תוכן אחר אינו מוכן. בלי חותם (מטמון ישן) — hash אחד, ואז חותם. קישור
+  קשיח נוסף ביעד יכול להידרס בלי לקדם את זמן השינוי, ולכן אז אין אמון בחותם. }
+function FileMatchesMarker(const Path, Name: String; Size: Int64;
+  const Sha: String): Boolean;
+var
+  Actual, FileStamp, MarkerStamp: Int64;
+  Marker: String;
+begin
+  Result := False;
+  if not FileSize64(Path, Actual) or (Actual <> Size) then
+    exit;
+  Marker := ReadMarkerHex(Name);
+  if (Marker <> '') and (Marker <> Lowercase(Sha)) then
+    exit;
+  if (Marker <> '') and FileWriteTime(Path, FileStamp) and
+     FileWriteTime(MarkerPath(Name), MarkerStamp) and
+     (FileStamp <= MarkerStamp) and (LinkCount(Path) = 1) then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result := HashFile(Path) = Lowercase(Sha);
+  if Result then
+    WriteMarker(Name, Sha);
+end;
+
+function CachedFileIsGood(const Name: String; Size: Int64; const Sha: String): Boolean;
+begin
+  Result := FileMatchesMarker(CachePath(Name), Name, Size, Sha);
+end;
+
+{ עמוד ההורדה כבר אימת את ה-sha256 (הוא מועבר אליו תמיד), ולכן כאן נבדק
+  גודל בלבד. הקובץ מקבל את שמו הסופי רק אחרי הבדיקה, והחותם — אחריו. }
 function PromoteToCache(const TempPath, Name: String; Size: Int64;
   const Sha: String): Boolean;
 var
@@ -563,16 +718,18 @@ var
 begin
   Result := False;
   ForceDirectories(CacheDir());
-  Staged := CachePath(Name) + '.tmp';
+  Staged := CachePath(Name) + '.download';
   DeleteFile(Staged);
   if not RenameFile(TempPath, Staged) then
-    if not FileCopy(TempPath, Staged, False) then
+    if not CopyFile(TempPath, Staged, False) then
       exit;
-  if FileSize64(Staged, Actual) and (Actual = Size) and
-     (Lowercase(GetSHA256OfFile(Staged)) = Lowercase(Sha)) then
+  if FileSize64(Staged, Actual) and (Actual = Size) then
   begin
+    DeleteFile(MarkerPath(Name));
     DeleteFile(CachePath(Name));
     Result := RenameFile(Staged, CachePath(Name));
+    if Result then
+      WriteMarker(Name, Sha);
   end;
   if not Result then
     DeleteFile(Staged);
@@ -622,6 +779,7 @@ begin
     SetArrayLength(CompType, NC + 1);
     SetArrayLength(CompPlatform, NC + 1);
     SetArrayLength(CompArch, NC + 1);
+    SetArrayLength(CompFormat, NC + 1);
     SetArrayLength(CompDependsOn, NC + 1);
     SetArrayLength(CompRequired, NC + 1);
     SetArrayLength(CompSelected, NC + 1);
@@ -635,6 +793,7 @@ begin
     CompType[NC] := JStr(Raw, CompPos, 'type');
     CompPlatform[NC] := JStr(Raw, CompPos, 'platform');
     CompArch[NC] := JStr(Raw, CompPos, 'architecture');
+    CompFormat[NC] := JStr(Raw, CompPos, 'packageFormat');
     CompRequired[NC] := JBool(Raw, CompPos, 'required');
     CompDownloadSize[NC] := JInt(Raw, CompPos, 'downloadSize');
     CompSelected[NC] := False;
@@ -682,6 +841,12 @@ begin
         PartName[NP] := JStr(Raw, PartPos, 'name');
         PartSha[NP] := JStr(Raw, PartPos, 'sha256');
         PartSize[NP] := JInt(Raw, PartPos, 'size');
+        if not IsSafeName(PartName[NP]) or (Length(PartSha[NP]) <> 64) or
+           (PartSize[NP] <= 0) then
+        begin
+          LoadErrorTech := 'bad part in component ' + CompId[NC];
+          exit;
+        end;
         NP := NP + 1;
         PartPos := JArrNext(Raw, PartPos);
       end;
@@ -738,22 +903,28 @@ begin
     LoadErrorTech := 'cannot read ' + FileName;
 end;
 
-{ תג ה-release נקבע כאן פעם אחת ונשמר לכל הריצה: release שמתעדכן באמצע
-  הורדה היה מערבב קבצים משתי גרסאות.
-
-  ברירת המחדל היא התג שממנו נבנה הכלי — release כזה בוודאי נושא מניפסט.
-  ‎/releases/latest‎ מדלג על prerelease, ולכן הוא משמש רק כשהוא מצביע על
-  גרסה גבוהה יותר; כשהוא נכשל או שווה/נמוך, התג המוטבע נשאר. }
+{ התג ננעל לכל הריצה — release שמתעדכן באמצע היה מערבב גרסאות. latest מדלג
+  על prerelease, ולכן הוא גובר על התג המוטבע רק כשגרסתו גבוהה יותר. }
 function LoadReleaseManifest(): Boolean;
 var
   ApiRaw, ManifestRaw: AnsiString;
   ManifestPath, ManifestAsset, Url: String;
   EmbeddedTag, LatestTag: String;
-  AssetsPos, ElemPos: Integer;
+  ElemPos: Integer;
   Name: String;
 begin
   Result := False;
   LoadErrorHeb := 'לא ניתן לקרוא את רשימת הקבצים של אוצריא.';
+
+#ifdef DevManifestFile
+  { פיתוח בלבד (/DDevManifestFile=<path>): ה-CI לעולם אינו מגדיר את זה. }
+  Log('DownloadAssistant: DEV manifest from {#DevManifestFile}');
+  if LoadStringFromFile('{#DevManifestFile}', ManifestRaw) then
+    Result := ParseManifest(ManifestRaw)
+  else
+    LoadErrorTech := 'cannot read {#DevManifestFile}';
+  exit;
+#endif
 
   EmbeddedTag := Trim('{#AssistantReleaseTag}');
   ApiRaw := FetchReleaseJson(ReleaseApiUrl('latest'), 'release.json');
@@ -780,29 +951,27 @@ begin
     exit;
   end;
 
+  { התג המוטבע אינו צריך את ה-API: שם המניפסט קבוע, והכתובת הישירה אינה
+    כפופה למגבלת הקצב. latest שנכשל פשוט אינו גובר עליו. }
+  ManifestAsset := '';
   if PinnedTag <> LatestTag then
   begin
-    ApiRaw := FetchReleaseJson(ReleaseApiUrl('tags/' + PinnedTag),
-      'release_pinned.json');
-    if ApiRaw = '' then
-    begin
-      LoadErrorHeb := 'לא ניתן להתחבר לאתר ההורדות של אוצריא.';
-      exit;
-    end;
-  end;
-
-  ManifestAsset := '';
-  AssetsPos := JFind(ApiRaw, 1, 'assets');
-  ElemPos := JArrFirst(ApiRaw, AssetsPos);
-  while ElemPos > 0 do
+    ManifestAsset := ReleaseManifestAsset;
+    Log('DownloadAssistant: manifest of ' + PinnedTag + ' by direct URL');
+  end
+  else
   begin
-    Name := JStr(ApiRaw, ElemPos, 'name');
-    if EndsWithText(Name, 'release-manifest.json') then
+    ElemPos := JArrFirst(ApiRaw, JFind(ApiRaw, 1, 'assets'));
+    while ElemPos > 0 do
     begin
-      ManifestAsset := Name;
-      Break;
+      Name := JStr(ApiRaw, ElemPos, 'name');
+      if EndsWithText(Name, 'release-manifest.json') then
+      begin
+        ManifestAsset := Name;
+        Break;
+      end;
+      ElemPos := JArrNext(ApiRaw, ElemPos);
     end;
-    ElemPos := JArrNext(ApiRaw, ElemPos);
   end;
   if ManifestAsset = '' then
   begin
@@ -826,51 +995,260 @@ begin
   Result := ParseManifest(ManifestRaw);
 end;
 
-{ ====================== הצעות מוכנות מהמניפסט ======================
+{ ====================== מחשב היעד ====================== }
 
-  ההצעות נגזרות מ-type ומ-required של הרכיבים, לא משמות קבצים: רכיב חדש
-  במניפסט נוחת בהצעה הנכונה בלי שינוי קוד כאן. הצעה שיצאה ריקה, או שיצאה
-  זהה להצעה שכבר נוספה, אינה מוצגת — בדיוק כמו רכיב שאינו במניפסט. }
+{ חוזה משותף לשלושת המסייעים; מימוש הייחוס הוא
+  tool/release/download_assistant_selection.dart, ו-fixtures שלצדו. }
 
-function TargetArch(): String;
+function IsWildcard(const Value: String): Boolean;
 begin
-  if ModePage.SelectedValueIndex = ModeThisComputer then
+  Result := (Value = '') or (Value = 'any');
+end;
+
+function ListIndex(const List: TArrayOfString; const Value: String): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to GetArrayLength(List) - 1 do
+    if List[I] = Value then
+    begin
+      Result := I;
+      exit;
+    end;
+end;
+
+procedure ListAdd(var List: TArrayOfString; const Value: String);
+var
+  N: Integer;
+begin
+  if ListIndex(List, Value) >= 0 then
+    exit;
+  N := GetArrayLength(List);
+  SetArrayLength(List, N + 1);
+  List[N] := Value;
+end;
+
+procedure ListSort(var List: TArrayOfString);
+var
+  I, J: Integer;
+  Value: String;
+begin
+  for I := 1 to GetArrayLength(List) - 1 do
   begin
-    if IsArm64 then
-      Result := 'arm64'
-    else
-      Result := 'x64';
-  end
-  else if ArchPage.SelectedValueIndex = 1 then
+    Value := List[I];
+    J := I - 1;
+    while (J >= 0) and (CompareStr(List[J], Value) > 0) do
+    begin
+      List[J + 1] := List[J];
+      J := J - 1;
+    end;
+    List[J + 1] := Value;
+  end;
+end;
+
+function PlatformDisplayName(const Platform: String): String;
+begin
+  if Platform = 'windows' then
+    Result := 'Windows'
+  else if Platform = 'macos' then
+    Result := 'macOS'
+  else if Platform = 'linux' then
+    Result := 'Linux'
+  else if Platform = 'android' then
+    Result := 'Android'
+  else
+    Result := Platform;
+end;
+
+function ArchitectureDisplayName(const Architecture: String): String;
+begin
+  if Architecture = 'x64' then
+    Result := 'מחשב רגיל'
+  else if Architecture = 'arm64' then
+    Result := 'מחשב עם מעבד מסוג ARM'
+  else
+    Result := Architecture;
+end;
+
+function FormatDisplayName(const Format: String): String;
+begin
+  if Format = 'deb' then
+    Result := 'Ubuntu, Debian, Mint והפצות דומות (DEB)'
+  else if Format = 'rpm' then
+    Result := 'Fedora, openSUSE והפצות דומות (RPM)'
+  else if Format = PortableFormat then
+    Result := 'הפצה אחרת — ללא התקנה'
+  else
+    Result := Format;
+end;
+
+{ רק פלטפורמות שיש להן רכיב ייעודי; רכיב 'any' לבדו אינו מספיק. }
+function PlatformChoices(): TArrayOfString;
+var
+  Known: TArrayOfString;
+  I: Integer;
+begin
+  SetArrayLength(Result, 0);
+  Known := StringSplitEx(KnownPlatforms, [','], #0, stExcludeEmpty);
+  for I := 0 to GetArrayLength(Known) - 1 do
+    if ListIndex(CompPlatform, Known[I]) >= 0 then
+      ListAdd(Result, Known[I]);
+end;
+
+function ArchitectureChoices(const Platform: String): TArrayOfString;
+var
+  I: Integer;
+begin
+  SetArrayLength(Result, 0);
+  for I := 0 to GetArrayLength(CompId) - 1 do
+    if (CompPlatform[I] = Platform) and not IsWildcard(CompArch[I]) then
+      ListAdd(Result, CompArch[I]);
+  ListSort(Result);
+  I := ListIndex(Result, 'x64');
+  while I > 0 do
+  begin
+    Result[I] := Result[I - 1];
+    Result[I - 1] := 'x64';
+    I := I - 1;
+  end;
+end;
+
+{ 'portable' מוצע כשיש רכיב תוכנה שאינו תלוי מנהל חבילות. }
+function PackageFormatChoices(const Platform, Architecture: String): TArrayOfString;
+var
+  I: Integer;
+  Portable: Boolean;
+begin
+  SetArrayLength(Result, 0);
+  Portable := False;
+  for I := 0 to GetArrayLength(CompId) - 1 do
+  begin
+    if CompPlatform[I] <> Platform then
+      Continue;
+    if not IsWildcard(CompArch[I]) and (CompArch[I] <> Architecture) then
+      Continue;
+    if not IsWildcard(CompFormat[I]) then
+      ListAdd(Result, CompFormat[I])
+    else if Copy(CompType[I], 1, 11) = 'application' then
+      Portable := True;
+  end;
+  if GetArrayLength(Result) = 0 then
+    exit;
+  ListSort(Result);
+  if Portable then
+    ListAdd(Result, PortableFormat);
+end;
+
+{ מחוץ ל-Linux אין os-release, ולכן ברירת המחדל היא deb — רוב המשתמשים. }
+function DefaultIndex(const List: TArrayOfString; const Preferred: String): Integer;
+begin
+  Result := ListIndex(List, Preferred);
+  if Result < 0 then
+    Result := 0;
+end;
+
+function RunningArchitecture(): String;
+begin
+  if IsArm64 then
     Result := 'arm64'
   else
     Result := 'x64';
 end;
 
-{ רכיב רלוונטי למחשב היעד: פלטפורמה וארכיטקטורה תואמות, או לא מוגדרות. }
+function IsThisComputerMode(): Boolean;
+begin
+  Result := ModePage.SelectedValueIndex = ModeThisComputer;
+end;
+
+procedure FillOptions(Page: TInputOptionWizardPage; const Values: TArrayOfString;
+  const Kind: String; Selected: Integer);
+var
+  I: Integer;
+begin
+  Page.CheckListBox.Items.Clear;
+  for I := 0 to GetArrayLength(Values) - 1 do
+    if Kind = 'arch' then
+      Page.Add(ArchitectureDisplayName(Values[I]))
+    else
+      Page.Add(FormatDisplayName(Values[I]));
+  if GetArrayLength(Values) > 0 then
+    Page.SelectedValueIndex := Selected;
+end;
+
+function SelectedFrom(Page: TInputOptionWizardPage;
+  const List: TArrayOfString): String;
+var
+  I: Integer;
+begin
+  Result := '';
+  if GetArrayLength(List) = 0 then
+    exit;
+  I := Page.SelectedValueIndex;
+  if (I < 0) or (I >= GetArrayLength(List)) then
+    I := 0;
+  Result := List[I];
+end;
+
+{ קובע את היעד מהעמודים. רשימות הארכיטקטורה והפורמט נבנות מחדש רק כשהבחירה
+  שמעליהן השתנתה, כדי שחזרה אחורה לא תמחק את בחירת המשתמש. }
+procedure UpdateTarget();
+begin
+  if IsThisComputerMode() then
+  begin
+    TargetPlatform := 'windows';
+    TargetArchitecture := RunningArchitecture();
+    TargetFormat := '';
+    exit;
+  end;
+
+  TargetPlatform := SelectedFrom(PlatformPage, PlatformList);
+
+  if ArchListFor <> TargetPlatform then
+  begin
+    ArchList := ArchitectureChoices(TargetPlatform);
+    if TargetPlatform = 'windows' then
+      FillOptions(ArchPage, ArchList, 'arch',
+        DefaultIndex(ArchList, RunningArchitecture()))
+    else
+      FillOptions(ArchPage, ArchList, 'arch', DefaultIndex(ArchList, 'x64'));
+    ArchListFor := TargetPlatform;
+  end;
+  TargetArchitecture := SelectedFrom(ArchPage, ArchList);
+
+  if FormatListFor <> TargetPlatform + '/' + TargetArchitecture then
+  begin
+    FormatList := PackageFormatChoices(TargetPlatform, TargetArchitecture);
+    FillOptions(FormatPage, FormatList, 'format', DefaultIndex(FormatList, 'deb'));
+    FormatListFor := TargetPlatform + '/' + TargetArchitecture;
+  end;
+  TargetFormat := SelectedFrom(FormatPage, FormatList);
+end;
+
+{ ====================== הצעות מוכנות מהמניפסט ====================== }
+
+{ ההצעות נגזרות מ-type ומ-required, לא משמות קבצים — רכיב חדש נוחת בהצעה
+  הנכונה בלי שינוי קוד. הצעה ריקה או זהה להצעה קודמת אינה מוצגת. }
+
+{ שלושת השדות: חסר או 'any' מתאים לכל יעד; ערך לא מוכר אינו מתאים לאף יעד. }
 function ComponentFitsTarget(Index: Integer): Boolean;
 begin
   Result := False;
-  if (CompPlatform[Index] <> '') and (CompPlatform[Index] <> 'any') and
-     (CompPlatform[Index] <> 'windows') then
+  if not IsWildcard(CompPlatform[Index]) and
+     (CompPlatform[Index] <> TargetPlatform) then
     exit;
-  if (CompArch[Index] <> '') and (CompArch[Index] <> 'any') and
-     (CompArch[Index] <> TargetArch()) then
+  if not IsWildcard(CompArch[Index]) and
+     (CompArch[Index] <> TargetArchitecture) then
+    exit;
+  if not IsWildcard(CompFormat[Index]) and
+     (CompFormat[Index] <> TargetFormat) then
     exit;
   Result := True;
 end;
 
 function IndexOfComponent(const Id: String): Integer;
-var
-  I: Integer;
 begin
-  Result := -1;
-  for I := 0 to GetArrayLength(CompId) - 1 do
-    if CompId[I] = Id then
-    begin
-      Result := I;
-      exit;
-    end;
+  Result := ListIndex(CompId, Id);
 end;
 
 function MembersContain(const Members, Id: String): Boolean;
@@ -878,7 +1256,7 @@ begin
   Result := Pos(',' + Id + ',', ',' + Members) > 0;
 end;
 
-{ סוגר את הרכיבים שהרכיב תלוי בהם — ההתקנה לא שלמה בלעדיהם. }
+{ סוגר את הרכיבים שהרכיב תלוי בהם; תלות שאינה מתאימה ליעד נדלגת בשקט. }
 function WithDependencies(const Members: String): String;
 var
   Changed: Boolean;
@@ -931,7 +1309,7 @@ begin
       Result := Result + CompId[I] + ',';
 end;
 
-procedure AddPreset(const Caption, Description, Members: String);
+procedure AddPreset(const Id, Caption, Description, Members: String);
 var
   N, I: Integer;
   Closed: String;
@@ -945,9 +1323,11 @@ begin
     if PresetMembers[I] = Closed then
       exit;
   N := GetArrayLength(PresetLabel);
+  SetArrayLength(PresetId, N + 1);
   SetArrayLength(PresetLabel, N + 1);
   SetArrayLength(PresetDesc, N + 1);
   SetArrayLength(PresetMembers, N + 1);
+  PresetId[N] := Id;
   PresetLabel[N] := Caption + ' — ' + HumanSize(MembersSize(Closed));
   PresetDesc[N] := Description;
   PresetMembers[N] := Closed;
@@ -975,6 +1355,7 @@ var
   Bundle, I: Integer;
   Members: String;
 begin
+  SetArrayLength(PresetId, 0);
   SetArrayLength(PresetLabel, 0);
   SetArrayLength(PresetDesc, 0);
   SetArrayLength(PresetMembers, 0);
@@ -989,22 +1370,20 @@ begin
     Members := CompId[Bundle] + ','
   else
     Members := CollectByTypes('application,library,dependency,', False);
-  AddPreset('התקנה מלאה ומומלצת',
+  AddPreset('full', 'התקנה מלאה ומומלצת',
     'התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.', Members);
 
-  AddPreset('התקנה בסיסית (תוכנה בלבד)',
+  AddPreset('basic', 'התקנה בסיסית (תוכנה בלבד)',
     'התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.',
     CollectByTypes('application,', False) + CollectByTypes('', True));
 
-  AddPreset('עדכון התוכנה בלבד',
+  AddPreset('update', 'עדכון התוכנה בלבד',
     'קובץ ההתקנה של הגרסה החדשה, לעדכון התקנה קיימת.',
     CollectByTypes('application,', False));
 
   { "בחירה אישית" אינה נגזרת מהמניפסט והיא תמיד האפשרות האחרונה. }
   CustomPresetIndex := GetArrayLength(PresetLabel);
 end;
-
-{ ============================== עמודים ============================== }
 
 procedure ApplyPreset(Index: Integer);
 var
@@ -1014,6 +1393,133 @@ begin
     CompSelected[I] := (Index >= 0) and (Index < GetArrayLength(PresetMembers)) and
       MembersContain(PresetMembers[Index], CompId[I]);
 end;
+
+{ ========================= צורת הפלט ========================= }
+
+{ יעד Windows: רק exe מתחת ל-4 GiB — ארכיון נשאר חלקים, כי המתקין שצורך
+  אותו קורא אותם. כל יעד אחר: כל נכס מתחת ל-4 GiB, כי שם המשתמש פורס אותו. }
+function ShouldAssembleSingleFile(AssetIndex: Integer): Boolean;
+begin
+  Result := False;
+  if AssetSize[AssetIndex] >= MaxSingleOutputFileSize then
+    exit;
+  if TargetPlatform = 'windows' then
+    Result := IsExecutableName(AssetName[AssetIndex])
+  else
+    Result := True;
+end;
+
+{ הפלטפורמה בשם, כדי שהכנה לשני יעדים באותו דיסק-און-קי לא תערבב קבצים. }
+function OutputSubFolderName(): String;
+begin
+  Result := 'אוצריא להתקנה ל-' + PlatformDisplayName(TargetPlatform);
+end;
+
+{ הקבצים שייווצרו ביעד, בסדר המניפסט — לפי אותם כללים שמריץ PrepareOutput. }
+function PlannedOutputNames(): TArrayOfString;
+var
+  C, A, P, N: Integer;
+begin
+  SetArrayLength(Result, 0);
+  N := 0;
+  for C := 0 to GetArrayLength(CompId) - 1 do
+  begin
+    if not CompSelected[C] then
+      Continue;
+    for A := CompAssetStart[C] to CompAssetStart[C] + CompAssetCount[C] - 1 do
+    begin
+      if (AssetKind[A] = 'split') and not ShouldAssembleSingleFile(A) then
+      begin
+        for P := AssetPartStart[A] to AssetPartStart[A] + AssetPartCount[A] - 1 do
+        begin
+          SetArrayLength(Result, N + 1);
+          Result[N] := PartName[P];
+          N := N + 1;
+        end;
+      end
+      else
+      begin
+        SetArrayLength(Result, N + 1);
+        Result[N] := AssetName[A];
+        N := N + 1;
+      end;
+    end;
+  end;
+end;
+
+function ProducedFileCount(): Integer;
+begin
+  Result := GetArrayLength(PlannedOutputNames());
+end;
+
+#ifdef DevSelectionDump
+{ פיתוח בלבד (/DDevSelectionDump=<path>): מריץ את כללי הבחירה על כל יעד
+  ושומר אותם להשוואה מול expected-selections.json. ה-CI לעולם אינו מגדיר. }
+procedure DumpSelections();
+var
+  Platforms, Archs, Formats, Names: TArrayOfString;
+  P, A, F, I, J: Integer;
+  Text, Line: String;
+begin
+  Text := '';
+  Platforms := PlatformChoices();
+  for P := 0 to GetArrayLength(Platforms) - 1 do
+  begin
+    Archs := ArchitectureChoices(Platforms[P]);
+    Text := Text + 'platform ' + Platforms[P] + ' archs=';
+    for I := 0 to GetArrayLength(Archs) - 1 do
+      Text := Text + Archs[I] + ',';
+    Text := Text + #10;
+    if GetArrayLength(Archs) = 0 then
+    begin
+      SetArrayLength(Archs, 1);
+      Archs[0] := '';
+    end;
+    for A := 0 to GetArrayLength(Archs) - 1 do
+    begin
+      Formats := PackageFormatChoices(Platforms[P], Archs[A]);
+      Text := Text + 'formats ' + Platforms[P] + '/' + Archs[A] + '=';
+      for I := 0 to GetArrayLength(Formats) - 1 do
+        Text := Text + Formats[I] + ',';
+      Text := Text + #10;
+      if GetArrayLength(Formats) = 0 then
+      begin
+        SetArrayLength(Formats, 1);
+        Formats[0] := '';
+      end;
+      for F := 0 to GetArrayLength(Formats) - 1 do
+      begin
+        TargetPlatform := Platforms[P];
+        TargetArchitecture := Archs[A];
+        TargetFormat := Formats[F];
+        Line := '';
+        for I := 0 to GetArrayLength(CompId) - 1 do
+          if ComponentFitsTarget(I) then
+            Line := Line + CompId[I] + ',';
+        Text := Text + 'target ' + TargetPlatform + '/' + TargetArchitecture +
+          '/' + TargetFormat + ' fitting=' + Line + #10;
+        BuildPresets();
+        for I := 0 to GetArrayLength(PresetId) - 1 do
+        begin
+          ApplyPreset(I);
+          Names := PlannedOutputNames();
+          Line := '';
+          for J := 0 to GetArrayLength(Names) - 1 do
+            Line := Line + Names[J] + '|';
+          Text := Text + 'preset ' + PresetId[I] + ' members=' +
+            PresetMembers[I] + ' files=' + Line + ' subfolder=';
+          if GetArrayLength(Names) > 1 then
+            Text := Text + OutputSubFolderName();
+          Text := Text + #10;
+        end;
+      end;
+    end;
+  end;
+  SaveStringToFile('{#DevSelectionDump}', Utf8Encode(Text), False);
+end;
+#endif
+
+{ ============================== עמודים ============================== }
 
 procedure RefreshPresetPage();
 var
@@ -1058,20 +1564,145 @@ begin
   end;
 end;
 
-{ התקדמות כוללת: הקבצים יורדים אחד-אחד כדי שכל קובץ שהושלם ייכנס למטמון
-  מיד, ולכן הסכום הכולל נשמר כאן ולא בעמוד עצמו. }
+{ "3 דקות", "שעה ו-10 דקות" — בלי שניות מדויקות, שממילא אינן יציבות. }
+function HumanDuration(Seconds: Int64): String;
+var
+  Hours, Minutes: Int64;
+begin
+  if Seconds < 60 then
+  begin
+    Result := 'פחות מדקה';
+    exit;
+  end;
+  Hours := Seconds div 3600;
+  Minutes := (Seconds mod 3600 + 30) div 60;
+  if Minutes = 60 then
+  begin
+    Hours := Hours + 1;
+    Minutes := 0;
+  end;
+  if Hours = 0 then
+    Result := ''
+  else if Hours = 1 then
+    Result := 'שעה'
+  else if Hours = 2 then
+    Result := 'שעתיים'
+  else
+    Result := IntToStr(Hours) + ' שעות';
+  if Minutes = 0 then
+    exit;
+  if Result <> '' then
+    Result := Result + ' ו-';
+  if Minutes = 1 then
+    Result := Result + 'דקה'
+  else
+    Result := Result + IntToStr(Minutes) + ' דקות';
+end;
+
+function HumanRate(BytesPerSecond: Int64): String;
+var
+  Tenths: Int64;
+begin
+  if BytesPerSecond >= 1048576 then
+  begin
+    Tenths := (BytesPerSecond * 10) div 1048576;
+    Result := IntToStr(Tenths div 10) + '.' + IntToStr(Tenths mod 10) +
+      ' מגה בשנייה';
+  end
+  else
+    Result := IntToStr(BytesPerSecond div 1024) + ' קילו בשנייה';
+end;
+
+procedure ResetSpeed();
+begin
+  SetArrayLength(SampleTick, 0);
+  SetArrayLength(SampleBytes, 0);
+end;
+
+{ ממוצע נע על ~5 שניות: נשמרת דגימה כל רבע שנייה, והישנות נזרקות. }
+procedure AddSpeedSample(Bytes: Int64);
+var
+  N, I: Integer;
+  Tick: Int64;
+begin
+  Tick := NowMs();
+  N := GetArrayLength(SampleTick);
+  if (N > 0) and (Tick < SampleTick[N - 1]) then
+  begin
+    ResetSpeed();
+    N := 0;
+  end;
+  if (N > 0) and (Tick - SampleTick[N - 1] < 250) then
+    exit;
+  SetArrayLength(SampleTick, N + 1);
+  SetArrayLength(SampleBytes, N + 1);
+  SampleTick[N] := Tick;
+  SampleBytes[N] := Bytes;
+  N := N + 1;
+  while (N > 2) and (Tick - SampleTick[1] >= SpeedWindowMs) do
+  begin
+    for I := 0 to N - 2 do
+    begin
+      SampleTick[I] := SampleTick[I + 1];
+      SampleBytes[I] := SampleBytes[I + 1];
+    end;
+    N := N - 1;
+    SetArrayLength(SampleTick, N);
+    SetArrayLength(SampleBytes, N);
+  end;
+end;
+
+{ בתים לשנייה, או ‎-1‎ כשעדיין אין מספיק דגימות. }
+function CurrentSpeed(): Int64;
+var
+  N: Integer;
+  Elapsed: Int64;
+begin
+  Result := -1;
+  N := GetArrayLength(SampleTick);
+  if N < 2 then
+    exit;
+  Elapsed := SampleTick[N - 1] - SampleTick[0];
+  if Elapsed < 1000 then
+    exit;
+  Result := ((SampleBytes[N - 1] - SampleBytes[0]) * 1000) div Elapsed;
+end;
+
+{ הקבצים יורדים אחד-אחד כדי שכל קובץ שהושלם ייכנס למטמון מיד, ולכן הסכום
+  הכולל, המהירות והזמן המשוער מחושבים כאן ולא בעמוד עצמו. }
 function OnDownloadProgress(const Url, FileName: String;
   const Progress, ProgressMax: Int64): Boolean;
+var
+  Done, Speed: Int64;
+  Status: String;
 begin
-  DownloadPage.SetText(ProgressCaption,
-    'סך הכול: ' + HumanSize(ProgressDone + Progress) + ' מתוך ' +
-    HumanSize(ProgressTotal));
+  Done := ProgressDone + Progress;
+  AddSpeedSample(Done);
+  Status := 'ירדו ' + HumanSize(Done) + ' מתוך ' + HumanSize(ProgressTotal);
+  Speed := CurrentSpeed();
+  if Speed > 0 then
+    Status := Status + ' · ' + HumanRate(Speed) + ' · נותרו ' +
+      HumanDuration((ProgressTotal - Done) div Speed);
+  { Inno מחשב את ה-hash אחרי הבית האחרון בלי לדווח התקדמות — הכותרת מסבירה
+    למה הפס עומד. }
+  if (ProgressMax > 0) and (Progress >= ProgressMax) then
+  begin
+    if VerifyStartTick = 0 then
+    begin
+      VerifyStartTick := NowMs();
+      Log('DownloadAssistant: ' + FileName + ' received, download page verifies');
+    end;
+    DownloadPage.SetText('בודק את הקובץ שירד', Status);
+  end
+  else
+    DownloadPage.SetText(ProgressCaption, Status);
   Result := True;
 end;
 
 procedure InitializeWizard();
 var
   DefaultBase, FolderNote: String;
+  I: Integer;
 begin
   ModePage := CreateInputOptionPage(wpWelcome,
     'אוצריא — מסייע הורדה',
@@ -1083,16 +1714,32 @@ begin
   ModePage.Add('הכנת התקנה למחשב אחר');
   ModePage.SelectedValueIndex := ModeOtherComputer;
 
-  ArchPage := CreateInputOptionPage(ModePage.ID,
+  PlatformPage := CreateInputOptionPage(ModePage.ID,
+    'המחשב שאליו מכינים',
+    'איזו מערכת הפעלה מותקנת בו?',
+    'אם אינך יודע, בחר Windows — היא מותקנת ברוב המחשבים.',
+    True, False);
+  PlatformList := PlatformChoices();
+  for I := 0 to GetArrayLength(PlatformList) - 1 do
+    PlatformPage.Add(PlatformDisplayName(PlatformList[I]));
+  if GetArrayLength(PlatformList) > 0 then
+    PlatformPage.SelectedValueIndex := DefaultIndex(PlatformList, 'windows');
+
+  ArchPage := CreateInputOptionPage(PlatformPage.ID,
     'המחשב שאליו מכינים',
     'איזה סוג מחשב הוא היעד?',
     'אם אינך יודע, בחר באפשרות הראשונה — היא מתאימה כמעט לכל המחשבים.',
     True, False);
-  ArchPage.Add('מחשב רגיל');
-  ArchPage.Add('מחשב עם מעבד מסוג ARM');
-  ArchPage.SelectedValueIndex := 0;
+  ArchListFor := #0;
 
-  PresetPage := CreateInputOptionPage(ArchPage.ID,
+  FormatPage := CreateInputOptionPage(ArchPage.ID,
+    'המחשב שאליו מכינים',
+    'איזו גרסה של Linux מותקנת בו?',
+    'אם אינך יודע, השאר את הבחירה המסומנת — היא מתאימה לרוב המחשבים.',
+    True, False);
+  FormatListFor := #0;
+
+  PresetPage := CreateInputOptionPage(FormatPage.ID,
     'מה להוריד',
     'בחר את היקף ההורדה.',
     'אפשר לשנות את הבחירה בהמשך.',
@@ -1129,15 +1776,26 @@ begin
     'רגע, מכינים את הקבצים.');
 end;
 
+{ עמוד שיש בו אפשרות אחת בלבד אינו מוצג. }
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
-  if PageID = ArchPage.ID then
-    Result := ModePage.SelectedValueIndex = ModeThisComputer
+  if PageID = PlatformPage.ID then
+    Result := IsThisComputerMode() or (GetArrayLength(PlatformList) <= 1)
+  else if PageID = ArchPage.ID then
+  begin
+    UpdateTarget();
+    Result := IsThisComputerMode() or (GetArrayLength(ArchList) <= 1);
+  end
+  else if PageID = FormatPage.ID then
+  begin
+    UpdateTarget();
+    Result := IsThisComputerMode() or (GetArrayLength(FormatList) <= 1);
+  end
   else if PageID = CustomPage.ID then
     Result := PresetPage.SelectedValueIndex <> CustomPresetIndex
   else if PageID = FolderPage.ID then
-    Result := ModePage.SelectedValueIndex = ModeThisComputer;
+    Result := IsThisComputerMode();
 end;
 
 { ====================== בניית תור ההורדה ====================== }
@@ -1159,35 +1817,9 @@ begin
   QueueSize[N] := Size;
 end;
 
-{ נכס מפוצל מורכב לקובץ אחד רק כשהתוצאה היא קובץ הפעלה שאפשר להריץ.
-  ארכיון אינו מורכב: המתקין שצורך אותו מצפה לחלקים לצדו. }
-function ShouldAssembleSingleFile(AssetIndex: Integer): Boolean;
-begin
-  Result := IsExecutableName(AssetName[AssetIndex]) and
-    (AssetSize[AssetIndex] < MaxRunnableExeSize);
-end;
-
-{ כמה קבצים ייווצרו ביעד, לפי אותם כללים שמריץ PrepareOutput. }
-function ProducedFileCount(): Integer;
-var
-  C, A: Integer;
-begin
-  Result := 0;
-  for C := 0 to GetArrayLength(CompId) - 1 do
-  begin
-    if not CompSelected[C] then
-      Continue;
-    for A := CompAssetStart[C] to CompAssetStart[C] + CompAssetCount[C] - 1 do
-      if (AssetKind[A] = 'split') and not ShouldAssembleSingleFile(A) then
-        Result := Result + AssetPartCount[A]
-      else
-        Result := Result + 1;
-  end;
-end;
-
 function OutputBaseDir(): String;
 begin
-  if ModePage.SelectedValueIndex = ModeThisComputer then
+  if IsThisComputerMode() then
     Result := CacheDir()
   else
     Result := RemoveBackslashUnlessRoot(FolderPage.Values[0]);
@@ -1198,21 +1830,30 @@ end;
 function OutputDir(): String;
 begin
   Result := OutputBaseDir();
-  if (ModePage.SelectedValueIndex <> ModeThisComputer) and
-     (ProducedFileCount() > 1) then
-    Result := Result + '\' + OutputSubFolderName;
+  if not IsThisComputerMode() and (ProducedFileCount() > 1) then
+    Result := Result + '\' + OutputSubFolderName();
 end;
 
-{ הקובץ שכבר מורכב ביעד, אם הוא שלם ומאומת. }
+{ הקובץ שכבר מורכב ביעד: גודל תואם וחותם מהמטמון שנכתב אחרי ההרכבה. }
 function AssembledIsReady(AssetIndex: Integer): Boolean;
-var
-  Path: String;
-  Size: Int64;
 begin
-  Path := OutputDir() + '\' + AssetName[AssetIndex];
-  Result := FileExists(Path) and FileSize64(Path, Size) and
-    (Size = AssetSize[AssetIndex]) and
-    (Lowercase(GetSHA256OfFile(Path)) = Lowercase(AssetSha[AssetIndex]));
+  Result := FileMatchesMarker(OutputDir() + '\' + AssetName[AssetIndex],
+    AssetName[AssetIndex], AssetSize[AssetIndex], AssetSha[AssetIndex]);
+end;
+
+function AssemblyTmpPath(AssetIndex: Integer): String;
+begin
+  Result := OutputDir() + '\' + AssetName[AssetIndex] + '.tmp';
+end;
+
+{ `<name>.tmp.sha256` נכתב לפני הבית הראשון. שם הנכס חוזר בין בניות של אותה
+  גרסה, ובלעדיו .tmp של בנייה אחרת היה נספר כחלקים שכבר נבלעו. }
+function AssemblyTmpBelongs(AssetIndex: Integer): Boolean;
+var
+  Raw: AnsiString;
+begin
+  Result := LoadStringFromFile(AssemblyTmpPath(AssetIndex) + '.sha256', Raw) and
+    (Lowercase(Copy(Raw, 1, 64)) = Lowercase(AssetSha[AssetIndex]));
 end;
 
 { כמה חלקים כבר נבלעו לתוך קובץ ההרכבה החלקי. חלק נמחק רק אחרי שהוספתו
@@ -1225,9 +1866,16 @@ var
 begin
   Result := 0;
   Prefix := 0;
-  TmpPath := OutputDir() + '\' + AssetName[AssetIndex] + '.tmp';
+  TmpPath := AssemblyTmpPath(AssetIndex);
   if not FileExists(TmpPath) then
     exit;
+  if not AssemblyTmpBelongs(AssetIndex) then
+  begin
+    Log('DownloadAssistant: discarding foreign partial ' + TmpPath);
+    DeleteFile(TmpPath);
+    DeleteFile(TmpPath + '.sha256');
+    exit;
+  end;
   if not FileSize64(TmpPath, Size) then
     exit;
   Acc := 0;
@@ -1313,6 +1961,7 @@ end;
 function RunDownloads(): Boolean;
 var
   I: Integer;
+  Started: Int64;
 begin
   Result := True;
   if GetArrayLength(QueueUrl) = 0 then
@@ -1332,6 +1981,9 @@ begin
         ' מתוך ' + IntToStr(GetArrayLength(QueueUrl)) + ')';
       DownloadPage.SetText(ProgressCaption, '');
       DownloadPage.Clear;
+      ResetSpeed();
+      VerifyStartTick := 0;
+      Started := NowMs();
       { ה-hash מהמניפסט מועבר תמיד — קובץ שאינו תואם נדחה כאן ולא נשמר. }
       DownloadPage.Add(QueueUrl[I], QueueFile[I], QueueSha[I]);
       try
@@ -1348,12 +2000,19 @@ begin
         Result := False;
         exit;
       end;
+      if VerifyStartTick > 0 then
+        Log('DownloadAssistant: ' + QueueFile[I] + ' downloaded in ' +
+          IntToStr(VerifyStartTick - Started) + ' ms, verified by download page in ' +
+          IntToStr(NowMs() - VerifyStartTick) + ' ms')
+      else
+        Log('DownloadAssistant: ' + QueueFile[I] + ' done in ' +
+          IntToStr(NowMs() - Started) + ' ms');
       ProgressDone := ProgressDone + QueueSize[I];
       if not PromoteToCache(ExpandConstant('{tmp}\') + QueueFile[I],
         QueueFile[I], QueueSize[I], QueueSha[I]) then
       begin
         LoadErrorHeb := 'אחד הקבצים שהורדו נמצא פגום ולא נשמר.';
-        LoadErrorTech := 'verification failed for ' + QueueFile[I];
+        LoadErrorTech := 'size check failed for ' + QueueFile[I];
         Result := False;
         exit;
       end;
@@ -1365,10 +2024,18 @@ end;
 
 { ============================== הרכבה ============================== }
 
-{ משרשר Src לסוף Dest. שרשור בתים טהור — התוצאה זהה בית-בית למקור. }
-function AppendFileTo(const Dest, Src: String): Boolean;
+function MegaBytes(Bytes: Int64): Integer;
+begin
+  Result := Bytes div 1048576;
+end;
+
+{ משרשר את Src (בדיוק Expected בתים) לסוף Dest ומדווח התקדמות בבתים.
+  שרשור בתים טהור — התוצאה זהה בית-בית למקור. }
+function AppendFileTo(const Dest, Src: String; Expected, DoneBefore,
+  Total: Int64; const Caption: String): Boolean;
 var
   Output, Input: TFileStream;
+  Start, Copied, Slice, Got: Int64;
 begin
   Result := False;
   try
@@ -1377,17 +2044,33 @@ begin
     else
       Output := TFileStream.Create(Dest, fmCreate);
     try
-      Output.Seek(Int64(0), soFromEnd);
+      Start := Output.Seek(Int64(0), soFromEnd);
       Input := TFileStream.Create(Src, fmOpenRead or fmShareDenyWrite);
       try
-        Output.CopyFrom(Input, Int64(0), CopyChunkSize);
+        Copied := 0;
+        while Copied < Expected do
+        begin
+          Slice := Expected - Copied;
+          if Slice > AppendSliceSize then
+            Slice := AppendSliceSize;
+          Got := Output.CopyFrom(Input, Slice, CopyChunkSize);
+          if Got <> Slice then
+            Break;
+          Copied := Copied + Got;
+          WorkPage.SetText('מחבר את הקבצים: ' + Caption,
+            HumanSize(DoneBefore + Copied) + ' מתוך ' + HumanSize(Total));
+          WorkPage.SetProgress(MegaBytes(DoneBefore + Copied), MegaBytes(Total));
+        end;
       finally
         Input.Free;
       end;
+      Result := (Copied = Expected) and
+        (Output.Seek(Int64(0), soFromCurrent) = Start + Expected);
     finally
       Output.Free;
     end;
-    Result := True;
+    if not Result then
+      LoadErrorTech := 'append wrote a wrong byte count: ' + Src;
   except
     LoadErrorTech := 'append failed: ' + GetExceptionMessage;
   end;
@@ -1413,28 +2096,37 @@ begin
   end;
 end;
 
-{ מרכיב נכס מפוצל לקובץ אחד. שיא צריכת הדיסק הוא הקובץ המורכב ועוד חלק
-  אחד: כל חלק נמחק מיד אחרי שנוסף. }
+{ כל חלק אומת מול ה-sha256 שלו, ולכן הקובץ המורכב נבדק בספירת בתים בלבד.
+  כל חלק נמחק מיד אחרי שנוסף: שיא הדיסק הוא הקובץ המורכב ועוד חלק אחד. }
 function AssembleAsset(AssetIndex: Integer; const Caption: String): Boolean;
 var
   TmpPath, FinalPath, PartPath: String;
   Consumed, I, First: Integer;
-  Prefix, Actual: Int64;
+  Prefix, Actual, Done: Int64;
 begin
   Result := False;
   FinalPath := OutputDir() + '\' + AssetName[AssetIndex];
-  TmpPath := FinalPath + '.tmp';
+  TmpPath := AssemblyTmpPath(AssetIndex);
   First := AssetPartStart[AssetIndex];
   Consumed := ConsumedPartCount(AssetIndex, Prefix);
-  if FileExists(TmpPath) and not TruncateFileTo(TmpPath, Prefix) then
+  if FileExists(TmpPath) then
+  begin
+    if not TruncateFileTo(TmpPath, Prefix) then
+      exit;
+  end
+  else if not SaveStringToFile(TmpPath + '.sha256',
+    Lowercase(AssetSha[AssetIndex]) + #10, False) then
+  begin
+    LoadErrorHeb := 'לא ניתן היה לכתוב את הקובץ המאוחד. ייתכן שאין מספיק ' +
+      'מקום פנוי.';
+    LoadErrorTech := 'cannot write ' + TmpPath + '.sha256';
     exit;
+  end;
 
-  WorkPage.SetProgress(Consumed, AssetPartCount[AssetIndex]);
+  Done := Prefix;
   for I := Consumed to AssetPartCount[AssetIndex] - 1 do
   begin
     PartPath := CachePath(PartName[First + I]);
-    WorkPage.SetText('מחבר את הקבצים: ' + Caption,
-      'חלק ' + IntToStr(I + 1) + ' מתוך ' + IntToStr(AssetPartCount[AssetIndex]));
     if not CachedFileIsGood(PartName[First + I], PartSize[First + I],
       PartSha[First + I]) then
     begin
@@ -1443,57 +2135,115 @@ begin
       LoadErrorTech := 'part failed verification: ' + PartName[First + I];
       exit;
     end;
-    if not AppendFileTo(TmpPath, PartPath) then
+    if not AppendFileTo(TmpPath, PartPath, PartSize[First + I], Done,
+      AssetSize[AssetIndex], Caption) then
     begin
       LoadErrorHeb := 'לא ניתן היה לכתוב את הקובץ המאוחד. ייתכן שאין מספיק ' +
         'מקום פנוי.';
       exit;
     end;
     DeleteFile(PartPath);
-    WorkPage.SetProgress(I + 1, AssetPartCount[AssetIndex]);
+    DeleteFile(MarkerPath(PartName[First + I]));
+    Done := Done + PartSize[First + I];
   end;
 
-  WorkPage.SetText('בודק את הקובץ המאוחד: ' + Caption, '');
-  if not FileSize64(TmpPath, Actual) or (Actual <> AssetSize[AssetIndex]) or
-     (Lowercase(GetSHA256OfFile(TmpPath)) <> Lowercase(AssetSha[AssetIndex])) then
+  if not FileSize64(TmpPath, Actual) or (Actual <> AssetSize[AssetIndex]) then
   begin
     LoadErrorHeb := 'הקובץ המאוחד נמצא פגום ולכן לא נשמר.';
-    LoadErrorTech := 'assembled file failed verification: ' +
-      AssetName[AssetIndex];
+    LoadErrorTech := 'assembled size mismatch: ' + AssetName[AssetIndex];
     DeleteFile(TmpPath);
+    DeleteFile(TmpPath + '.sha256');
     exit;
   end;
   DeleteFile(FinalPath);
   Result := RenameFile(TmpPath, FinalPath);
-  if not Result then
+  if Result then
+  begin
+    DeleteFile(TmpPath + '.sha256');
+    WriteMarker(AssetName[AssetIndex], AssetSha[AssetIndex]);
+  end
+  else
     LoadErrorTech := 'rename failed: ' + TmpPath;
 end;
 
+{ קישור קשיח חוסך העתקה של גיגה-בתים; נכשל בין כוננים ועל FAT32/exFAT, ואז
+  מעתיקים. }
 function CopyToOutput(const Name: String): Boolean;
+var
+  Dest: String;
 begin
   Result := True;
   if CompareText(OutputDir(), CacheDir()) = 0 then
     exit;
-  Result := FileCopy(CachePath(Name), OutputDir() + '\' + Name, False);
-  if not Result then
+  Dest := OutputDir() + '\' + Name;
+  DeleteFile(Dest);
+  if CreateHardLink(Dest, CachePath(Name), 0) then
+  begin
+    Log('DownloadAssistant: linked ' + Name);
+    exit;
+  end;
+  Result := CopyFile(CachePath(Name), Dest, False);
+  if Result then
+    Log('DownloadAssistant: copied ' + Name)
+  else
     LoadErrorTech := 'copy failed: ' + Name;
 end;
 
 { ==================== הרכבה והכנת תיקיית היעד ==================== }
 
+{ מה עושים בקובץ במחשב היעד. נגזר מהסיומת, לא משם רכיב. }
+function OpenHint(const Name: String): String;
+begin
+  if EndsWithText(Name, '.exe') then
+    Result := ' שם הפעל אותו — אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.'
+  else if EndsWithText(Name, '.dmg') then
+    Result := ' שם פתח אותו בלחיצה כפולה וגרור את אוצריא לתיקיית היישומים.'
+  else if EndsWithText(Name, '.deb') or EndsWithText(Name, '.rpm') then
+    Result := ' שם פתח אותו בלחיצה כפולה כדי להתקין את אוצריא.'
+  else if EndsWithText(Name, '.apk') then
+    Result := ' שם העבר אותו לטלפון או לטאבלט ופתח אותו כדי להתקין את אוצריא.'
+  else
+    Result := ' שם חלץ אותו והפעל את אוצריא מתוך התיקייה שנוצרה.';
+end;
+
+{ חלקים שנשארו בנפרד ביעד שאינו Windows — המשתמש מחבר אותם בעצמו. }
+function JoinCommand(AssetIndex: Integer): String;
+var
+  P, First: Integer;
+  AllNamed: Boolean;
+begin
+  First := AssetPartStart[AssetIndex];
+  AllNamed := True;
+  for P := First to First + AssetPartCount[AssetIndex] - 1 do
+    if Pos(AssetName[AssetIndex] + '.part-', PartName[P]) <> 1 then
+      AllNamed := False;
+  if AllNamed then
+    Result := 'cat ' + AssetName[AssetIndex] + '.part-* > ' +
+      AssetName[AssetIndex]
+  else
+  begin
+    Result := 'cat';
+    for P := First to First + AssetPartCount[AssetIndex] - 1 do
+      Result := Result + ' ' + PartName[P];
+    Result := Result + ' > ' + AssetName[AssetIndex];
+  end;
+end;
+
 function PrepareOutput(): Boolean;
 var
-  C, A, P: Integer;
-  Notes, PartsNote, SingleName: String;
+  C, A, P, Total: Integer;
+  Notes, PartsNote, SingleName, JoinNote: String;
   Produced: Integer;
 begin
   Result := False;
   ForceDirectories(OutputDir());
   Notes := '';
   SingleName := '';
+  JoinNote := '';
   Produced := 0;
   RunAfterExe := '';
   RevealPath := '';
+  Total := ProducedFileCount();
 
   WorkPage.Show;
   try
@@ -1516,12 +2266,13 @@ begin
           end
           else
           begin
-            { קובץ מאוחד שאי אפשר להריץ, או ארכיון שהמתקין צורך כחלקים —
-              החלקים נשארים כפי שהם ליד המתקין. }
+            { גדול מקובץ אחד, או ארכיון שמתקין Windows צורך כחלקים — החלקים
+              נשארים כפי שהם. }
             PartsNote := '';
             for P := AssetPartStart[A] to AssetPartStart[A] + AssetPartCount[A] - 1 do
             begin
-              WorkPage.SetText('מעתיק את הקבצים: ' + CompName[C], PartName[P]);
+              WorkPage.SetText('מעתיק לתיקייה שנבחרה: ' + CompName[C], PartName[P]);
+              WorkPage.SetProgress(Produced, Total);
               if not CopyToOutput(PartName[P]) then
               begin
                 LoadErrorHeb := 'לא ניתן היה להעתיק את הקבצים לתיקייה שנבחרה.';
@@ -1532,11 +2283,14 @@ begin
               Produced := Produced + 1;
             end;
             Notes := Notes + PartsNote;
+            if TargetPlatform <> 'windows' then
+              JoinNote := JoinNote + JoinCommand(A) + #13#10;
           end;
         end
         else
         begin
-          WorkPage.SetText('מעתיק את הקבצים: ' + CompName[C], AssetName[A]);
+          WorkPage.SetText('מעתיק לתיקייה שנבחרה: ' + CompName[C], AssetName[A]);
+          WorkPage.SetProgress(Produced, Total);
           if not CopyToOutput(AssetName[A]) then
           begin
             LoadErrorHeb := 'לא ניתן היה להעתיק את הקבצים לתיקייה שנבחרה.';
@@ -1546,7 +2300,8 @@ begin
           SingleName := AssetName[A];
           Produced := Produced + 1;
         end;
-        if IsExecutableName(AssetName[A]) and (RunAfterExe = '') then
+        if IsThisComputerMode() and IsExecutableName(AssetName[A]) and
+           (RunAfterExe = '') then
           RunAfterExe := OutputDir() + '\' + AssetName[A];
       end;
     end;
@@ -1555,7 +2310,7 @@ begin
   end;
 
   { הניסוח נגזר ממה שנוצר בפועל, ולא מהרכיב שנבחר. }
-  if ModePage.SelectedValueIndex = ModeThisComputer then
+  if IsThisComputerMode() then
     ResultText := 'הקבצים ירדו ואומתו.' + #13#10#13#10 +
       'כעת ייפתח מתקין אוצריא. המשך בו כרגיל.'
   else if Produced = 1 then
@@ -1564,20 +2319,25 @@ begin
     RevealIsFile := True;
     ResultText := 'הקובץ מוכן:' + #13#10 + SingleName + #13#10#13#10 +
       'הוא נמצא בתיקייה:' + #13#10 + OutputDir() + #13#10#13#10 +
-      'העתק את הקובץ הזה לדיסק-און-קי ומשם למחשב המנותק.';
-    if IsExecutableName(SingleName) then
-      ResultText := ResultText + ' שם הפעל אותו — אין צורך בחיבור לאינטרנט ' +
-        'ואין צורך בתוכנות נוספות.';
+      'העתק את הקובץ הזה לדיסק-און-קי ומשם למחשב המנותק (' +
+      PlatformDisplayName(TargetPlatform) + ').' + OpenHint(SingleName);
   end
   else
   begin
     RevealPath := OutputDir();
     RevealIsFile := False;
     ResultText := 'ההתקנה מוכנה בתיקייה:' + #13#10 + OutputDir() + #13#10#13#10 +
-      'העתק את כל התיקייה הזאת לדיסק-און-קי, ובמחשב המנותק הפעל מתוכה את ' +
-      'קובץ ההתקנה. הקבצים חייבים להישאר יחד באותה תיקייה. אין צורך בחיבור ' +
-      'לאינטרנט ואין צורך בתוכנות נוספות.'
-      + #13#10#13#10 + 'הקבצים שהוכנו:' + #13#10 + Notes;
+      'העתק את כל התיקייה הזאת לדיסק-און-קי ומשם למחשב המנותק (' +
+      PlatformDisplayName(TargetPlatform) + '). הקבצים חייבים להישאר יחד ' +
+      'באותה תיקייה.';
+    if TargetPlatform = 'windows' then
+      ResultText := ResultText + ' במחשב המנותק הפעל מתוכה את קובץ ההתקנה — ' +
+        'אין צורך בחיבור לאינטרנט ואין צורך בתוכנות נוספות.';
+    if JoinNote <> '' then
+      ResultText := ResultText + #13#10#13#10 + 'חלק מהקבצים גדולים מדי ' +
+        'לקובץ אחד ולכן נשארו מחולקים. במחשב היעד מחברים אותם בחלון מסוף ' +
+        '(טרמינל), מתוך התיקייה, בפקודה:' + #13#10 + JoinNote;
+    ResultText := ResultText + #13#10#13#10 + 'הקבצים שהוכנו:' + #13#10 + Notes;
   end;
   Result := True;
 end;
@@ -1599,6 +2359,12 @@ var
 begin
   Result := True;
   ManifestLoaded := LoadReleaseManifest();
+#ifdef DevSelectionDump
+  if ManifestLoaded then
+    DumpSelections();
+  Result := False;
+  exit;
+#endif
   if ManifestLoaded then
     exit;
   Log('DownloadAssistant: ' + LoadErrorTech);
@@ -1617,9 +2383,15 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = PresetPage.ID then
-    RefreshPresetPage
+  begin
+    UpdateTarget();
+    RefreshPresetPage();
+  end
   else if CurPageID = CustomPage.ID then
-    RefreshCustomPage
+  begin
+    UpdateTarget();
+    RefreshCustomPage();
+  end
   else if CurPageID = wpFinished then
   begin
     { ברירת המחדל של התווית נמוכה מדי — טקסט הסיום ארוך ממשפט אחד. }
@@ -1681,6 +2453,9 @@ begin
 
   if CurPageID = CustomPage.ID then
   begin
+    { רכיב של יעד קודם אינו מוצג ברשימה, ולכן אסור שיישאר מסומן. }
+    for I := 0 to GetArrayLength(CompId) - 1 do
+      CompSelected[I] := False;
     Selected := False;
     for I := 0 to GetArrayLength(CustomIndex) - 1 do
     begin
@@ -1716,6 +2491,9 @@ begin
   if CurPageID <> wpReady then
     exit;
 
+  UpdateTarget();
+  Log('DownloadAssistant: target=' + TargetPlatform + '/' + TargetArchitecture +
+    '/' + TargetFormat);
   Needed := 0;
   for I := 0 to GetArrayLength(CompId) - 1 do
     if CompSelected[I] then
@@ -1739,7 +2517,7 @@ begin
     exit;
   end;
 
-  if (ModePage.SelectedValueIndex = ModeThisComputer) and (RunAfterExe <> '') then
+  if RunAfterExe <> '' then
     if not ShellExec('', RunAfterExe, '', ExtractFileDir(RunAfterExe),
       SW_SHOWNORMAL, ewNoWait, I) then
       ResultText := ResultText + #13#10#13#10 +

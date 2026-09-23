@@ -45,8 +45,21 @@
           "enum": ["built", "imported"],
           "description": "תיעוד מקור לרישוי בלבד; אינו משפיע על נתיב ההורדה."
         },
-        "platform": { "type": "string" },
-        "architecture": { "type": "string" },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "description": "windows / linux / macos / android, או any. חסר = מתאים לכל פלטפורמה."
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1,
+          "description": "x64 / arm64, או any. חסר = מתאים לכל ארכיטקטורה (למשל Universal Binary של macOS)."
+        },
+        "packageFormat": {
+          "type": "string",
+          "minLength": 1,
+          "description": "deb / rpm — רק לחבילת התקנה של מנהל חבילות. חסר = מתאים לכל פורמט שנבחר."
+        },
         "installOrder": { "type": "integer" },
         "dependsOn": { "type": "array", "items": { "type": "string" } },
         "downloadSize": { "type": "integer", "exclusiveMinimum": 0 },

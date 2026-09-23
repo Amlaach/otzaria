@@ -359,7 +359,8 @@ packages:
         contains(
           '      - name: Build Download Assistant (non-fatal helper tool)\n'
           '        id: download_assistant\n'
-          '        continue-on-error: true\n',
+          '        continue-on-error: true\n'
+          '        timeout-minutes: 15\n',
         ),
       );
       expect(workflow, contains('name: otzaria-download-assistant'));
@@ -440,7 +441,7 @@ packages:
 
     test('הערות השחרור מציגות את האשף ככלי עזר ואת החלקים אם יופיעו', () {
       // המסווג ממיר לאותיות קטנות לפני ההשוואה, ולכן הענף נשאר קטן.
-      expect(workflow, contains('otzaria-download-assistant-windows.exe)'));
+      expect(workflow, contains('otzaria-download-assistant-*)'));
       expect(
         workflow,
         contains(
@@ -448,6 +449,15 @@ packages:
           'אינטרנט. זהו אינו קובץ ההתקנה עצמו',
         ),
       );
+      final tools = workflow.substring(workflow.indexOf('## כלי עזר'));
+      for (final label in const [
+        'מסייע הורדה למחשב Windows',
+        'מסייע הורדה למק',
+        'מסייע הורדה ללינוקס',
+        'מסייע הורדה ללינוקס במחשב עם מעבד ARM',
+      ]) {
+        expect(tools, contains('"$label"'));
+      }
 
       // הסיווג רגיש לסדר: החלקים חייבים להיתפס לפני *windows-full*.exe.
       final parts = workflow.indexOf('*windows-full.exe.part-*)');
@@ -457,6 +467,43 @@ packages:
       expect(support, greaterThan(0));
       expect(fullExe, greaterThan(parts));
       expect(fullExe, greaterThan(support));
+    });
+
+    test('ענף המסייעים הוא הראשון ב-case של הערות השחרור', () {
+      final caseStart = workflow.indexOf(r'case "$lower" in');
+      expect(caseStart, greaterThan(0));
+      final firstBranch = RegExp(
+        r'^\s+([^\s#][^\n]*\))\s*$',
+        multiLine: true,
+      ).firstMatch(workflow.substring(caseStart))!;
+      expect(
+        firstBranch.group(1),
+        'otzaria-download-assistant-*)',
+        reason:
+            'Otzaria-Download-Assistant-macos.zip / linux-*.tar.gz / windows.exe '
+            'היו נבלעים בתבניות *macos* / *linux* / *windows*',
+      );
+    });
+
+    test('Stage Download Assistant מעתיק את ארבעת המסייעים בלי להיכשל', () {
+      final start = workflow.indexOf('- name: Stage Download Assistant');
+      final step = workflow.substring(
+        start,
+        workflow.indexOf('\n      - name: ', start + 1),
+      );
+      for (final path in const [
+        'artifacts/otzaria-download-assistant/Otzaria-Download-Assistant-windows.exe',
+        'artifacts/otzaria-download-assistant-macos/Otzaria-Download-Assistant-macos.zip',
+        'artifacts/otzaria-download-assistant-linux-x64/Otzaria-Download-Assistant-linux-x64.tar.gz',
+        'artifacts/otzaria-download-assistant-linux-arm64/Otzaria-Download-Assistant-linux-arm64.tar.gz',
+      ]) {
+        expect(step, contains(path));
+      }
+      // כל קובץ חסר מזהיר בנפרד, ואף אחד מהם אינו מפיל את השחרור.
+      expect(step, contains('if [ -f "\$assistant" ]; then'));
+      expect(step, contains('echo "::warning::Download Assistant'));
+      expect(step, isNot(contains('exit 1')));
+      expect(step, isNot(contains('continue-on-error: false')));
     });
   });
 }

@@ -54,6 +54,7 @@ class ComponentSpec {
     required this.assets,
     this.platform,
     this.architecture,
+    this.packageFormat,
     this.dependsOn = const [],
     this.origin = 'built',
     this.installedSize,
@@ -69,6 +70,10 @@ class ComponentSpec {
   final List<AssetSpec> assets;
   final String? platform;
   final String? architecture;
+
+  /// פורמט החבילה (`deb` / `rpm`) — רק לרכיב שהוא חבילת התקנה של מנהל
+  /// חבילות. רכיב בלעדיו מתאים לכל פורמט שנבחר.
+  final String? packageFormat;
   final List<String> dependsOn;
 
   /// תיעוד מקור בלבד (רישוי/ייחוס) — אינו משפיע על נתיב ההורדה.
@@ -155,6 +160,177 @@ const List<ComponentSpec> kKnownComponents = [
     architecture: 'x64',
     installOrder: 20,
     assets: [AssetSpec(pattern: r'^otzaria-.+-windows-full-indexed\.exe$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-deb-x64',
+    name: 'אוצריא ל-Linux (DEB)',
+    description:
+        'חבילת התקנה ל-Ubuntu, Debian, Mint והפצות דומות, למעבדי x64. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'linux',
+    architecture: 'x64',
+    packageFormat: 'deb',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-.+-linux\.deb$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-deb-arm64',
+    name: 'אוצריא ל-Linux (DEB, ARM64)',
+    description:
+        'חבילת התקנה ל-Ubuntu, Debian, Mint והפצות דומות, למחשבי ARM64. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'linux',
+    architecture: 'arm64',
+    packageFormat: 'deb',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-.+-linux-arm64\.deb$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-rpm-x64',
+    name: 'אוצריא ל-Linux (RPM)',
+    description:
+        'חבילת התקנה ל-Fedora, openSUSE והפצות דומות, למעבדי x64. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'linux',
+    architecture: 'x64',
+    packageFormat: 'rpm',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-.+\.x86_64\.rpm$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-rpm-arm64',
+    name: 'אוצריא ל-Linux (RPM, ARM64)',
+    description:
+        'חבילת התקנה ל-Fedora, openSUSE והפצות דומות, למחשבי ARM64. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'linux',
+    architecture: 'arm64',
+    packageFormat: 'rpm',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-.+\.aarch64\.rpm$')],
+  ),
+  // נבנית רק כשחבילת ה-DEB נכשלה בבנייה, ולכן לרוב נעדרת מה-release.
+  ComponentSpec(
+    id: 'otzaria-linux-portable-x64',
+    name: 'אוצריא ל-Linux — גרסה ניידת',
+    description: 'ארכיון ZIP שאינו דורש התקנה, למעבדי x64. ללא ספרייה.',
+    type: 'application-portable',
+    required: false,
+    platform: 'linux',
+    architecture: 'x64',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-linux-raw\.zip$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-portable-arm64',
+    name: 'אוצריא ל-Linux — גרסה ניידת (ARM64)',
+    description: 'ארכיון ZIP שאינו דורש התקנה, למחשבי ARM64. ללא ספרייה.',
+    type: 'application-portable',
+    required: false,
+    platform: 'linux',
+    architecture: 'arm64',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-linux-raw-arm64\.zip$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-full-x64',
+    name: 'אוצריא ל-Linux עם ספרייה מלאה',
+    description:
+        'ארכיון tar.zst ובו התוכנה והספרייה המלאה, למעבדי x64. פורסים אותו '
+        'ומפעילים ללא התקנה.',
+    type: 'application-bundle',
+    required: false,
+    platform: 'linux',
+    architecture: 'x64',
+    installOrder: 20,
+    assets: [
+      AssetSpec(pattern: r'^otzaria-linux-full\.tar\.zst$'),
+      AssetSpec(
+        pattern: r'^otzaria-linux-full\.tar\.zst\.manifest\.json$',
+        split: true,
+      ),
+    ],
+  ),
+  ComponentSpec(
+    id: 'otzaria-linux-full-arm64',
+    name: 'אוצריא ל-Linux עם ספרייה מלאה (ARM64)',
+    description:
+        'ארכיון tar.zst ובו התוכנה והספרייה המלאה, למחשבי ARM64. פורסים אותו '
+        'ומפעילים ללא התקנה.',
+    type: 'application-bundle',
+    required: false,
+    platform: 'linux',
+    architecture: 'arm64',
+    installOrder: 20,
+    assets: [
+      AssetSpec(pattern: r'^otzaria-linux-full-arm64\.tar\.zst$'),
+      AssetSpec(
+        pattern: r'^otzaria-linux-full-arm64\.tar\.zst\.manifest\.json$',
+        split: true,
+      ),
+    ],
+  ),
+  // ה-DMG הוא Universal Binary — אותו קובץ ל-Intel ול-Apple Silicon, ולכן
+  // אין לו ארכיטקטורה.
+  ComponentSpec(
+    id: 'otzaria-macos',
+    name: 'אוצריא ל-macOS',
+    description:
+        'קובץ DMG: גוררים ממנו את אוצריא לתיקיית היישומים. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'macos',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^otzaria-macos\.dmg$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-macos-full',
+    name: 'אוצריא ל-macOS עם ספרייה מלאה',
+    description:
+        'ארכיון tar.zst ובו התוכנה והספרייה המלאה. פורסים אותו ומפעילים ללא '
+        'התקנה.',
+    type: 'application-bundle',
+    required: false,
+    platform: 'macos',
+    installOrder: 20,
+    assets: [
+      AssetSpec(pattern: r'^otzaria-macos-full\.tar\.zst$'),
+      AssetSpec(
+        pattern: r'^otzaria-macos-full\.tar\.zst\.manifest\.json$',
+        split: true,
+      ),
+    ],
+  ),
+  // ה-APK כולל את כל ארכיטקטורות המעבד, ולכן אין לו ארכיטקטורה.
+  ComponentSpec(
+    id: 'otzaria-android',
+    name: 'אוצריא ל-Android',
+    description: 'קובץ התקנה (APK) לטלפון או לטאבלט. ללא ספרייה.',
+    type: 'application',
+    required: false,
+    platform: 'android',
+    installOrder: 10,
+    assets: [AssetSpec(pattern: r'^[^\\/]+\.apk$')],
+  ),
+  ComponentSpec(
+    id: 'otzaria-android-full',
+    name: 'אוצריא ל-Android עם ספרייה מלאה',
+    description: 'ארכיון ZIP ובו קובץ ה-APK והספרייה המלאה, להעתקה אל המכשיר.',
+    type: 'application-bundle',
+    required: false,
+    platform: 'android',
+    installOrder: 20,
+    assets: [
+      AssetSpec(pattern: r'^otzaria-android-full\.zip$'),
+      AssetSpec(
+        pattern: r'^otzaria-android-full\.zip\.manifest\.json$',
+        split: true,
+      ),
+    ],
   ),
   ComponentSpec(
     id: 'library-full-indexed',
@@ -252,6 +428,7 @@ Map<String, Object?> buildReleaseManifest({
       'origin': spec.origin,
       if (spec.platform != null) 'platform': spec.platform,
       if (spec.architecture != null) 'architecture': spec.architecture,
+      if (spec.packageFormat != null) 'packageFormat': spec.packageFormat,
       'installOrder': spec.installOrder,
       'dependsOn': spec.dependsOn,
       'downloadSize': downloadSize,
@@ -535,6 +712,12 @@ List<String> validateReleaseManifest(Object? manifest) {
     }
     if (component['required'] is! bool) {
       errors.add('component $label: required must be a boolean');
+    }
+    for (final key in const ['platform', 'architecture', 'packageFormat']) {
+      final value = component[key];
+      if (value != null && (value is! String || value.isEmpty)) {
+        errors.add('component $label: $key must be a non-empty string');
+      }
     }
     if (component['installOrder'] is! int) {
       errors.add('component $label: installOrder must be an integer');
