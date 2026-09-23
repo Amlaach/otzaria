@@ -13,7 +13,8 @@ void main() {
     final hits = <String>[];
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
-      if (entity.path == wrapper) continue;
+      // uri.path מנרמל את המפריד — ב-Windows listSync מחזיר `\`.
+      if (entity.uri.path == wrapper) continue;
       for (final (i, line) in entity.readAsStringSync().split('\n').indexed) {
         if (!line.contains('TextField(')) continue;
         if (line.contains('RtlTextField(')) continue;

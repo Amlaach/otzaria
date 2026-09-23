@@ -302,11 +302,20 @@ class _RtlTextFieldState extends State<RtlTextField> {
     final focusContext = FocusManager.instance.primaryFocus?.context;
     if (focusContext == null) return;
 
+    // בקטע LTR (תג, אנגלית, מספר בין אותיות לטיניות) ויזואלית-ימין הוא
+    // גם קדימה לוגית, ולכן אין מה להפוך.
+    final selection = _effectiveController.selection;
+    final forward = selection.isValid
+        ? (isRtlRunAt(_effectiveController.text, selection.extentOffset)
+              ? !isVisualRight
+              : isVisualRight)
+        : !isVisualRight;
+
     if (byWord) {
       Actions.invoke(
         focusContext,
         ExtendSelectionToNextWordBoundaryIntent(
-          forward: !isVisualRight,
+          forward: forward,
           collapseSelection: !extendSelection,
         ),
       );
@@ -314,7 +323,7 @@ class _RtlTextFieldState extends State<RtlTextField> {
       Actions.invoke(
         focusContext,
         ExtendSelectionByCharacterIntent(
-          forward: !isVisualRight,
+          forward: forward,
           collapseSelection: !extendSelection,
         ),
       );
