@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/update/my_update_widget.dart' show pickWindowsAssetUrl;
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -417,7 +418,8 @@ packages:
       expect(
         workflow,
         contains(
-          r'for installer in release-files/otzaria-*-windows-full.exe; do',
+          r'for installer in release-files/otzaria-*-windows-full.exe '
+          r'release-files/otzaria-*-windows_arm64-full.exe; do',
         ),
       );
       expect(
@@ -504,6 +506,87 @@ packages:
       expect(step, contains('echo "::warning::Download Assistant'));
       expect(step, isNot(contains('exit 1')));
       expect(step, isNot(contains('continue-on-error: false')));
+    });
+  });
+
+  group('מתקין FULL ל-ARM64 בשחרור', () {
+    final workflow = File(
+      '.github/workflows/build-and-announce.yml',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+    const asset = 'otzaria-0.9.97-windows_arm64-full.exe';
+
+    test('Organize release files מעתיק אותו, וחסרונו רק מזהיר', () {
+      final start = workflow.indexOf('- name: Organize release files');
+      final step = workflow.substring(
+        start,
+        workflow.indexOf('\n      - name: ', start + 1),
+      );
+      expect(
+        step,
+        contains(
+          'cp artifacts/otzaria-windows-arm64-installer-full/*.exe '
+          'release-files/ || true',
+        ),
+      );
+      expect(step, contains('::warning::ARM64 FULL installer is missing'));
+    });
+
+    test('הסיווג בהערות השחרור קודם לענף של מתקין ה-ARM הרגיל', () {
+      final caseStart = workflow.indexOf(r'case "$lower" in');
+      final basicArm = workflow.indexOf('*windows_arm64*.exe)', caseStart);
+      expect(basicArm, greaterThan(caseStart));
+      for (final branch in const [
+        '*windows_arm64-full.exe.part-*)',
+        '*windows_arm64-full.exe.manifest.json)',
+        '*windows_arm64-full*.exe)',
+      ]) {
+        final at = workflow.indexOf(branch, caseStart);
+        expect(at, inExclusiveRange(caseStart, basicArm), reason: branch);
+      }
+      // תבניות ה-x64 דורשות "windows-full", ולכן אינן בולעות את נכס ה-ARM.
+      expect(asset.contains('windows-full'), isFalse);
+      expect(
+        workflow,
+        contains(
+          'emit_link_group "חבילה מלאה למחשבי ARM (מעבדי Snapdragon; '
+          'במחשב רגיל הורידו את החבילה שמעל)" "\${windows_arm64_full[@]}"',
+        ),
+      );
+      expect(
+        workflow,
+        contains(
+          'emit_link_group "חלק מהחבילה המלאה למחשבי ARM" '
+          '"\${windows_arm64_full_parts[@]}"',
+        ),
+      );
+    });
+
+    test('העדכון שבתוך התוכנה לעולם אינו בוחר בו', () {
+      Map<String, dynamic> a(String name) => {
+        'name': name,
+        'browser_download_url': 'https://example.com/$name',
+      };
+      for (final isArm in const [true, false]) {
+        for (final format in const ['exe', 'zip']) {
+          expect(
+            pickWindowsAssetUrl(
+              [a(asset), a('$asset.part-000')],
+              preferredFormat: format,
+              isArmMachine: isArm,
+            ),
+            isNull,
+            reason: 'isArm=$isArm format=$format',
+          );
+        }
+      }
+      expect(
+        pickWindowsAssetUrl(
+          [a(asset), a('otzaria-0.9.97-windows_arm64.exe')],
+          preferredFormat: 'exe',
+          isArmMachine: true,
+        ),
+        'https://example.com/otzaria-0.9.97-windows_arm64.exe',
+      );
     });
   });
 }

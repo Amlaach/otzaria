@@ -31,13 +31,19 @@ void main() {
         workflow.substring(stage, stage + 900),
         contains(r'Copy-Item installer\zstd.exe'),
       );
+      // מקור ההורדה היחיד הוא הסקריפט המשותף שה-job של x64 מריץ.
+      final x64Job = workflow.substring(
+        0,
+        workflow.indexOf('\n  build_windows_arm64:'),
+      );
+      expect('zstd-*-win64.zip'.allMatches(x64Job), isEmpty);
+      expect(x64Job, contains('download_full_installer_assets.ps1'));
       expect(
         'zstd-*-win64.zip'
             .allMatches(
-              workflow.substring(
-                0,
-                workflow.indexOf('\n  build_windows_arm64:'),
-              ),
+              File(
+                'installer/download_full_installer_assets.ps1',
+              ).readAsStringSync(),
             )
             .length,
         1,

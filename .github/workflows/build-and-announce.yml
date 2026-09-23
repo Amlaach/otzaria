@@ -411,137 +411,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          Write-Host "Downloading bundled library assets for full installer..."
-          $ErrorActionPreference = "Stop"
-          # אימות מונע רייט-לימיט של api.github.com (ה-IP של ה-runner משותף עם משתמשים אחרים)
-          $apiHeaders = @{ Authorization = "Bearer $env:GH_TOKEN" }
-
-          try {
-            # הורדת מסד הספרייה הראשי
-            $latestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/Otzaria/SeforimLibrary/releases/latest" -Headers $apiHeaders
-            $dbAsset = $latestRelease.assets | Where-Object { $_.name -eq "seforim.db.zst" }
-            
-            if (-not $dbAsset) {
-              Write-Host "::error::Could not find seforim.db.zst in latest release"
-              exit 1
-            }
-            
-            Write-Host "Library version: $($latestRelease.tag_name)"
-            Write-Host "Downloading from: $($dbAsset.browser_download_url)"
-            Write-Host "Size: $([math]::Round($dbAsset.size / 1MB, 2)) MB"
-            
-            if (Test-Path "installer\library_db") {
-              Remove-Item -Path "installer\library_db" -Recurse -Force
-            }
-            New-Item -ItemType Directory -Path "installer\library_db" -Force | Out-Null
-
-            # הורדת ה-DB הדחוס שה-installer יחלץ בזמן ההתקנה
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri $dbAsset.browser_download_url -OutFile "installer\library_db\seforim.db.zst" -UseBasicParsing
-            Write-Host "Compressed library DB downloaded successfully"
-
-            # הורדת מסד הקטלוגים החיצוני
-            Write-Host "Downloading external catalog DB for full installer from Otzaria/otzar-HB_catalog..."
-            $catalogRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/Otzaria/otzar-HB_catalog/releases/latest" -Headers $apiHeaders
-            $catalogAsset = $catalogRelease.assets | Where-Object { $_.name -eq "otzar-HB_catalog.db.zst" }
-
-            if (-not $catalogAsset) {
-              Write-Host "::error::Could not find otzar-HB_catalog.db.zst in latest release"
-              exit 1
-            }
-
-            Write-Host "Catalog version: $($catalogRelease.tag_name)"
-            Write-Host "Downloading from: $($catalogAsset.browser_download_url)"
-            Write-Host "Size: $([math]::Round($catalogAsset.size / 1MB, 2)) MB"
-            Invoke-WebRequest -Uri $catalogAsset.browser_download_url -OutFile "installer\library_db\otzar-HB_catalog.db.zst" -UseBasicParsing
-            Write-Host "Compressed external catalog DB downloaded successfully"
-
-            # הורדת ארכיון ה-PDFים של תלמוד בבלי
-            $talmudArchiveUrl = "https://github.com/Otzaria/otzaria-library/releases/latest/download/talmud_bavli_latest.tar.zst"
-            Write-Host "Downloading bundled Talmud Bavli PDFs for full installer..."
-            Write-Host "Downloading from: $talmudArchiveUrl"
-            Invoke-WebRequest -Uri $talmudArchiveUrl -OutFile "installer\library_db\talmud_bavli_latest.tar.zst" -UseBasicParsing
-            Write-Host "Compressed Talmud Bavli PDFs downloaded successfully"
-
-            # הורדת כלי החילוץ כדי שה-installer יוכל לחלץ את קבצי הספרייה בזמן ההתקנה
-            $zstdRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/facebook/zstd/releases/latest" -Headers $apiHeaders
-            $zstdAsset = $zstdRelease.assets | Where-Object { $_.name -like "zstd-*-win64.zip" } | Select-Object -First 1
-            $sevenZipRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/ip7z/7zip/releases/latest" -Headers $apiHeaders
-            $sevenZipBootstrap = $sevenZipRelease.assets | Where-Object { $_.name -eq "7zr.exe" } | Select-Object -First 1
-            $sevenZipExtra = $sevenZipRelease.assets | Where-Object { $_.name -like "7z*-extra.7z" } | Select-Object -First 1
-
-            if (-not $zstdAsset) {
-              Write-Host "::error::Could not find win64 zstd asset in latest release"
-              exit 1
-            }
-
-            if ((-not $sevenZipBootstrap) -or (-not $sevenZipExtra)) {
-              Write-Host "::error::Could not find 7-Zip bootstrap assets in latest release"
-              exit 1
-            }
-
-            Write-Host "Downloading zstd from: $($zstdAsset.browser_download_url)"
-            Invoke-WebRequest -Uri $zstdAsset.browser_download_url -OutFile "installer\zstd-win64.zip" -UseBasicParsing
-
-            if (Test-Path "installer\zstd_tmp") {
-              Remove-Item -Path "installer\zstd_tmp" -Recurse -Force
-            }
-            Expand-Archive -Path "installer\zstd-win64.zip" -DestinationPath "installer\zstd_tmp" -Force
-
-            $zstdExe = Get-ChildItem -Path "installer\zstd_tmp" -Filter "zstd.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-            if (-not $zstdExe) {
-              Write-Host "::error::zstd.exe was not found inside downloaded archive"
-              exit 1
-            }
-
-            Copy-Item -Path $zstdExe -Destination "installer\zstd.exe" -Force
-
-            Write-Host "Downloading 7zr from: $($sevenZipBootstrap.browser_download_url)"
-            Invoke-WebRequest -Uri $sevenZipBootstrap.browser_download_url -OutFile "installer\7zr.exe" -UseBasicParsing
-            Write-Host "Downloading 7-Zip extra package from: $($sevenZipExtra.browser_download_url)"
-            Invoke-WebRequest -Uri $sevenZipExtra.browser_download_url -OutFile "installer\7zip-extra.7z" -UseBasicParsing
-
-            if (Test-Path "installer\7zip_tmp") {
-              Remove-Item -Path "installer\7zip_tmp" -Recurse -Force
-            }
-
-            & "installer\7zr.exe" x "installer\7zip-extra.7z" "-oinstaller\7zip_tmp" -y
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "::error::Failed to extract 7-Zip extra package"
-              exit 1
-            }
-
-            $sevenZipExe = Get-ChildItem -Path "installer\7zip_tmp" -Filter "7za.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
-            if (-not $sevenZipExe) {
-              Write-Host "::error::7za.exe was not found inside 7-Zip extra package"
-              exit 1
-            }
-
-            Copy-Item -Path $sevenZipExe -Destination "installer\7za.exe" -Force
-            Remove-Item -Path "installer\zstd-win64.zip" -Force
-            Remove-Item -Path "installer\zstd_tmp" -Recurse -Force
-            Remove-Item -Path "installer\7zip-extra.7z" -Force
-            Remove-Item -Path "installer\7zip_tmp" -Recurse -Force
-            Remove-Item -Path "installer\7zr.exe" -Force
-            Write-Host "zstd.exe and 7za.exe prepared successfully"
-
-            # מילון המורפולוגיה (lexical.db) של החיפוש המקורב. ב-release הוא אינו
-            # דחוס, לכן דוחסים כאן עם zstd שכבר הוכן, כדי שה-installer יחלץ אותו
-            # כמו שאר מסדי הנתונים.
-            Write-Host "Downloading morphology dictionary (lexical.db) from Otzaria/SeforimMagicIndexer..."
-            Invoke-WebRequest -Uri "https://github.com/Otzaria/SeforimMagicIndexer/releases/latest/download/lexical.db" -OutFile "installer\library_db\lexical.db" -UseBasicParsing
-            & "installer\zstd.exe" -19 --long=31 -T0 -f "installer\library_db\lexical.db" -o "installer\library_db\lexical.db.zst"
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "::error::Failed to compress lexical.db"
-              exit 1
-            }
-            Remove-Item -Path "installer\library_db\lexical.db" -Force
-            Write-Host "Morphology dictionary compressed successfully"
-          }
-          catch {
-            Write-Host "::error::Failed to download library: $_"
-            exit 1
-          }
+          .\installer\download_full_installer_assets.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Download dependencies for full installer
         if: true
@@ -695,8 +566,8 @@ jobs:
   # בניית Windows ARM64 נייטיבית — הפתרון לתוספים המתים באמולציית x64 על
   # מכשירי Snapdragon (issue #1014): WebView2 מסרב ליצור controller במסלול
   # הקומפוזיציה תחת אמולציה. חייבת לרוץ על רץ ARM — ל-Flutter אין
-  # קרוס-קומפילציה של Windows. בכוונה רזה מה-job של x64: מתקין רגיל ו-ZIP
-  # נייד בלבד, בלי מתקין FULL (יתווסף בהמשך לפי ביקוש).
+  # קרוס-קומפילציה של Windows. מתקין רגיל, ZIP נייד ומתקין FULL; בלי
+  # מתקין FULL מאונדקס.
   build_windows_arm64:
     if: github.event_name != 'release' && github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.build_windows_arm64)
     needs: [bump_version]
@@ -924,6 +795,33 @@ jobs:
         with:
           name: otzaria-app-file-manifest-arm64
           path: otzaria-app-files-windows-arm64.json
+          if-no-files-found: warn
+
+      # אחרון ב-job ואינו חוסם שחרור: כישלון מוציא גרסה בלי הנכס הזה בלבד.
+      # timeout — continue-on-error אינו מכסה תקיעה, שהייתה מעכבת את create_release.
+      - name: Build Inno Setup FULL installer (ARM64)
+        id: arm64_full
+        continue-on-error: true
+        timeout-minutes: 60
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          .\installer\download_full_installer_assets.ps1
+          if ($LASTEXITCODE -ne 0) { throw "FULL installer assets download failed" }
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "installer\MicrosoftEdgeWebview2Setup.exe"
+          & "$env:ISCC" /DAppArch=arm64 installer\otzaria_full.iss
+          if ($LASTEXITCODE -ne 0) { throw "ARM64 FULL installer build failed" }
+          Remove-Item -Path "installer\library_db" -Recurse -Force
+
+      - name: Upload Windows ARM64 installer (full)
+        if: steps.arm64_full.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 30
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: otzaria-windows-arm64-installer-full
+          path: installer/otzaria-*-windows_arm64-full.exe
           if-no-files-found: warn
 
   build_linux:
@@ -2619,6 +2517,13 @@ jobs:
             cp artifacts/otzaria-windows-arm64-zip/*.zip release-files/ || true
           fi
 
+          # Windows ARM64 installer (full) — non-fatal in build_windows_arm64
+          if [ -d "artifacts/otzaria-windows-arm64-installer-full" ]; then
+            cp artifacts/otzaria-windows-arm64-installer-full/*.exe release-files/ || true
+          elif [ -d "artifacts/otzaria-windows-arm64-installer" ]; then
+            echo "::warning::ARM64 FULL installer is missing - releasing without it"
+          fi
+
           # Linux DEB package
           if [ -d "artifacts/otzaria-linux-deb" ]; then
             cp artifacts/otzaria-linux-deb/*.deb release-files/ || true
@@ -2738,7 +2643,8 @@ jobs:
           GITHUB_ASSET_LIMIT=2147483648
           PART_SIZE=1992294400
 
-          for installer in release-files/otzaria-*-windows-full.exe; do
+          # x64 ו-ARM64; המאונדקס (‎-windows-full-indexed.exe‎) קטן ואינו נתפס כאן.
+          for installer in release-files/otzaria-*-windows-full.exe release-files/otzaria-*-windows_arm64-full.exe; do
             name=$(basename "$installer")
             size=$(stat -c '%s' "$installer")
             if [ "$size" -lt "$GITHUB_ASSET_LIMIT" ]; then
@@ -2804,6 +2710,9 @@ jobs:
           windows_full=()
           windows_full_parts=()
           windows_full_support=()
+          windows_arm64_full=()
+          windows_arm64_full_parts=()
+          windows_arm64_full_support=()
           windows_indexed_full=()
           download_assistant=()
           android_apk=()
@@ -2842,6 +2751,16 @@ jobs:
                 ;;
               *windows-full.exe.manifest.json)
                 windows_full_support+=("$file")
+                ;;
+              # לפני *windows_arm64*.exe, שהיה מציג את ה-FULL כמתקין ה-ARM הרגיל.
+              *windows_arm64-full.exe.part-*)
+                windows_arm64_full_parts+=("$file")
+                ;;
+              *windows_arm64-full.exe.manifest.json)
+                windows_arm64_full_support+=("$file")
+                ;;
+              *windows_arm64-full*.exe)
+                windows_arm64_full+=("$file")
                 ;;
               *windows-full-indexed*.exe)
                 windows_indexed_full+=("$file")
@@ -2949,7 +2868,7 @@ jobs:
           EOF
           fi
 
-          if [ ${#windows_installers[@]} -gt 0 ] || [ ${#windows_arm64_installers[@]} -gt 0 ] || [ ${#windows_full[@]} -gt 0 ] || [ ${#windows_full_parts[@]} -gt 0 ] || [ ${#windows_indexed_full[@]} -gt 0 ]; then
+          if [ ${#windows_installers[@]} -gt 0 ] || [ ${#windows_arm64_installers[@]} -gt 0 ] || [ ${#windows_full[@]} -gt 0 ] || [ ${#windows_full_parts[@]} -gt 0 ] || [ ${#windows_arm64_full[@]} -gt 0 ] || [ ${#windows_arm64_full_parts[@]} -gt 0 ] || [ ${#windows_indexed_full[@]} -gt 0 ]; then
             printf "## ווינדוס\n\n" >> release-body.md
 
             if [ ${#windows_installers[@]} -gt 0 ]; then
@@ -2959,12 +2878,15 @@ jobs:
               printf "\n" >> release-body.md
             fi
 
-            if [ ${#windows_full[@]} -gt 0 ] || [ ${#windows_full_parts[@]} -gt 0 ]; then
+            if [ ${#windows_full[@]} -gt 0 ] || [ ${#windows_full_parts[@]} -gt 0 ] || [ ${#windows_arm64_full[@]} -gt 0 ] || [ ${#windows_arm64_full_parts[@]} -gt 0 ]; then
               printf "### גרסת ספרייה מלאה\n\n" >> release-body.md
               emit_link_group "חבילה מלאה לווינדוס" "${windows_full[@]}"
               emit_link_group "חלק מהחבילה המלאה לווינדוס" "${windows_full_parts[@]}"
               emit_link_group "קובץ אימות לחבילה המלאה" "${windows_full_support[@]}"
-              if [ ${#windows_full_parts[@]} -gt 0 ]; then
+              emit_link_group "חבילה מלאה למחשבי ARM (מעבדי Snapdragon; במחשב רגיל הורידו את החבילה שמעל)" "${windows_arm64_full[@]}"
+              emit_link_group "חלק מהחבילה המלאה למחשבי ARM" "${windows_arm64_full_parts[@]}"
+              emit_link_group "קובץ אימות לחבילה המלאה למחשבי ARM" "${windows_arm64_full_support[@]}"
+              if [ ${#windows_full_parts[@]} -gt 0 ] || [ ${#windows_arm64_full_parts[@]} -gt 0 ]; then
                 printf "\n> **החבילה המלאה גדולה ממגבלת הקובץ הבודד של GitHub ולכן חולקה לחלקים.** הדרך הפשוטה להוריד אותה היא באמצעות מסייע ההורדה שבסוף העמוד: הוא מוריד את כל החלקים, מאמת אותם ומחבר אותם בחזרה לקובץ התקנה אחד.\n" >> release-body.md
               fi
               printf "\n" >> release-body.md

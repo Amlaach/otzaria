@@ -956,6 +956,168 @@ void main() {
     });
   });
 
+  group('מתקין FULL ל-Windows ARM64', () {
+    test('$_full: ברירת המחדל x64 ווריאנט arm64 נשלט מבחוץ', () {
+      final script = _script(_full);
+
+      expect(script, contains('#ifndef AppArch'));
+      expect(script, contains('#define AppArch "x64"'));
+      final setup = _section(script, 'Setup');
+      expect(
+        setup,
+        contains(
+          '#if AppArch == "arm64"\n'
+          'ArchitecturesAllowed=arm64\n'
+          'ArchitecturesInstallIn64BitMode=arm64\n'
+          '; zstd ו-7za שמחלצים את הספרייה הם x64, ו-Windows 10 על ARM מאמלץ רק x86.\n'
+          'MinVersion=10.0.22000\n'
+          '#else\n'
+          'ArchitecturesAllowed=x64compatible\n'
+          'ArchitecturesInstallIn64BitMode=x64compatible\n'
+          '#endif',
+        ),
+      );
+    });
+
+    test('$_full: שם הנכס הוא זה שהמניפסט ומסייע ההורדה מחפשים', () {
+      final setup = _section(_script(_full), 'Setup');
+
+      expect(
+        setup,
+        contains(
+          '#ifdef IndexedSplitFull\n'
+          'OutputBaseFilename=otzaria-{#MyAppVersion}-windows-full-indexed\n'
+          '#elif AppArch == "arm64"\n',
+        ),
+        reason: 'המאונדקס קודם — השם שלו אינו תלוי בארכיטקטורה',
+      );
+      expect(
+        setup,
+        contains(
+          'OutputBaseFilename=otzaria-{#MyAppVersion}-windows_arm64-full',
+        ),
+      );
+      expect(
+        setup,
+        contains(
+          '#else\nOutputBaseFilename=otzaria-{#MyAppVersion}-windows-full\n'
+          '#endif',
+        ),
+        reason: 'שם הנכס של x64 אינו משתנה',
+      );
+      expect(
+        RegExp(
+          r'^otzaria-.+-windows_arm64-full\.exe$',
+        ).hasMatch('otzaria-0.9.97-windows_arm64-full.exe'),
+        isTrue,
+      );
+    });
+
+    test('$_full: קבצי האפליקציה נלקחים מתיקיית ה-build של הארכיטקטורה', () {
+      final files = _section(_script(_full), 'Files');
+
+      expect(files, isNot(contains(r'..\build\windows\x64\')));
+      expect(
+        files,
+        contains(r'Source: "..\build\windows\{#AppArch}\runner\Release\*.dll"'),
+      );
+      expect(
+        files,
+        contains(r'Source: "..\build\windows\{#AppArch}\runner\Release\*"; \'),
+      );
+    });
+
+    test(
+      '$_full: המאונדקס נבנה ל-x64 בלבד — שילוב עם arm64 נכשל בקומפילציה',
+      () {
+        expect(
+          _script(_full),
+          contains(
+            '#if defined(IndexedSplitFull) && AppArch == "arm64"\n'
+            '  #error ',
+          ),
+        );
+      },
+    );
+
+    test('FULL ורגיל חולקים AppId — שדרוג בין הגרסאות כמו ב-x64', () {
+      String appId(String name) => RegExp(
+        r'^AppId=(.+)$',
+        multiLine: true,
+      ).firstMatch(_script(name))!.group(1)!;
+
+      expect(appId(_full), appId(_regular));
+    });
+
+    test('ה-job של ARM64 בונה את ה-FULL אחרי כל הנכסים הרגילים, בלי לחסום', () {
+      final step = _workflowStep('Build Inno Setup FULL installer (ARM64)');
+
+      expect(step, contains('continue-on-error: true'));
+      expect(step, contains('timeout-minutes:'));
+      expect(step, contains(r'.\installer\download_full_installer_assets.ps1'));
+      expect(
+        step,
+        contains(r'& "$env:ISCC" /DAppArch=arm64 installer\otzaria_full.iss'),
+      );
+      expect(
+        step,
+        isNot(contains('download_bundled_plugins')),
+        reason: 'התוספים כבר ירדו בשלב של המתקין הרגיל — אין קריאה שנייה לחנות',
+      );
+
+      final workflow = File(
+        '.github/workflows/build-and-announce.yml',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      final job = workflow.substring(
+        workflow.indexOf('\n  build_windows_arm64:\n'),
+        workflow.indexOf('\n  build_linux:\n'),
+      );
+      final full = job.indexOf(
+        '- name: Build Inno Setup FULL installer (ARM64)',
+      );
+      expect(full, greaterThan(0));
+      for (final earlier in const [
+        '- name: Upload Windows ARM64 installer\n',
+        '- name: Upload Windows ARM64 ZIP',
+        '- name: Upload application file manifest (ARM64)',
+      ]) {
+        expect(
+          job.indexOf(earlier),
+          inInclusiveRange(0, full),
+          reason: earlier,
+        );
+      }
+
+      final upload = _workflowStep('Upload Windows ARM64 installer (full)');
+      expect(upload, contains("if: steps.arm64_full.outcome == 'success'"));
+      expect(upload, contains('continue-on-error: true'));
+      expect(upload, contains('name: otzaria-windows-arm64-installer-full'));
+      expect(
+        upload,
+        contains('path: installer/otzaria-*-windows_arm64-full.exe'),
+      );
+    });
+
+    test('נכסי הספרייה ל-FULL יורדים מסקריפט אחד לשתי הארכיטקטורות', () {
+      final x64 = _workflowStep('Download library assets for full installer');
+      expect(x64, contains(r'.\installer\download_full_installer_assets.ps1'));
+
+      final script = File(
+        'installer/download_full_installer_assets.ps1',
+      ).readAsStringSync();
+      for (final asset in const [
+        'seforim.db.zst',
+        'otzar-HB_catalog.db.zst',
+        'talmud_bavli_latest.tar.zst',
+        'lexical.db.zst',
+        r'installer\zstd.exe',
+        r'installer\7za.exe',
+      ]) {
+        expect(script, contains(asset));
+      }
+    });
+  });
+
   group('סימון גרסת התלמוד בחבילות FULL', () {
     // בלי הסימון האפליקציה מורידה מחדש ~440MB בבדיקת העדכון הראשונה.
     final versionFile = DatabaseConstants.talmudBavliVersionFileName;
