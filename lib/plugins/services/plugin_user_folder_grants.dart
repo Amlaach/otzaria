@@ -18,6 +18,20 @@ class PluginUserFolderGrants {
   const PluginUserFolderGrants(this._repo);
 
   final PluginRegistryRepository _repo;
+  static final Map<String, Set<void Function(String)>> _revokeListeners = {};
+
+  /// מודיע למופעים פעילים להסיר גם הרשאה חד-פעמית לאותה תיקייה.
+  static void Function() onRevoke(
+    String pluginId,
+    void Function(String) listener,
+  ) {
+    final listeners = _revokeListeners.putIfAbsent(pluginId, () => {});
+    listeners.add(listener);
+    return () {
+      listeners.remove(listener);
+      if (listeners.isEmpty) _revokeListeners.remove(pluginId);
+    };
+  }
 
   static const String namespace = '_internal';
   static const String key = 'user_folder_grants';
@@ -74,6 +88,11 @@ class PluginUserFolderGrants {
     if (!grants.containsKey(token)) return null;
     final removed = _grantOf(token, grants.remove(token));
     await _write(pluginId, grants);
+    if (removed != null) {
+      for (final listener in [...?_revokeListeners[pluginId]]) {
+        listener(removed.path);
+      }
+    }
     return removed;
   }
 }

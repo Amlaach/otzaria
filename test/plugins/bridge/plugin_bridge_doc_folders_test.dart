@@ -352,6 +352,26 @@ void main() {
           jsonDecode(registry.kv['_internal/user_folder_grants']!) as Map;
       expect(grants.containsKey(g.token), isTrue);
     });
+
+    test('החלפת תיקייה מאושרת בקישור אינה מעבירה את ההרשאה ליעד', () async {
+      final g = await grantedFolder();
+      final replacement = Directory(p.join(temp.path, 'replacement'))
+        ..createSync();
+      final otherFile = File(p.join(replacement.path, 'other.docx'))
+        ..writeAsStringSync('other');
+      await g.root.rename(p.join(temp.path, 'moved'));
+      await Link(g.root.path).create(replacement.path);
+
+      await expectLater(
+        g.adapter.execute('fs', 'listUserFolder', {'folderToken': g.token}),
+        _throwsCode('error.forbidden'),
+      );
+      await expectLater(
+        g.adapter.execute('fs', 'deleteFile', {'path': otherFile.path}),
+        _throwsCode('error.forbidden'),
+      );
+      expect(otherFile.existsSync(), isTrue);
+    });
   });
 
   group('fs.openFolderFile', () {
@@ -536,10 +556,18 @@ void main() {
 
     test('ביטול חיצוני (מסך ההגדרות) חל על מופע שכבר רץ', () async {
       final g = await grantedFolder();
+      pickedFolder = g.root.path;
+      await g.adapter.execute('ui', 'pickFolder', {});
+      final otherAdapter = buildAdapter();
+      await otherAdapter.execute('ui', 'pickFolder', {});
       final notes = p.join(g.root.path, 'notes.txt');
       await PluginUserFolderGrants(registry).revoke('test.plugin', g.token);
       await expectLater(
         g.adapter.execute('fs', 'deleteFile', {'path': notes}),
+        _throwsCode('error.forbidden'),
+      );
+      await expectLater(
+        otherAdapter.execute('fs', 'deleteFile', {'path': notes}),
         _throwsCode('error.forbidden'),
       );
     });

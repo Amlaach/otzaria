@@ -648,7 +648,12 @@ class PluginBridgeAdapter {
            highlightRegistry ?? PluginHighlightRegistry.instance,
        _pluginFsService = fsService,
        _pluginShortcutService = shortcutService,
-       _fileServer = fileServer ?? PluginFileServer.instance;
+       _fileServer = fileServer ?? PluginFileServer.instance {
+    _stopFolderRevocationListener = PluginUserFolderGrants.onRevoke(
+      plugin.pluginId,
+      _removeTemporaryFolderGrant,
+    );
+  }
 
   // שרת הקבצים הפנימי שמגיש קבצים אישיים ל-WebView (מופע יחיד לכל האפליקציה
   // כברירת מחדל; ניתן להזרקה לבדיקות).
@@ -685,6 +690,11 @@ class PluginBridgeAdapter {
   /// נובעת מהסכמה מפורשת של המשתמש בדיאלוג בחירת התיקייה — ולא מהרשאת
   /// manifest. הקבוצה מאופסת עם `dispose` (טעינה/השבתה מחדש של התוסף).
   final Set<String> _grantedFolders = <String>{};
+  late final void Function() _stopFolderRevocationListener;
+
+  void _removeTemporaryFolderGrant(String path) {
+    _grantedFolders.removeWhere((root) => p.equals(root, path));
+  }
 
   // שירות בקשות HTTP — מופע יחיד לכל adapter; ניתן להזרקה
   // לבדיקות, נוצר עם השימוש הראשון אם לא הוזרק, ומשוחרר ב-dispose.
@@ -696,6 +706,8 @@ class PluginBridgeAdapter {
   // getBookContent. ראה _loadBookRawText.
   final Map<PluginBookIdentityKey, String> _bookContentCache = {};
   static const int _bookContentCacheMaxEntries = 4;
+  static int _bookContentRevision = 0;
+  int _seenBookContentRevision = 0;
 
   /// אורך מקסימלי לשם שולחן עבודה שתוסף יוצר — השם מוצג בממשק המשתמש.
   static const int _workspaceNameMaxLength = 100;
@@ -739,6 +751,7 @@ class PluginBridgeAdapter {
   }
 
   void dispose() {
+    _stopFolderRevocationListener();
     // מסיר רק את תרומות המופע הזה — מופע אחר של אותו תוסף ממשיך לתפקד,
     // וה-dedup בציור חושף את העותקים שלו.
     final key = (pluginId: plugin.pluginId, instanceId: instanceId);
@@ -779,6 +792,10 @@ class PluginBridgeAdapter {
   /// לא-מעודכן אם המשתמש עורך ספר בזמן שתוסף קורא אותו — מקרה קצה נדיר
   /// בנתיב קריאה-בלבד.
   Future<String> _loadBookRawText(Book book) async {
+    if (_seenBookContentRevision != _bookContentRevision) {
+      _bookContentCache.clear();
+      _seenBookContentRevision = _bookContentRevision;
+    }
     final key = PluginBookIdentity.keyOf(book);
     final cached = _bookContentCache.remove(key);
     if (cached != null) {
@@ -3513,7 +3530,11 @@ class PluginBridgeAdapter {
         if (rejection != null) {
           throw Exception('error.forbidden: $rejection');
         }
-        _grantedFolders.add(p.normalize(p.absolute(path)));
+        final canonical = canonicalizeNearestExisting(path);
+        if (canonical == null) {
+          throw Exception('error.forbidden: selected folder no longer exists');
+        }
+        _grantedFolders.add(canonical);
         return {'path': path};
       case 'print':
         final printer = _dependencies.printPluginPage ?? _defaultPrintPage;
@@ -3812,25 +3833,28 @@ class PluginBridgeAdapter {
   /// תיקייה מאושרת אל מחוץ לה. בלי פתרון ה-symlink בדיקת [p.isWithin] על המחרוזת
   /// בלבד הייתה מאשרת כתיבה/מחיקה מחוץ לתיקייה דרך קישור סימבולי.
   ///
-  /// התיקיות הקבועות נקראות מה-KV בכל בדיקה ולא נשמרות במטמון: ביטול ממסך
-  /// הגדרות התוסף חל מיד גם על תוסף שרץ כרגע.
+  /// בהיעדר התאמה להרשאה חד-פעמית, התיקיות הקבועות נקראות מה-KV כדי שביטול
+  /// ממסך ההגדרות יחול גם על תוסף שרץ כרגע.
   Future<bool> _isPathInGrantedFolder(
     String targetPath, {
     bool allowRoot = true,
   }) async {
     final canonicalTarget = canonicalizeNearestExisting(targetPath);
     if (canonicalTarget == null) return false;
-    final roots = [
-      ..._grantedFolders,
-      for (final grant in await _folderGrants.list(plugin.pluginId)) grant.path,
-    ];
-    for (final root in roots) {
+    bool inside(String root) =>
+        (allowRoot && p.equals(canonicalTarget, root)) ||
+        p.isWithin(root, canonicalTarget);
+    for (final root in _grantedFolders) {
       final canonicalRoot = canonicalizeNearestExisting(root);
-      if (canonicalRoot == null) continue;
-      if ((allowRoot && p.equals(canonicalTarget, canonicalRoot)) ||
-          p.isWithin(canonicalRoot, canonicalTarget)) {
-        return true;
+      if (canonicalRoot == null || !p.equals(canonicalRoot, root)) continue;
+      if (inside(canonicalRoot)) return true;
+    }
+    for (final grant in await _folderGrants.list(plugin.pluginId)) {
+      final canonicalRoot = canonicalizeNearestExisting(grant.path);
+      if (canonicalRoot == null || !p.equals(canonicalRoot, grant.path)) {
+        continue;
       }
+      if (inside(canonicalRoot)) return true;
     }
     return false;
   }
@@ -3933,21 +3957,7 @@ class PluginBridgeAdapter {
         if (folderToken is! String || folderToken.isEmpty) {
           throw Exception('error.invalid_params: folderToken required');
         }
-        final revoked = await _folderGrants.revoke(
-          plugin.pluginId,
-          folderToken,
-        );
-        if (revoked != null) {
-          // גם ההרשאה החד-פעמית של אותה תיקייה בריצה הזו (`ui.pickFolder`)
-          // נופלת: אחרי ביטול, כתיבה ומחיקה בה דורשות בחירה מחדש.
-          final revokedRoot = canonicalizeNearestExisting(revoked.path);
-          _grantedFolders.removeWhere((root) {
-            final canonicalRoot = canonicalizeNearestExisting(root);
-            return canonicalRoot != null &&
-                revokedRoot != null &&
-                p.equals(canonicalRoot, revokedRoot);
-          });
-        }
+        await _folderGrants.revoke(plugin.pluginId, folderToken);
         return true;
       case 'beginBinaryWrite':
         return await _beginBinaryWrite(args);
@@ -4251,10 +4261,8 @@ class PluginBridgeAdapter {
           throw Exception('error.not_found: file no longer exists');
         }
         await _atomicWrite(upload, canonical);
-        // ספר אישי שנשמר במקום: הטקסט שלו במטמון ה-LRU של getBookContent
-        // כבר אינו התוכן. המטמון הקבוע של ההמרה ממופתח לפי גודל+mtime ולכן
-        // מתעדכן לבד; זה של המופע הזה ממופתח לפי זהות הספר בלבד.
-        _bookContentCache.clear();
+        // מטמוני getBookContent של כל מופעי התוסף מתעדכנים בקריאה הבאה.
+        _bookContentRevision++;
         return {
           'cancelled': false,
           'token': targetToken,
@@ -4686,7 +4694,11 @@ class PluginBridgeAdapter {
     final path = grant.path;
     try {
       if (await Directory(path).exists()) {
-        return await Directory(path).resolveSymbolicLinks();
+        final current = await Directory(path).resolveSymbolicLinks();
+        if (!p.equals(current, path)) {
+          throw Exception('error.forbidden: granted folder path changed');
+        }
+        return current;
       }
     } on FileSystemException {
       // נופל ל-not_found למטה.
