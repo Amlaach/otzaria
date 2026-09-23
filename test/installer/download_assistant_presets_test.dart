@@ -107,6 +107,40 @@ void main() {
       expect(ids, ['full', 'basic', 'update']);
     });
 
+    test('שלושת המסייעים: אותם טקסטים ואותה הצעה מסומנת מראש', () {
+      final presets = buildPresets(
+        _manifest(kKnownComponents),
+        _windowsTargets.first,
+      );
+      expect(presets.map((p) => p.id), containsAll(['full', 'basic']));
+      final sources = {
+        for (final path in const [
+          _assistant,
+          'tool/download_assistant/macos/Sources/AssistantCore/Selection.swift',
+          'tool/download_assistant/linux/selection.c',
+        ])
+          path: File(path).readAsStringSync(),
+      };
+      for (final MapEntry(key: path, value: source) in sources.entries) {
+        for (final preset in presets) {
+          expect(source, contains(preset.caption), reason: path);
+          expect(source, contains(preset.description), reason: path);
+        }
+      }
+      expect(
+        _routine(_script(), 'procedure RefreshPresetPage('),
+        contains("DefaultIndex(PresetId, '$kDefaultPresetId')"),
+      );
+      expect(
+        sources.values.elementAt(1),
+        contains('defaultPresetId = "$kDefaultPresetId"'),
+      );
+      expect(
+        File('tool/download_assistant/linux/selection.h').readAsStringSync(),
+        contains('OTZ_DEFAULT_PRESET_ID "$kDefaultPresetId"'),
+      );
+    });
+
     test('ComponentFitsTarget בודק את שלושת השדות', () {
       final fits = _routine(_script(), 'function ComponentFitsTarget(');
       for (final pair in const [

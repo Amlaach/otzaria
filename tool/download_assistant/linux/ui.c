@@ -25,6 +25,7 @@ enum {
 };
 
 #define PRESET_CUSTOM (-1)
+#define PRESET_UNCHOSEN (-3)
 #define SPEED_WINDOW_US (5 * G_USEC_PER_SEC)
 #define MAX_SAMPLES 64
 
@@ -206,7 +207,7 @@ static void set_platform(Ui *ui, const char *platform) {
 
 static GPtrArray *selected_ids(Ui *ui) {
   OtzTarget target = current_target(ui);
-  if (ui->preset_index != PRESET_CUSTOM && ui->presets != NULL &&
+  if (ui->preset_index >= 0 && ui->presets != NULL &&
       ui->preset_index < (int)ui->presets->len) {
     const OtzPreset *preset = g_ptr_array_index(ui->presets, ui->preset_index);
     return otz_with_dependencies(ui->manifest, preset->members, &target);
@@ -327,8 +328,14 @@ static void prepare_presets(Ui *ui) {
   g_clear_pointer(&ui->presets, g_ptr_array_unref);
   ui->presets = otz_build_presets(ui->manifest, &target);
   if (ui->preset_index != PRESET_CUSTOM &&
-      ui->preset_index >= (int)ui->presets->len)
+      (ui->preset_index < 0 || ui->preset_index >= (int)ui->presets->len)) {
     ui->preset_index = ui->presets->len > 0 ? 0 : PRESET_CUSTOM;
+    for (guint i = 0; i < ui->presets->len; i++) {
+      const OtzPreset *preset = g_ptr_array_index(ui->presets, i);
+      if (strcmp(preset->id, OTZ_DEFAULT_PRESET_ID) == 0)
+        ui->preset_index = (int)i;
+    }
+  }
 
   g_autoptr(GPtrArray) captions = g_ptr_array_new_with_free_func(g_free);
   g_autoptr(GPtrArray) notes = g_ptr_array_new();
@@ -879,6 +886,10 @@ static void build(Ui *ui) {
             "הכלי מוריד את הקבצים הדרושים ומכין תיקייה להתקנה במחשב אחר — גם "
             "במחשב ללא אינטרנט, ובכל מערכת הפעלה.",
             FALSE);
+  add_label(page,
+            "יש אינטרנט במחשב שבו תותקן אוצריא? מספיקה ההתקנה הבסיסית — "
+            "הספרייה תרד מתוך התוכנה.",
+            FALSE);
   GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   ui->intro_spinner = gtk_spinner_new();
   gtk_spinner_start(GTK_SPINNER(ui->intro_spinner));
@@ -1013,6 +1024,7 @@ static gboolean quit_self_test(gpointer data) {
 int otz_ui_run(const OtzUiOptions *options) {
   Ui ui = {0};
   ui.options = options;
+  ui.preset_index = PRESET_UNCHOSEN;
   ui.os_release = otz_read_os_release();
   ui.custom_checked = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 

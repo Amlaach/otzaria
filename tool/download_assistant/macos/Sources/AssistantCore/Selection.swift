@@ -17,6 +17,9 @@ public let platformDisplayNames: [String: String] = [
 
 public let portablePackageFormat = "portable"
 
+/// ההצעה המסומנת מראש: במחשב עם אינטרנט הספרייה יורדת מתוך התוכנה.
+public let defaultPresetId = "basic"
+
 /// מחשב היעד. ארכיטקטורה ריקה כשלפלטפורמה אין רכיבים תלויי ארכיטקטורה; פורמט ריק מחוץ ל-Linux.
 public struct AssistantTarget: Equatable {
     public var platform: String
@@ -230,14 +233,14 @@ public func buildPresets(_ manifest: ReleaseManifest, _ target: AssistantTarget)
     let candidates: [(id: String, caption: String, description: String, members: [String])] = [
         (
             "full",
-            "התקנה מלאה ומומלצת",
-            "התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.",
+            "התקנה מלאה (למחשב בלי אינטרנט)",
+            "התוכנה יחד עם כל ספריית הספרים — למחשב שאין בו אינטרנט.",
             full
         ),
         (
             "basic",
-            "התקנה בסיסית (תוכנה בלבד)",
-            "התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.",
+            "התקנה בסיסית (מומלצת)",
+            "מומלץ כשבמחשב שבו תותקן אוצריא יש אינטרנט — הספרייה תרד מתוך התוכנה.",
             collect(manifest, target, types: ["application"])
                 + collect(manifest, target, requiredOnly: true)
         ),

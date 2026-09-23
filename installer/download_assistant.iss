@@ -1447,11 +1447,11 @@ begin
     if CollectByTypes('library,', False) = '' then
       Members := '';
   end;
-  AddPreset('full', 'התקנה מלאה ומומלצת',
-    'התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.', Members);
+  AddPreset('full', 'התקנה מלאה (למחשב בלי אינטרנט)',
+    'התוכנה יחד עם כל ספריית הספרים — למחשב שאין בו אינטרנט.', Members);
 
-  AddPreset('basic', 'התקנה בסיסית (תוכנה בלבד)',
-    'התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.',
+  AddPreset('basic', 'התקנה בסיסית (מומלצת)',
+    'מומלץ כשבמחשב שבו תותקן אוצריא יש אינטרנט — הספרייה תרד מתוך התוכנה.',
     CollectByTypes('application,', False) + CollectByTypes('', True));
 
   AddPreset('update', 'עדכון התוכנה בלבד',
@@ -1613,7 +1613,7 @@ begin
   PresetPage.CheckListBox.ItemSubItem[CustomPresetIndex] :=
     'אני רוצה לבחור בעצמי מה להוריד.';
   if PresetPage.SelectedValueIndex < 0 then
-    PresetPage.SelectedValueIndex := 0;
+    PresetPage.SelectedValueIndex := DefaultIndex(PresetId, 'basic');
 end;
 
 procedure RefreshCustomPage();
@@ -1785,7 +1785,9 @@ begin
     'אוצריא — מסייע הורדה',
     'כלי זה אינו מתקין את אוצריא.',
     'הכלי מאפשר להוריד את הקבצים הדרושים ולהכין התקנה עבור מחשב זה או עבור ' +
-    'מחשב אחר.' + #13#10#13#10 + 'מה ברצונך לעשות?',
+    'מחשב אחר.' + #13#10#13#10 +
+    'יש אינטרנט במחשב שבו תותקן אוצריא? מספיקה ההתקנה הבסיסית — הספרייה תרד ' +
+    'מתוך התוכנה.' + #13#10#13#10 + 'מה ברצונך לעשות?',
     True, False);
   ModePage.Add('הורדה והתקנה במחשב הזה');
   ModePage.Add('הכנת התקנה למחשב אחר');

@@ -49,6 +49,10 @@ class AssistantTarget {
   };
 }
 
+/// ההצעה המסומנת מראש: במחשב עם אינטרנט הספרייה יורדת מתוך התוכנה.
+/// "מלאה" נשארת ראשונה ברשימה כי סדר ההצעות קובע איזו כפולה מושמטת.
+const String kDefaultPresetId = 'basic';
+
 /// הצעה מוכנה: מזהה יציב, הטקסט למשתמש, והרכיבים בסדר המניפסט.
 class AssistantPreset {
   const AssistantPreset({
@@ -337,15 +341,15 @@ List<AssistantPreset> buildPresets(
   final candidates = [
     (
       id: 'full',
-      caption: 'התקנה מלאה ומומלצת',
-      description:
-          'התוכנה יחד עם ספריית הספרים — הבחירה המתאימה לרוב המשתמשים.',
+      caption: 'התקנה מלאה (למחשב בלי אינטרנט)',
+      description: 'התוכנה יחד עם כל ספריית הספרים — למחשב שאין בו אינטרנט.',
       members: full,
     ),
     (
       id: 'basic',
-      caption: 'התקנה בסיסית (תוכנה בלבד)',
-      description: 'התוכנה בלבד. את הספרים אפשר להוריד אחר כך מתוך התוכנה.',
+      caption: 'התקנה בסיסית (מומלצת)',
+      description:
+          'מומלץ כשבמחשב שבו תותקן אוצריא יש אינטרנט — הספרייה תרד מתוך התוכנה.',
       members: [
         ..._collect(manifest, target, types: const {'application'}),
         ..._collect(manifest, target, requiredOnly: true),

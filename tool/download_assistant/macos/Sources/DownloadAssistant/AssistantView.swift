@@ -116,6 +116,8 @@ struct AssistantView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("הכלי מאפשר להוריד את הקבצים הדרושים ולהכין התקנה עבור מחשב זה או עבור מחשב אחר.")
                 .fixedSize(horizontal: false, vertical: true)
+            Text("יש אינטרנט במחשב שבו תותקן אוצריא? מספיקה ההתקנה הבסיסית — הספרייה תרד מתוך התוכנה.")
+                .fixedSize(horizontal: false, vertical: true)
             Text("לאיזו מערכת להכין את ההתקנה?").bold()
             ForEach(model.platforms, id: \.self) { platform in
                 ChoiceRow(

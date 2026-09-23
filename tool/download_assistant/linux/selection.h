@@ -9,6 +9,8 @@
 
 #define OTZ_MAX_SINGLE_OUTPUT_FILE_SIZE G_GINT64_CONSTANT(4294967296)
 #define OTZ_PORTABLE_PACKAGE_FORMAT "portable"
+/* Pre-selected: with internet, the library downloads from inside the app. */
+#define OTZ_DEFAULT_PRESET_ID "basic"
 
 typedef struct {
   const char *platform;

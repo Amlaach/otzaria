@@ -168,7 +168,8 @@ final class AssistantModel: ObservableObject {
         guard let manifest = manifest else { return }
         presets = buildPresets(manifest, target)
         if presetId != customPresetId && !presets.contains(where: { $0.id == presetId }) {
-            presetId = presets.first?.id ?? customPresetId
+            presetId = presets.first(where: { $0.id == defaultPresetId })?.id
+                ?? presets.first?.id ?? customPresetId
         }
         customChecked.removeAll()
         go(.presets)
