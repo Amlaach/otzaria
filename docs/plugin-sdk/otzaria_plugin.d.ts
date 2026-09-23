@@ -1590,6 +1590,102 @@ export type PickUserFileResult =
       access?: 'read' | 'readwrite';
     } & UserFileHandle);
 
+/** ארגומנטים ל-`library.getTree`. */
+export interface LibraryTreeArgs {
+  /** צמצום לתת-קטגוריה, למשל `'/תנך/ראשונים'`. ברירת מחדל: כל הספרייה. */
+  path?: string;
+  /** ברירת מחדל `true`. */
+  includeBooks?: boolean;
+  /**
+   * מ-0.9.98: רק ספרים שה-`type` שלהם ברשימה; קטגוריות בלי אף ספר כזה תחתן
+   * נגזמות. גרסה ישנה מתעלמת מהשדה — יש לגזום גם בצד התוסף.
+   */
+  types?: BookType[];
+}
+
+/** צומת בעץ של `library.getTree`. */
+export interface LibraryTreeNode {
+  title: string;
+  path: string;
+  categories: LibraryTreeNode[];
+  /** קיים רק כש-`includeBooks` אינו `false`. */
+  books?: (BookMeta & { author?: string; topics?: string })[];
+}
+
+/** ארגומנטים ל-`library.openBookFile` (מ-0.9.98). זהות כמו ב-`getBookMetadata`. */
+export interface OpenBookFileArgs {
+  bookUid?: string;
+  id?: number;
+  bookId?: string;
+  type?: BookType;
+  source?: BookMeta['source'];
+  /** `'readwrite'` — ספר אישי בלבד, ודורש גם `fs.user_files.write`. */
+  access?: 'read' | 'readwrite';
+}
+
+/** תוצאת `library.openBookFile`. ה-`token` הוא token רגיל של קובץ משתמש. */
+export interface BookFileHandle extends UserFileHandle {
+  /** מה שה-token מאפשר בפועל. */
+  access: 'read' | 'readwrite';
+  source: 'library' | 'user' | 'attached';
+}
+
+/** תוצאת `fs.pickUserFolder` (מ-0.9.98). */
+export type PickUserFolderResult =
+  | { cancelled: true }
+  | {
+      cancelled: false;
+      /** מזהה אטום וקבוע של ההרשאה. יש לשמור אותו. */
+      folderToken: string;
+      /** שם התיקייה. */
+      name: string;
+      /** נתיב מלא, לתצוגה בלבד. */
+      path: string;
+    };
+
+/** ארגומנטים ל-`fs.listUserFolder`. */
+export interface ListUserFolderArgs {
+  folderToken: string;
+  /** יחסי לשורש התיקייה, מופרד ב-`/`. `''` (ברירת מחדל) = השורש. */
+  path?: string;
+  /** מסנן קבצים בלבד; לא תלוי רישיות, עם נקודה או בלעדיה. */
+  extensions?: string[];
+}
+
+/** רשומה ב-`fs.listUserFolder`. */
+export interface UserFolderEntry {
+  name: string;
+  /** יחסי לשורש התיקייה, מופרד ב-`/` — הקלט של `openFolderFile`/`listUserFolder`. */
+  path: string;
+  type: 'file' | 'dir';
+  /** `0` לתיקייה. */
+  size: number;
+  /** ISO-8601 ב-UTC. */
+  modified: string | null;
+}
+
+/** תוצאת `fs.listUserFolder`. */
+export interface UserFolderListing {
+  folderToken: string;
+  /** שם התיקייה המאושרת. */
+  name: string;
+  /** הנתיב היחסי שנמנה. */
+  path: string;
+  /** תיקיות ואחריהן קבצים, כל קבוצה לפי שם. */
+  entries: UserFolderEntry[];
+  /** `true` כשהיו יותר מ-2000 רשומות. */
+  truncated: boolean;
+}
+
+/** ארגומנטים ל-`fs.openFolderFile`. */
+export interface OpenFolderFileArgs {
+  folderToken: string;
+  /** יחסי לשורש התיקייה, מופרד ב-`/`. */
+  path: string;
+  /** `'readwrite'` דורש גם `fs.user_files.write`. */
+  access?: 'read' | 'readwrite';
+}
+
 /** תוצאת `fs.beginBinaryWrite` — לאן לשלוח את הבייטים ועד מתי. */
 export interface BinaryWriteTicket {
   /** חד-פעמי, פג תוך שתי דקות. */
@@ -1793,6 +1889,7 @@ export type OtzariaMethod =
   | 'library.getLinkTargetsSummary'
   | 'library.getLinkContent'
   | 'library.refreshUserBooks'
+  | 'library.openBookFile'
   | 'library.getTree'
   | 'library.resolveCategoryPaths'
   | 'search.fullText'
@@ -1897,6 +1994,10 @@ export type OtzariaMethod =
   | 'fs.beginBinaryWrite'
   | 'fs.commitUserFileWrite'
   | 'fs.abortBinaryWrite'
+  | 'fs.pickUserFolder'
+  | 'fs.listUserFolder'
+  | 'fs.openFolderFile'
+  | 'fs.revokeFolder'
   | 'fs.extractZip'
   | 'fs.deleteFile'
   | 'shortcut.create'
@@ -1940,6 +2041,42 @@ export interface OtzariaGlobal {
   call(
     method: 'reader.openSearchTab',
     payload: OpenSearchTabArgs
+  ): Promise<OtzariaResponse<boolean>>;
+
+  /** עץ הספרייה; עם `types` — תת-עץ גזום. `null` כש-`path` לא נמצא. */
+  call(
+    method: 'library.getTree',
+    payload?: LibraryTreeArgs
+  ): Promise<OtzariaResponse<LibraryTreeNode | null>>;
+
+  /** הקובץ שמאחורי ספר בספרייה, כ-token של קובץ משתמש. */
+  call(
+    method: 'library.openBookFile',
+    payload: OpenBookFileArgs
+  ): Promise<OtzariaResponse<BookFileHandle>>;
+
+  /** בחירת תיקייה עם הרשאת עיון וקריאה קבועה. */
+  call(
+    method: 'fs.pickUserFolder',
+    payload?: { title?: string }
+  ): Promise<OtzariaResponse<PickUserFolderResult>>;
+
+  /** רמה אחת של תיקייה מאושרת. */
+  call(
+    method: 'fs.listUserFolder',
+    payload: ListUserFolderArgs
+  ): Promise<OtzariaResponse<UserFolderListing>>;
+
+  /** פתיחת קובץ מתיקייה מאושרת — אותה צורה כמו `fs.pickUserFile`. */
+  call(
+    method: 'fs.openFolderFile',
+    payload: OpenFolderFileArgs
+  ): Promise<OtzariaResponse<PickUserFileResult>>;
+
+  /** הסרת תיקייה מאושרת. idempotent. */
+  call(
+    method: 'fs.revokeFolder',
+    payload: { folderToken: string }
   ): Promise<OtzariaResponse<boolean>>;
 
   /** מחזיר רשימה של כל התוספים המותקנים. */
