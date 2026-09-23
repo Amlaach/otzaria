@@ -14,16 +14,9 @@ class SwapFileSystem {
   void createParent(String path) =>
       Directory(p.dirname(path)).createSync(recursive: true);
 
-  /// העברה. `rename` נכשל בין כוננים — אז נופלים להעתקה ומחיקה.
-  void move(String from, String to) {
-    createParent(to);
-    try {
-      File(from).renameSync(to);
-    } on FileSystemException {
-      File(from).copySync(to);
-      File(from).deleteSync();
-    }
-  }
+  /// מחליף את [to] ב-[from], שיושב לצדו באותה תיקייה. ב-Windows זה
+  /// `MoveFileEx` עם REPLACE_EXISTING: הנתיב מצביע תמיד על הישן או על החדש.
+  void replace(String from, String to) => File(from).renameSync(to);
 
   void copy(String from, String to) {
     createParent(to);
@@ -92,27 +85,94 @@ String corruptedInstallMessage(String backupRoot) =>
     'אפשר להעתיק אותם בחזרה לתיקיית ההתקנה, או להתקין את אוצריא מחדש '
     'מהמתקין המלא.';
 
-class _Op {
-  _Op.backedUp(this.target, this.backup) : installed = false;
-  _Op.installed(this.target) : backup = null, installed = true;
+/// סיומת העותק שמחכה לצד קובץ היעד עד ה-rename שמחליף אותו.
+const String kIncomingSuffix = '.otzaria-incoming';
 
-  final String target;
-  final String? backup;
-  final bool installed;
+/// שם הערך ב-RunOnce. ה-"!" דוחה את מחיקתו עד שהפקודה הסתיימה, כך ששחזור
+/// שנקטע בעצמו ירוץ שוב בכניסה הבאה.
+const String kLogonRecoveryValueName = '!OtzariaUpdateRecovery';
+
+/// שורת הפקודה שמשחזרת בכניסה הבאה למערכת, בלי שאוצריא תצטרך לעלות.
+/// [updaterCopy] הוא העותק שמחוץ להתקנה — זה שבתוכה עשוי להיות באמצע החלפה.
+String logonRecoveryCommand({
+  required String updaterCopy,
+  required String planPath,
+}) => '"$updaterCopy" --plan "$planPath" --recover --no-relaunch --from-temp';
+
+/// קובצי ה-exe בשורש הם נקודות הכניסה: מותקנים אחרונים, והסרות קורות רק
+/// אחריהם — קבצים שהגרסה הישנה עוד צריכה לא נעלמים לפני שהיא הוחלפה.
+List<SwapFile> _installOrder(List<SwapFile> files) {
+  bool isEntryPoint(SwapFile file) =>
+      !file.path.contains('/') && file.path.toLowerCase().endsWith('.exe');
+  return [
+    ...files.where((file) => !isEntryPoint(file)),
+    ...files.where(isEntryPoint),
+  ];
 }
 
-/// מחליף את קובצי ההתקנה בקבצים שב-staging. שום קובץ אינו נמחק: הישן עובר
-/// לגיבוי, וכשל בכל שלב מחזיר למקומו את כל מה שכבר הוזז.
+class _Paths {
+  _Paths(this.plan);
+  final SwapPlan plan;
+
+  String install(String path) => p.join(plan.installRoot, path);
+  String staging(String path) => p.join(plan.stagingRoot, path);
+  String backup(String path) => p.join(plan.backupRoot, path);
+  String incoming(String path) => '${install(path)}$kIncomingSuffix';
+
+  Iterable<String> get allPaths => [
+    for (final file in plan.files) file.path,
+    for (final removal in plan.removals) removal.path,
+  ];
+}
+
+bool _isInstalled(SwapFile file, _Paths at, SwapFileSystem fs) {
+  final target = at.install(file.path);
+  return fs.exists(target) && fs.hashOf(target) == file.sha256;
+}
+
+/// היעד לעולם אינו חסר: הישן מועתק לגיבוי, החדש מועתק לצדו, ורק rename
+/// אחד מחליף ביניהם. ה-staging נשאר שלם, ולכן אפשר תמיד להשלים קדימה.
+void _installOne(SwapFile file, _Paths at, SwapFileSystem fs) {
+  final target = at.install(file.path);
+  if (fs.exists(target)) fs.copy(target, at.backup(file.path));
+  fs.copy(at.staging(file.path), at.incoming(file.path));
+  fs.replace(at.incoming(file.path), target);
+}
+
+/// ההסרה מוחקת רק אחרי שהגיבוי הועתק במלואו.
+void _removeOne(SwapRemoval removal, _Paths at, SwapFileSystem fs) {
+  final target = at.install(removal.path);
+  fs.copy(target, at.backup(removal.path));
+  fs.delete(target);
+}
+
+void _restoreOne(String path, _Paths at, SwapFileSystem fs) {
+  fs.copy(at.backup(path), at.incoming(path));
+  fs.replace(at.incoming(path), at.install(path));
+}
+
+void _deleteIncoming(_Paths at, SwapFileSystem fs) {
+  for (final path in at.allPaths) {
+    fs.delete(at.incoming(path));
+  }
+}
+
+/// מחליף את קובצי ההתקנה בקבצים שב-staging. שום קובץ אינו נמחק לפני שגובה,
+/// וכשל בכל שלב מחזיר את ההתקנה כולה לגרסה הישנה.
+///
+/// [beforeFirstChange] רץ אחרי כל הבדיקות ולפני הנגיעה הראשונה בהתקנה —
+/// כשל בו מבטל את ההחלפה כשההתקנה עוד שלמה.
 SwapResult applySwapPlan(
   SwapPlan plan, {
   SwapFileSystem fs = const SwapFileSystem(),
+  void Function()? beforeFirstChange,
 }) {
-  String inInstall(String path) => p.join(plan.installRoot, path);
-  String inStaging(String path) => p.join(plan.stagingRoot, path);
-  String inBackup(String path) => p.join(plan.backupRoot, path);
+  final at = _Paths(plan);
 
   try {
-    _preflight(plan, fs, inStaging: inStaging, inInstall: inInstall);
+    _preflight(plan, fs, at);
+    beforeFirstChange?.call();
+    Directory(plan.backupRoot).createSync(recursive: true);
   } catch (error) {
     return SwapResult(
       outcome: SwapOutcome.abortedBeforeAnyChange,
@@ -120,29 +180,17 @@ SwapResult applySwapPlan(
     );
   }
 
-  final journal = <_Op>[];
   var installed = 0;
   try {
-    for (final file in plan.files) {
-      final target = inInstall(file.path);
-      if (fs.exists(target)) {
-        final backup = inBackup(file.path);
-        fs.move(target, backup);
-        journal.add(_Op.backedUp(target, backup));
-      }
-      fs.move(inStaging(file.path), target);
-      journal.add(_Op.installed(target));
+    for (final file in _installOrder(plan.files)) {
+      _installOne(file, at, fs);
       installed++;
     }
     for (final removal in plan.removals) {
-      final target = inInstall(removal.path);
-      if (!fs.exists(target)) continue;
-      final backup = inBackup(removal.path);
-      fs.move(target, backup);
-      journal.add(_Op.backedUp(target, backup));
+      if (fs.exists(at.install(removal.path))) _removeOne(removal, at, fs);
     }
   } catch (error) {
-    final errors = _rollback(journal, fs);
+    final errors = _restoreFromBackup(plan, at, fs).errors;
     return SwapResult(
       outcome: errors.isEmpty ? SwapOutcome.rolledBack : SwapOutcome.corrupted,
       error: '$error',
@@ -156,6 +204,9 @@ SwapResult applySwapPlan(
 enum SwapRecovery {
   /// אין עדות להחלפה שנקטעה.
   nothingToDo,
+
+  /// קובץ בהתקנה מוחזק בידי תהליך חי — לא נגעו בדבר, וינסו שוב מאוחר יותר.
+  busy,
 
   /// ההחלפה הושלמה — ההתקנה כולה בגרסה החדשה.
   completed,
@@ -176,7 +227,7 @@ class SwapRecoveryResult {
 }
 
 /// משלים או מבטל החלפה שהמעדכן נהרג באמצעה. המצב נגזר מהדיסק בלבד: קובץ
-/// שכבר הותקן זהה ל-hash שבתוכנית, וקובץ שטרם הותקן עדיין יושב ב-staging.
+/// שכבר הותקן זהה ל-hash שבתוכנית, וכל שלב בהחלפה ניתן להרצה חוזרת.
 ///
 /// הכיוון נבחר פעם אחת לכל ההחלפה — קדימה רק כשכל קובץ בתוכנית זמין —
 /// ולכן ההתקנה מסתיימת בגרסה אחת שלמה ולא בתערובת.
@@ -184,21 +235,18 @@ SwapRecoveryResult recoverInterruptedSwap(
   SwapPlan plan, {
   SwapFileSystem fs = const SwapFileSystem(),
 }) {
-  String inInstall(String path) => p.join(plan.installRoot, path);
-  String inStaging(String path) => p.join(plan.stagingRoot, path);
-  String inBackup(String path) => p.join(plan.backupRoot, path);
+  final at = _Paths(plan);
 
   if (!Directory(plan.backupRoot).existsSync()) {
     return SwapRecoveryResult(SwapRecovery.nothingToDo);
   }
-
-  bool isInstalled(SwapFile file) {
-    final target = inInstall(file.path);
-    return fs.exists(target) && fs.hashOf(target) == file.sha256;
+  // שחזור מהכניסה למערכת עשוי לרוץ כשאוצריא כבר עלתה; היא תשגר שחזור משלה.
+  if (_heldTarget(at, fs) != null) {
+    return SwapRecoveryResult(SwapRecovery.busy);
   }
 
   bool isStaged(SwapFile file) {
-    final staged = inStaging(file.path);
+    final staged = at.staging(file.path);
     return fs.exists(staged) &&
         fs.lengthOf(staged) == file.size &&
         fs.hashOf(staged) == file.sha256;
@@ -206,49 +254,39 @@ SwapRecoveryResult recoverInterruptedSwap(
 
   var changed = 0;
   try {
+    _deleteIncoming(at, fs);
     final canComplete = plan.files.every(
-      (file) => isInstalled(file) || isStaged(file),
+      (file) => _isInstalled(file, at, fs) || isStaged(file),
     );
 
     if (canComplete) {
-      for (final file in plan.files) {
-        if (isInstalled(file)) continue;
-        final target = inInstall(file.path);
-        if (fs.exists(target)) fs.move(target, inBackup(file.path));
-        fs.move(inStaging(file.path), target);
+      for (final file in _installOrder(plan.files)) {
+        if (_isInstalled(file, at, fs)) continue;
+        _installOne(file, at, fs);
         changed++;
       }
       for (final removal in plan.removals) {
-        final target = inInstall(removal.path);
+        final target = at.install(removal.path);
         if (!fs.exists(target)) continue;
         if (fs.hashOf(target) != removal.sha256) continue;
-        fs.move(target, inBackup(removal.path));
+        _removeOne(removal, at, fs);
         changed++;
       }
       return SwapRecoveryResult(SwapRecovery.completed, changedFiles: changed);
     }
 
-    final byPath = {for (final file in plan.files) file.path: file};
-    for (final path in [
-      for (final file in plan.files) file.path,
-      for (final removal in plan.removals) removal.path,
-    ]) {
-      final backup = inBackup(path);
-      final target = inInstall(path);
-      if (fs.exists(backup)) {
-        fs.delete(target);
-        fs.move(backup, target);
-        changed++;
-        continue;
-      }
-      // קובץ שהגרסה החדשה הוסיפה: אין לו גיבוי, וההתקנה הישנה בלעדיו.
-      final file = byPath[path];
-      if (file != null && isInstalled(file)) {
-        fs.delete(target);
-        changed++;
-      }
+    final restore = _restoreFromBackup(plan, at, fs);
+    if (restore.errors.isNotEmpty) {
+      return SwapRecoveryResult(
+        SwapRecovery.failed,
+        error: restore.errors.join('; '),
+        changedFiles: restore.changed,
+      );
     }
-    return SwapRecoveryResult(SwapRecovery.restored, changedFiles: changed);
+    return SwapRecoveryResult(
+      SwapRecovery.restored,
+      changedFiles: restore.changed,
+    );
   } catch (error) {
     return SwapRecoveryResult(
       SwapRecovery.failed,
@@ -258,14 +296,57 @@ SwapRecoveryResult recoverInterruptedSwap(
   }
 }
 
-/// כל הבדיקות שאפשר לעשות לפני שנוגעים בהתקנה. כשל כאן משאיר אותה כפי
-/// שהייתה בדיוק.
-void _preflight(
+/// מחזיר את ההתקנה לגרסה הישנה לפי מה שעל הדיסק. גיבוי משמש רק כשהיעד כבר
+/// השתנה — אז העתקתו הסתיימה בוודאות; גיבוי שנקטע יושב תמיד לצד יעד שלם.
+({int changed, List<String> errors}) _restoreFromBackup(
   SwapPlan plan,
-  SwapFileSystem fs, {
-  required String Function(String) inStaging,
-  required String Function(String) inInstall,
-}) {
+  _Paths at,
+  SwapFileSystem fs,
+) {
+  final errors = <String>[];
+  var changed = 0;
+  void attempt(String path, void Function() action) {
+    try {
+      action();
+      changed++;
+    } catch (error) {
+      errors.add('$path: $error');
+    }
+  }
+
+  try {
+    _deleteIncoming(at, fs);
+  } catch (error) {
+    errors.add('$error');
+  }
+  for (final removal in plan.removals.reversed) {
+    if (fs.exists(at.install(removal.path))) continue;
+    if (!fs.exists(at.backup(removal.path))) continue;
+    attempt(removal.path, () => _restoreOne(removal.path, at, fs));
+  }
+  for (final file in _installOrder(plan.files).reversed) {
+    if (!_isInstalled(file, at, fs)) continue;
+    if (fs.exists(at.backup(file.path))) {
+      attempt(file.path, () => _restoreOne(file.path, at, fs));
+    } else {
+      // קובץ שהגרסה החדשה הוסיפה: ההתקנה הישנה בלעדיו.
+      attempt(file.path, () => fs.delete(at.install(file.path)));
+    }
+  }
+  return (changed: changed, errors: errors);
+}
+
+String? _heldTarget(_Paths at, SwapFileSystem fs) {
+  for (final path in at.allPaths) {
+    final target = at.install(path);
+    if (fs.exists(target) && fs.isHeldByAnotherProcess(target)) return path;
+  }
+  return null;
+}
+
+/// כל הבדיקות שאפשר לעשות לפני שנוגעים בהתקנה. כשל כאן משאיר אותה כפי
+/// שהייתה, וגם בלי תיקיית גיבוי — שאחרת הייתה נראית כהחלפה שנקטעה.
+void _preflight(SwapPlan plan, SwapFileSystem fs, _Paths at) {
   if (!Directory(plan.installRoot).existsSync()) {
     throw StateError('the install directory is missing: ${plan.installRoot}');
   }
@@ -282,23 +363,13 @@ void _preflight(
   }
   // עדיף "העדכון לא קרה" על "העדכון בוטל באמצע": קובץ נעול מפיל את ההחלפה
   // בדרכה ומחייב שחזור, וכאן ההתקנה עוד לא נגעה.
-  for (final path in [
-    for (final file in plan.files) file.path,
-    for (final removal in plan.removals) removal.path,
-  ]) {
-    final target = inInstall(path);
-    if (fs.exists(target) && fs.isHeldByAnotherProcess(target)) {
-      throw StateError('$path: the file is still held by another process');
-    }
+  final held = _heldTarget(at, fs);
+  if (held != null) {
+    throw StateError('$held: the file is still held by another process');
   }
-
-  if (Directory(plan.backupRoot).existsSync()) {
-    Directory(plan.backupRoot).deleteSync(recursive: true);
-  }
-  Directory(plan.backupRoot).createSync(recursive: true);
 
   for (final file in plan.files) {
-    final staged = inStaging(file.path);
+    final staged = at.staging(file.path);
     if (!fs.exists(staged)) {
       throw StateError('${file.path}: the staged file is missing');
     }
@@ -307,7 +378,7 @@ void _preflight(
     }
   }
   for (final removal in plan.removals) {
-    final target = inInstall(removal.path);
+    final target = at.install(removal.path);
     if (!fs.exists(target)) continue;
     if (fs.hashOf(target) != removal.sha256) {
       throw StateError(
@@ -315,27 +386,8 @@ void _preflight(
       );
     }
   }
-}
 
-/// מחזיר את ההתקנה למצבה לפני ההחלפה. מחזיר את השגיאות שנותרו — רשימה
-/// ריקה פירושה שהשחזור היה מלא.
-List<String> _rollback(List<_Op> journal, SwapFileSystem fs) {
-  final errors = <String>[];
-  for (final op in journal.reversed) {
-    try {
-      if (op.installed) {
-        fs.delete(op.target);
-      } else {
-        final backup = op.backup!;
-        try {
-          fs.move(backup, op.target);
-        } on FileSystemException {
-          fs.copy(backup, op.target);
-        }
-      }
-    } catch (error) {
-      errors.add('${op.target}: $error');
-    }
+  if (Directory(plan.backupRoot).existsSync()) {
+    Directory(plan.backupRoot).deleteSync(recursive: true);
   }
-  return errors;
 }

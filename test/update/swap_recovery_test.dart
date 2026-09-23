@@ -90,4 +90,36 @@ void main() {
     expect(ok, isFalse);
     expect(launches, 0);
   });
+
+  group('המעדכן ויתר על ההמתנה', () {
+    test('הסימן מפעיל את החזרה ל"מוכן" פעם אחת, ונמחק', () async {
+      var calls = 0;
+      final timer = watchForUpdaterGiveUp(
+        work,
+        () => calls++,
+        interval: const Duration(milliseconds: 5),
+      );
+      addTearDown(timer.cancel);
+
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(calls, 0);
+
+      final marker = File(p.join(work.path, kSwapGaveUpFileName))
+        ..writeAsStringSync('');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(calls, 1);
+      expect(marker.existsSync(), isFalse);
+      expect(timer.isActive, isFalse);
+
+      marker.writeAsStringSync('');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(calls, 1);
+    });
+
+    test('ויתור אינו נראה כהחלפה שנקטעה — אין מה לשחזר בעלייה', () {
+      writePlan();
+      File(p.join(work.path, kSwapGaveUpFileName)).writeAsStringSync('');
+      expect(pendingInterruptedSwapPlan(work), isNull);
+    });
+  });
 }

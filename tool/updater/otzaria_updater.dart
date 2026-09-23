@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:otzaria/update/differential/swap_plan.dart';
 import 'package:path/path.dart' as p;
 import 'package:win32/win32.dart';
+import 'package:win32_registry/win32_registry.dart';
 
 import 'updater_swap.dart';
 
@@ -51,26 +52,33 @@ void main(List<String> args) {
     return;
   }
 
-  // המשגר רשאי לדרוס את ה-pid שבתוכנית: בשחזור בעלייה התהליך שבתוכנית מת
-  // מזמן, ומי שמחזיק את ההתקנה הוא המופע החדש של אוצריא.
-  final pid = _intOption(args, '--wait-pid') ?? plan.waitForPid;
+  // בשחזור ה-pid שבתוכנית מת מזמן ועשוי כבר להיות של תהליך אחר; ממתינים
+  // רק למי שהמשגר ציין — המופע החדש של אוצריא, אם הוא זה ששיגר.
+  final recovering = args.contains('--recover');
+  final pid =
+      _intOption(args, '--wait-pid') ?? (recovering ? null : plan.waitForPid);
   if (pid != null && !_waitForProcessExit(pid, plan.waitTimeout)) {
     log.write(
       'otzaria (pid $pid) is still running after '
       '${plan.waitTimeout.inSeconds}s - nothing was changed',
     );
-    _relaunch(plan, args, log);
+    // אוצריא עוד רצה ומחכה לתשובה: הסימן מחזיר אצלה את העדכון למצב "מוכן".
+    _writeQuietly(File(p.join(planFile.parent.path, kSwapGaveUpFileName)));
     exitCode = kExitAborted;
     return;
   }
   final exitedAt = DateTime.now();
 
-  if (args.contains('--recover')) {
+  if (recovering) {
     exitCode = _recover(plan, planFile, log);
     return;
   }
 
-  final result = applySwapPlan(plan);
+  final result = applySwapPlan(
+    plan,
+    beforeFirstChange: () => _registerLogonRecovery(planFile),
+  );
+  if (result.outcome != SwapOutcome.corrupted) _clearLogonRecovery(log);
   log.write(
     'swap ${result.outcome.name}: '
     '${result.installedFiles} file(s) installed'
@@ -104,15 +112,55 @@ int _recover(SwapPlan plan, File planFile, _Log log) {
     'recovery ${result.outcome.name}: ${result.changedFiles} file(s) changed'
     '${result.error == null ? '' : ' - ${result.error}'}',
   );
+  if (result.outcome == SwapRecovery.busy) return kExitAborted;
   if (result.outcome == SwapRecovery.failed) {
     final message = corruptedInstallMessage(plan.backupRoot);
     _showErrorBox(message);
     return kExitCorrupted;
   }
+  _clearLogonRecovery(log);
   _deleteQuietly(Directory(plan.backupRoot));
   _deleteQuietly(Directory(plan.stagingRoot));
   _deleteQuietly(planFile.parent);
   return kExitSuccess;
+}
+
+const String _kRunOnceKey =
+    r'Software\Microsoft\Windows\CurrentVersion\RunOnce';
+
+/// מבטיח שהחלפה שתיקטע תושלם או תבוטל בכניסה הבאה גם אם אוצריא אינה עולה.
+/// רץ מהעותק שב-temp, ולכן הפקודה אינה תלויה בקבצים שבאמצע ההחלפה.
+void _registerLogonRecovery(File planFile) {
+  final key = CURRENT_USER.create(_kRunOnceKey);
+  try {
+    key.setValue(
+      kLogonRecoveryValueName,
+      RegistryValue.string(
+        logonRecoveryCommand(
+          updaterCopy: Platform.resolvedExecutable,
+          planPath: planFile.absolute.path,
+        ),
+      ),
+    );
+  } finally {
+    key.close();
+  }
+}
+
+void _clearLogonRecovery(_Log log) {
+  try {
+    final key = CURRENT_USER.create(_kRunOnceKey);
+    try {
+      if (key.getValue(kLogonRecoveryValueName) != null) {
+        key.removeValue(kLogonRecoveryValueName);
+      }
+    } finally {
+      key.close();
+    }
+  } catch (error) {
+    // ערך שנשאר מריץ שחזור שאין לו מה לעשות — nothingToDo.
+    log.write('could not clear the logon recovery entry: $error');
+  }
 }
 
 /// תיבת הודעה של המערכת. למעדכן אין ממשק משלו, וזו הדרך היחידה שלו
@@ -194,6 +242,14 @@ bool _waitForProcessExit(int pid, Duration timeout) {
         WAIT_OBJECT_0;
   } finally {
     handle.close();
+  }
+}
+
+void _writeQuietly(File file) {
+  try {
+    file.writeAsStringSync('');
+  } catch (_) {
+    // בלי הסימן אוצריא נשארת במצב "ממתין" — לא מצב שבור.
   }
 }
 

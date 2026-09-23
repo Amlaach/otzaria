@@ -5,6 +5,7 @@
 /// ליציאתה בדיוק כמו בעדכון רגיל.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -56,4 +57,25 @@ bool requestInterruptedSwapRecovery({
       '$waitForPid',
     ],
   );
+}
+
+/// ממתין לסימן שהמעדכן ויתר על ההמתנה ליציאת אוצריא (חלון שסירב להיסגר).
+/// בגילוי: מוחק את הסימן, עוצר, וקורא ל-[onGaveUp]. ה-staging נשאר שלם —
+/// המעדכן מוותר לפני שנגע בדבר.
+Timer watchForUpdaterGiveUp(
+  Directory workRoot,
+  void Function() onGaveUp, {
+  Duration interval = const Duration(seconds: 3),
+}) {
+  final marker = File(p.join(workRoot.path, kSwapGaveUpFileName));
+  return Timer.periodic(interval, (timer) {
+    if (!marker.existsSync()) return;
+    timer.cancel();
+    try {
+      marker.deleteSync();
+    } on FileSystemException {
+      // שיגור חוזר מוחק אותו בכל מקרה (writeSwapPlan).
+    }
+    onGaveUp();
+  });
 }

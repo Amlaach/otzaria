@@ -499,10 +499,15 @@ void main() {
       final install = fixture.install('install');
       final engine = _engine(install, workDir());
       final staged = await engine.prepare(fixture.package);
+      // סימן מוויתור קודם אסור שיחזיר את הממשק ל"מוכן" מיד עם השיגור החדש.
+      final staleGiveUp = File(
+        p.join(staged.workRoot.path, kSwapGaveUpFileName),
+      )..writeAsStringSync('');
       final planFile = await staged.writeSwapPlan(
         relaunchExecutable: p.join(install.path, 'otzaria.exe'),
         waitForPid: 4242,
       );
+      expect(staleGiveUp.existsSync(), isFalse);
 
       final plan = SwapPlan.decode(planFile.readAsStringSync());
       expect(plan.removals.map((r) => r.path), ['legacy.dll']);

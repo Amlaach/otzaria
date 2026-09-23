@@ -7,28 +7,98 @@ import 'package:path/path.dart' as p;
 
 import '../../tool/updater/updater_swap.dart';
 
-/// כשל אמיתי באמצע ההחלפה: הקובץ שלא ניתן להזיז (נעול ע"י תהליך אחר).
+/// כשל אמיתי באמצע ההחלפה: הקובץ שלא ניתן להעתיק או להחליף (נעול).
 class _LockedFileSystem extends SwapFileSystem {
   _LockedFileSystem(this.lockedSource);
 
   final String lockedSource;
 
-  @override
-  void move(String from, String to) {
+  void _check(String from) {
     if (p.basename(from) == lockedSource) {
       throw const FileSystemException('the file is locked by another process');
     }
-    super.move(from, to);
+  }
+
+  @override
+  void copy(String from, String to) {
+    _check(from);
+    super.copy(from, to);
+  }
+
+  @override
+  void replace(String from, String to) {
+    _check(from);
+    super.replace(from, to);
   }
 }
 
-/// כשל שגם השחזור אינו מתאושש ממנו — ההתקנה נשארת חלקית.
+/// כשל שגם השחזור אינו מתאושש ממנו — מהכשל הראשון אף שינוי אינו מצליח.
 class _UnrecoverableFileSystem extends _LockedFileSystem {
   _UnrecoverableFileSystem(super.lockedSource);
 
+  bool _broken = false;
+
   @override
-  void delete(String path) =>
-      throw const FileSystemException('the file cannot be removed');
+  void _check(String from) {
+    if (_broken) throw const FileSystemException('the disk is gone');
+    try {
+      super._check(from);
+    } on FileSystemException {
+      _broken = true;
+      rethrow;
+    }
+  }
+
+  @override
+  void delete(String path) {
+    if (_broken) throw const FileSystemException('the disk is gone');
+    super.delete(path);
+  }
+}
+
+/// מות התהליך: מהשינוי ה-[crashAt] ואילך שום שינוי אינו קורה עוד. אחרי כל
+/// שינוי שכן קרה נבדק [invariant] — מצב ביניים שהמשתמש עלול לראות.
+class _CrashingFileSystem extends SwapFileSystem {
+  _CrashingFileSystem({required this.crashAt, required this.invariant});
+
+  final int crashAt;
+  final void Function() invariant;
+  int mutations = 0;
+
+  void _step(void Function() change) {
+    if (mutations >= crashAt) {
+      throw const FileSystemException('the process died');
+    }
+    mutations++;
+    change();
+    invariant();
+  }
+
+  @override
+  void copy(String from, String to) => _step(() => super.copy(from, to));
+
+  @override
+  void replace(String from, String to) => _step(() => super.replace(from, to));
+
+  @override
+  void delete(String path) => _step(() => super.delete(path));
+}
+
+/// רושם את סדר השינויים בהתקנה.
+class _RecordingFileSystem extends SwapFileSystem {
+  final List<String> changes = [];
+
+  @override
+  void replace(String from, String to) {
+    changes.add('replace ${p.basename(to)}');
+    super.replace(from, to);
+  }
+
+  @override
+  void delete(String path) {
+    if (File(path).existsSync()) changes.add('delete ${p.basename(path)}');
+    super.delete(path);
+  }
 }
 
 /// קובץ יעד שתהליך אחר מחזיק — בלי לנעול קובץ אמיתי במערכת ההפעלה.
@@ -54,6 +124,9 @@ Map<String, String> _hashTree(Directory root) {
   }
   return hashes;
 }
+
+bool _sameTree(Map<String, String> a, Map<String, String> b) =>
+    a.length == b.length && a.entries.every((e) => b[e.key] == e.value);
 
 void _write(String path, String content) {
   final file = File(path);
@@ -167,9 +240,48 @@ void main() {
 
     expect(result.outcome, SwapOutcome.corrupted);
     expect(result.rollbackErrors, isNotEmpty);
-    // שני הקבצים הראשונים כבר הותקנו לפני שהשלישי נכשל — בלעדיהם הלוג
-    // אינו מראה כמה רחוק הגיעה ההחלפה.
-    expect(result.installedFiles, 2);
+    // a.dat כבר הותקן לפני ש-b.dat נכשל — בלי המניין הלוג אינו מראה כמה
+    // רחוק הגיעה ההחלפה.
+    expect(result.installedFiles, 1);
+  });
+
+  test('ה-exe מוחלף אחרון, וההסרות קורות רק אחריו', () {
+    final fs = _RecordingFileSystem();
+    expect(applySwapPlan(plan(), fs: fs).outcome, SwapOutcome.succeeded);
+
+    final replaced = fs.changes.where((c) => c.startsWith('replace'));
+    expect(replaced.last, 'replace otzaria.exe');
+    expect(fs.changes.last, 'delete legacy.dll');
+  });
+
+  test('כשל ברישום השחזור לכניסה הבאה מבטל לפני כל שינוי', () {
+    final before = _hashTree(install);
+
+    final result = applySwapPlan(
+      plan(),
+      beforeFirstChange: () => throw StateError('registry denied'),
+    );
+
+    expect(result.outcome, SwapOutcome.abortedBeforeAnyChange);
+    expect(_hashTree(install), before);
+    // בלי גיבוי אין עדות להחלפה, ואף שחזור לא "ישלים" עדכון שלא התחיל.
+    expect(backup.existsSync(), isFalse);
+  });
+
+  test('שורת השחזור בכניסה למערכת מריצה את העותק שמחוץ להתקנה', () {
+    const copy = r'C:\Users\a b\AppData\Local\Temp\u1\otzaria_updater.exe';
+    const planPath =
+        r'C:\Users\a b\AppData\Local\Temp\otzaria_small_update\swap-plan.json';
+    final command = logonRecoveryCommand(updaterCopy: copy, planPath: planPath);
+
+    expect(command, startsWith('"$copy" '));
+    expect(command, contains('--plan "$planPath"'));
+    for (final flag in ['--recover', '--no-relaunch', '--from-temp']) {
+      expect(command, contains(flag));
+    }
+    // RunOnce מתעלם משורת פקודה ארוכה מ-260 תווים.
+    expect(command.length, lessThan(260));
+    expect(kLogonRecoveryValueName, startsWith('!'));
   });
 
   test('התקנה חלקית אינה מופעלת מחדש, והמשתמש מקבל את נתיב הגיבוי', () {
@@ -204,6 +316,7 @@ void main() {
 
     expect(result.outcome, SwapOutcome.abortedBeforeAnyChange);
     expect(_hashTree(install), before);
+    expect(backup.existsSync(), isFalse);
   });
 
   test('תיקיית גיבוי בתוך ההתקנה נדחית', () {
@@ -250,12 +363,26 @@ void main() {
       backup.createSync(recursive: true);
       File(
         p.join(install.path, 'otzaria.exe'),
-      ).renameSync(p.join(backup.path, 'otzaria.exe'));
+      ).copySync(p.join(backup.path, 'otzaria.exe'));
       File(
         p.join(staging.path, 'otzaria.exe'),
-      ).renameSync(p.join(install.path, 'otzaria.exe'));
+      ).copySync(p.join(install.path, 'otzaria.exe'));
       return built;
     }
+
+    test('קובץ מוחזק בידי תהליך חי — לא נוגעים, והגיבוי נשאר', () {
+      final built = halfApplied();
+      final before = _hashTree(install);
+
+      final result = recoverInterruptedSwap(
+        built,
+        fs: _HeldFileSystem({'otzaria.exe'}),
+      );
+
+      expect(result.outcome, SwapRecovery.busy);
+      expect(_hashTree(install), before);
+      expect(backup.existsSync(), isTrue);
+    });
 
     test('ללא עדות להחלפה שנקטעה לא נוגעים בדבר', () {
       final before = _hashTree(install);
@@ -369,6 +496,143 @@ void main() {
 
       expect(result.outcome, SwapRecovery.failed);
       expect(File(p.join(backup.path, 'otzaria.exe')).existsSync(), isTrue);
+    });
+  });
+
+  group('מות התהליך בכל שלב', () {
+    late Map<String, String> oldTree;
+    late Map<String, String> newTree;
+    late List<String> alwaysPresent;
+
+    setUp(() {
+      oldTree = _hashTree(install);
+      newTree = Map.of(oldTree)..remove('legacy.dll');
+      for (final path in const ['otzaria.exe', 'data/a.dat', 'data/b.dat']) {
+        newTree[path] = _hash(p.join(staging.path, path));
+      }
+      alwaysPresent = const ['otzaria.exe', 'data/a.dat', 'data/b.dat'];
+    });
+
+    void noTargetMissing() {
+      for (final path in alwaysPresent) {
+        expect(
+          File(p.join(install.path, path)).existsSync(),
+          isTrue,
+          reason: '$path is missing in an intermediate state',
+        );
+      }
+    }
+
+    /// מספר השינויים שההחלפה המלאה עושה — כל אחד הוא נקודת מוות אפשרית.
+    int stepsOf(void Function(SwapFileSystem fs) run) {
+      final counter = _CrashingFileSystem(crashAt: 1 << 30, invariant: () {});
+      run(counter);
+      return counter.mutations;
+    }
+
+    void resetTo(Map<String, Map<String, String>> snapshot) {
+      for (final root in [install, staging, backup]) {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      }
+      for (final entry in snapshot.entries) {
+        final root = Directory(entry.key)..createSync(recursive: true);
+        for (final file in entry.value.entries) {
+          _write(p.join(root.path, file.key), file.value);
+        }
+      }
+    }
+
+    Map<String, String> contentsOf(Directory root) => {
+      if (root.existsSync())
+        for (final entity in root.listSync(recursive: true))
+          if (entity is File)
+            p.relative(entity.path, from: root.path).replaceAll('\\', '/'):
+                entity.readAsStringSync(),
+    };
+
+    test('ההתקנה אינה חסרה קובץ, והשחזור מסיים בגרסה אחת שלמה', () {
+      final built = plan();
+      final pristine = {
+        install.path: contentsOf(install),
+        staging.path: contentsOf(staging),
+      };
+      final applySteps = stepsOf((fs) => applySwapPlan(built, fs: fs));
+      expect(applySteps, greaterThan(5));
+
+      for (var crash = 0; crash <= applySteps; crash++) {
+        resetTo(pristine);
+        applySwapPlan(
+          built,
+          fs: _CrashingFileSystem(crashAt: crash, invariant: noTargetMissing),
+        );
+        noTargetMissing();
+        final crashed = {
+          install.path: contentsOf(install),
+          staging.path: contentsOf(staging),
+          if (backup.existsSync()) backup.path: contentsOf(backup),
+        };
+
+        final recoverySteps = stepsOf((fs) {
+          resetTo(crashed);
+          recoverInterruptedSwap(built, fs: fs);
+        });
+        // גם השחזור עצמו עלול להיקטע — ושחזור נוסף חייב להשלים אותו.
+        for (var second = 0; second <= recoverySteps; second++) {
+          resetTo(crashed);
+          recoverInterruptedSwap(
+            built,
+            fs: _CrashingFileSystem(
+              crashAt: second,
+              invariant: noTargetMissing,
+            ),
+          );
+          noTargetMissing();
+          final result = recoverInterruptedSwap(built);
+
+          final tree = _hashTree(install);
+          final reason = 'crash at $crash, recovery crash at $second';
+          if (crash == applySteps) {
+            expect(tree, newTree, reason: reason);
+          } else {
+            expect(
+              _sameTree(tree, oldTree) || _sameTree(tree, newTree),
+              isTrue,
+              reason: '$reason: ${result.outcome} left a mixed install',
+            );
+          }
+        }
+      }
+    });
+
+    test('staging שנעלם אחרי המוות — השחזור מחזיר לגרסה הישנה', () {
+      final built = plan();
+      final pristine = {
+        install.path: contentsOf(install),
+        staging.path: contentsOf(staging),
+      };
+      final applySteps = stepsOf((fs) => applySwapPlan(built, fs: fs));
+
+      for (var crash = 0; crash < applySteps; crash++) {
+        resetTo(pristine);
+        applySwapPlan(
+          built,
+          fs: _CrashingFileSystem(crashAt: crash, invariant: noTargetMissing),
+        );
+        final bStillOld =
+            _hash(p.join(install.path, 'data', 'b.dat')) ==
+            oldTree['data/b.dat'];
+        File(p.join(staging.path, 'data', 'b.dat')).deleteSync();
+
+        final result = recoverInterruptedSwap(built);
+
+        final tree = _hashTree(install);
+        if (bStillOld) {
+          expect(result.outcome, SwapRecovery.restored, reason: '$crash');
+          expect(tree, oldTree, reason: 'crash at $crash');
+        } else {
+          expect(_sameTree(tree, newTree), isTrue, reason: 'crash at $crash');
+        }
+      }
     });
   });
 

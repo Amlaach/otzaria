@@ -19,6 +19,10 @@ const String kSwapStagingDirName = 'staging';
 /// המעדכן יוצר אותה רגע לפני שהוא נוגע בהתקנה ומוחק אותה בסיום מוצלח.
 const String kSwapBackupDirName = 'backup';
 
+/// המעדכן כותב אותו לצד התוכנית כשאוצריא לא יצאה בזמן שהוקצב. אוצריא,
+/// שעדיין רצה, מזהה אותו ומחזירה את העדכון למצב "מוכן להתקנה".
+const String kSwapGaveUpFileName = 'updater-gave-up';
+
 /// תוכנית שאינה תקפה. תמיד עוצרת לפני שנגעו בהתקנה.
 class SwapPlanException implements Exception {
   SwapPlanException(this.message);

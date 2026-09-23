@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -232,13 +233,20 @@ String? pickMacAssetUrl(
 }
 
 /// בוחר את נכס העדכון ל-Linux: חבילת DEB, אחריה RPM, ובהיעדר שתיהן ZIP
-/// של Linux. מסייע ההורדה לעולם אינו נבחר.
+/// של Linux — רק בארכיטקטורה של המכונה. מסייע ההורדה לעולם אינו נבחר.
+///
+/// הנכס ל-x64 אינו מסומן בשמו, ולכן ARM מזוהה לפי `arm64`/`aarch64` בלבד.
 @visibleForTesting
-String? pickLinuxAssetUrl(List<Map<String, dynamic>> assets) {
+String? pickLinuxAssetUrl(
+  List<Map<String, dynamic>> assets, {
+  required bool isArm64,
+}) {
   String? firstWhere(bool Function(String name) matches) {
     for (final asset in assets) {
       final name = (asset['name'] as String).toLowerCase();
       if (isDownloadAssistantAsset(name)) continue;
+      final isArmAsset = name.contains('arm64') || name.contains('aarch64');
+      if (isArmAsset != isArm64) continue;
       if (matches(name)) return asset['browser_download_url'] as String;
     }
     return null;
@@ -652,6 +660,9 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   /// רק במצב הזה סגירת החלונות שנותרו היא שמשלימה את העדכון.
   bool _awaitingCloseForUpdate = false;
 
+  /// פעיל רק כל עוד המעדכן המצומצם ממתין ליציאת התהליך.
+  Timer? _updaterGiveUpWatch;
+
   /// מנוי על מצב הסיור המודרך, פעיל רק כל עוד אנו ממתינים לסיומו לפני
   /// בדיקת העדכון הראשונית.
   StreamSubscription<TourState>? _tourSubscription;
@@ -744,6 +755,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
     _tourSubscription?.cancel();
     _settingsSubscription?.cancel();
     _offlineRecheckTimer?.cancel();
+    _updaterGiveUpWatch?.cancel();
     if (_windowCloseHookInstalled) {
       // ⚠️ ה-singleton של `window_manager` ולא `AppWindowController`: רשימת
       // ה-listeners שלו היא פר-isolate, ולכן היא **כבר** של החלון הזה.
@@ -811,12 +823,20 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   /// לנסות שוב.
   Future<void> _installNow() async {
     if (_installerFile == null && _differentialUpdate == null) return;
+    final differential = _differentialUpdate;
     final launched = await _launchInstaller(relaunchApp: true);
     if (shouldDestroyWindowAfterInstallNow(installerLaunched: launched)) {
       // איפוס המקורות מונע שיגור כפול כשאירוע הסגירה יגיע ל-hook.
       _installerFile = null;
       _differentialUpdate = null;
       if (mounted) setState(() => _awaitingCloseForUpdate = true);
+      if (differential != null) {
+        _updaterGiveUpWatch?.cancel();
+        _updaterGiveUpWatch = watchForUpdaterGiveUp(
+          differential.staged.workRoot,
+          () => _restorePreparedUpdate(differential),
+        );
+      }
       // ⚠️ המעדכן מחליף קבצים רק אחרי שהתהליך יצא, וכל חלון הוא isolate
       // נפרד. חלון שיסרב להיסגר פשוט משאיר את המעדכן ממתין — אי-אירוע.
       MultiWindowService.closePeers();
@@ -824,6 +844,17 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       // ומפיל את המנוע תחת Dart רץ. ראו התיעוד ב-`AppWindowController`.
       await _appWindow.close();
     }
+  }
+
+  /// המעדכן ויתר לפני שנגע בהתקנה — חוזרים ל"מוכן להתקנה" עם אותו staging.
+  void _restorePreparedUpdate(PreparedDifferentialUpdate prepared) {
+    if (!mounted) return;
+    setState(() {
+      _differentialUpdate = prepared;
+      _awaitingCloseForUpdate = false;
+      _status = UpdatStatus.readyToInstall;
+    });
+    UiSnack.showError(LibraryMessages.smallUpdateGaveUp);
   }
 
   Future<void> _checkForUpdate() async {
@@ -998,7 +1029,10 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
         selfUpdateCapable: findInstalledMacAppBundlePath() != null,
       );
     } else if (platform == 'linux') {
-      assetUrl = pickLinuxAssetUrl(assets);
+      assetUrl = pickLinuxAssetUrl(
+        assets,
+        isArm64: Abi.current() == Abi.linuxArm64,
+      );
     }
 
     if (assetUrl == null) {

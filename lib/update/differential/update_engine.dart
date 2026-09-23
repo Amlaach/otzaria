@@ -99,6 +99,9 @@ class StagedUpdate {
     );
     final file = swapPlanFile;
     await file.parent.create(recursive: true);
+    // סימן מוויתור קודם היה מחזיר את הממשק ל"מוכן" מיד עם השיגור החדש.
+    final gaveUp = File(p.join(workRoot.path, kSwapGaveUpFileName));
+    if (await gaveUp.exists()) await gaveUp.delete();
     await file.writeAsString(plan.encode());
     return file;
   }
