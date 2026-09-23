@@ -4,11 +4,17 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:otzaria/update/differential/tree_fs.dart';
 
 import 'generate_app_file_manifest.dart';
 
-/// גרסת הסכמה של מניפסט חבילת העדכון. צרכן חייב לדחות גרסה גבוהה יותר.
+/// גרסת הסכמה של חבילת Windows. לקוח Windows קיים דוחה כל גרסה אחרת, ולכן
+/// חבילות Windows נשארות בה.
 const int kUpdatePackageSchemaVersion = 1;
+
+/// גרסת הסכמה של חבילת עץ (macOS, Linux): `links`, `linkRemovals` ו-`newTree`
+/// — העץ החדש המלא, שמולו הלקוח מאמת את העותק כולו.
+const int kUpdatePackageTreeSchemaVersion = 2;
 
 /// patch נבחר רק אם הוא קטן מ-90% מהקובץ המלא הדחוס.
 ///
@@ -212,6 +218,7 @@ UpdatePackageResult buildUpdatePackage({
       '(${newManifest['releaseTag']})',
     );
   }
+  final tree = isTreeManifestPlatform(platform);
   if (!zstd.isAvailable) {
     throw UpdatePackageException('zstd is not available on PATH');
   }
@@ -295,6 +302,19 @@ UpdatePackageResult buildUpdatePackage({
       });
     }
 
+    final oldLinks = appFileManifestLinks(oldManifest);
+    final newLinks = appFileManifestLinks(newManifest);
+    final links = <Map<String, Object?>>[
+      for (final path in newLinks.keys.toList()..sort())
+        if (oldLinks[path] != newLinks[path])
+          {'path': path, 'target': newLinks[path]},
+    ];
+    final linkRemovals = <Map<String, Object?>>[
+      for (final path in oldLinks.keys.toList()..sort())
+        if (!newLinks.containsKey(path))
+          {'path': path, 'oldTarget': oldLinks[path]},
+    ];
+
     var downloadSize = 0;
     for (final entry in entries) {
       downloadSize += entry['entrySize'] as int;
@@ -320,7 +340,9 @@ UpdatePackageResult buildUpdatePackage({
         : null;
 
     final manifest = <String, Object?>{
-      'schemaVersion': kUpdatePackageSchemaVersion,
+      'schemaVersion': tree
+          ? kUpdatePackageTreeSchemaVersion
+          : kUpdatePackageSchemaVersion,
       'assetName': assetName,
       'variant': variant.id,
       'fallbackAssetName': ?fallbackAssetName,
@@ -334,6 +356,24 @@ UpdatePackageResult buildUpdatePackage({
       'payloadSize': downloadSize,
       'entries': entries,
       'removals': removals,
+      if (tree) 'links': links,
+      if (tree) 'linkRemovals': linkRemovals,
+      if (tree)
+        'newTree': {
+          'files': [
+            for (final file in (newManifest['files'] as List).cast<Map>())
+              {
+                'path': file['path'],
+                'size': file['size'],
+                'sha256': file['sha256'],
+                'mode': file['mode'],
+              },
+          ],
+          'links': [
+            for (final path in newLinks.keys.toList()..sort())
+              {'path': path, 'target': newLinks[path]},
+          ],
+        },
     };
 
     final errors = validateUpdatePackageManifest(manifest);
@@ -378,8 +418,17 @@ UpdatePackageResult buildUpdatePackage({
 List<String> validateUpdatePackageManifest(Object? manifest) {
   final errors = <String>[];
   if (manifest is! Map) return ['update manifest is not a JSON object'];
-  if (manifest['schemaVersion'] != kUpdatePackageSchemaVersion) {
-    errors.add('schemaVersion must be $kUpdatePackageSchemaVersion');
+  final schema = manifest['schemaVersion'];
+  final tree = schema == kUpdatePackageTreeSchemaVersion;
+  if (schema != kUpdatePackageSchemaVersion && !tree) {
+    errors.add(
+      'schemaVersion must be $kUpdatePackageSchemaVersion or '
+      '$kUpdatePackageTreeSchemaVersion',
+    );
+  }
+  final platform = manifest['platform'];
+  if (platform is String && tree != isTreeManifestPlatform(platform)) {
+    errors.add('schemaVersion does not match the platform $platform');
   }
   for (final key in const [
     'assetName',
@@ -517,7 +566,134 @@ List<String> validateUpdatePackageManifest(Object? manifest) {
   if (payloadSize is! int || payloadSize != payload) {
     errors.add('payloadSize must equal the sum of the entry sizes');
   }
+  if (tree) {
+    errors.addAll(_treeErrors(manifest, entries, removals));
+  } else {
+    for (final key in const ['links', 'linkRemovals', 'newTree']) {
+      if (manifest.containsKey(key)) {
+        errors.add('$key belongs to a tree package only');
+      }
+    }
+  }
   return errors;
+}
+
+/// אימות החלק של חבילת העץ. כל ערך, symlink והסרה חייבים להתיישב עם
+/// `newTree` — הוא שמולו הלקוח מאמת את העותק כולו.
+List<String> _treeErrors(Map manifest, List entries, List removals) {
+  final errors = <String>[];
+  final newTree = manifest['newTree'];
+  if (newTree is! Map ||
+      newTree['files'] is! List ||
+      newTree['links'] is! List) {
+    return ['newTree must hold files and links lists'];
+  }
+  final treeFiles = <String, Map>{};
+  for (final file in newTree['files'] as List) {
+    if (file is! Map || file['path'] is! String) {
+      errors.add('newTree: a file entry has no path');
+      continue;
+    }
+    final path = file['path'] as String;
+    if (appFilePathError(path) != null) {
+      errors.add('newTree: invalid file path $path');
+    }
+    final mode = file['mode'];
+    if (file['size'] is! int ||
+        file['sha256'] is! String ||
+        !_sha256Pattern.hasMatch(file['sha256'] as String) ||
+        mode is! int ||
+        mode < 0 ||
+        mode > 0x1FF) {
+      errors.add('newTree: $path needs size, sha256 and mode');
+    }
+    if (treeFiles.containsKey(path)) errors.add('newTree: duplicate $path');
+    treeFiles[path] = file;
+  }
+  final treeLinks = <String, String>{};
+  for (final link in newTree['links'] as List) {
+    if (link is! Map || link['path'] is! String || link['target'] is! String) {
+      errors.add('newTree: a link entry needs path and target');
+      continue;
+    }
+    final path = link['path'] as String;
+    final target = link['target'] as String;
+    final error = appFilePathError(path) ?? linkTargetError(path, target);
+    if (error != null) errors.add('newTree: link $path: $error');
+    if (treeFiles.containsKey(path) || treeLinks.containsKey(path)) {
+      errors.add('newTree: duplicate $path');
+    }
+    treeLinks[path] = target;
+  }
+  errors.addAll(
+    pathsThroughLinksErrors([
+      ...treeFiles.keys,
+      ...treeLinks.keys,
+    ], treeLinks.keys.toSet()),
+  );
+
+  for (final entry in entries.whereType<Map>()) {
+    final file = treeFiles[entry['path']];
+    if (file == null ||
+        file['sha256'] != entry['newSha256'] ||
+        file['size'] != entry['newSize']) {
+      errors.add('entry ${entry['path']}: does not match newTree');
+    }
+  }
+  for (final removal in removals.whereType<Map>()) {
+    if (treeFiles.containsKey(removal['path'])) {
+      errors.add('removal ${removal['path']}: the path is in newTree');
+    }
+  }
+
+  final links = manifest['links'];
+  final linkRemovals = manifest['linkRemovals'];
+  if (links is! List || linkRemovals is! List) {
+    errors.add('links and linkRemovals must be lists');
+    return errors;
+  }
+  for (final link in links) {
+    if (link is! Map || link['path'] is! String) {
+      errors.add('a link entry has no path');
+      continue;
+    }
+    if (treeLinks[link['path']] != link['target']) {
+      errors.add('link ${link['path']}: does not match newTree');
+    }
+  }
+  for (final removal in linkRemovals) {
+    if (removal is! Map || removal['path'] is! String) {
+      errors.add('a link removal has no path');
+      continue;
+    }
+    final path = removal['path'] as String;
+    if (appFilePathError(path) != null) {
+      errors.add('link removal $path: invalid path');
+    }
+    if (treeLinks.containsKey(path)) {
+      errors.add('link removal $path: the link is in newTree');
+    }
+  }
+  return errors;
+}
+
+/// העץ החדש מתוך מניפסט של חבילת עץ שכבר אומת.
+TreeManifest treeManifestOf(Map<String, Object?> manifest) {
+  final newTree = manifest['newTree'] as Map;
+  return TreeManifest(
+    files: {
+      for (final file in (newTree['files'] as List).cast<Map>())
+        file['path'] as String: TreeFile(
+          size: file['size'] as int,
+          sha256: file['sha256'] as String,
+          mode: file['mode'] as int,
+        ),
+    },
+    links: {
+      for (final link in (newTree['links'] as List).cast<Map>())
+        link['path'] as String: link['target'] as String,
+    },
+  );
 }
 
 /// קורא את מניפסט החבילה מתוך קובץ ה-ZIP.
@@ -554,59 +730,18 @@ void applyUpdatePackage({
   Directory? workDirectory,
 }) {
   final archive = ZipDecoder().decodeBytes(package.readAsBytesSync());
-  final manifest = readUpdatePackageManifest(archive);
-  if (manifest['platform'] != platform ||
-      manifest['architecture'] != architecture) {
+  final manifest = _openForApply(archive, platform, architecture, zstd);
+  if (manifest['schemaVersion'] == kUpdatePackageTreeSchemaVersion) {
     throw UpdatePackageException(
-      'the package targets ${manifest['platform']}/'
-      '${manifest['architecture']} but the install is $platform/$architecture',
+      'a tree package is applied with applyTreeUpdatePackage',
     );
-  }
-  if (!zstd.isAvailable) {
-    throw UpdatePackageException('zstd is not available on PATH');
   }
 
   final work =
       workDirectory ?? Directory.systemTemp.createTempSync('otzaria-apply');
   final ownsWork = workDirectory == null;
   try {
-    final payload = File('${work.path}/payload.bin');
-    final produced = File('${work.path}/produced.bin');
-
-    for (final entry in (manifest['entries'] as List).cast<Map>()) {
-      final path = entry['path'] as String;
-      final target = File('${root.path}/$path');
-      final bytes = archive.findFile(entry['entry'] as String)?.readBytes();
-      if (bytes == null) {
-        throw UpdatePackageException('$path: ${entry['entry']} is missing');
-      }
-      if (sha256.convert(bytes).toString() != entry['entrySha256']) {
-        throw UpdatePackageException('$path: the package entry is corrupt');
-      }
-      payload.writeAsBytesSync(bytes);
-
-      if (entry['method'] == 'patch') {
-        if (!target.existsSync()) {
-          throw UpdatePackageException('$path: the old file is missing');
-        }
-        final oldBytes = target.readAsBytesSync();
-        if (sha256.convert(oldBytes).toString() != entry['oldSha256']) {
-          throw UpdatePackageException(
-            '$path: the local file does not match the patch base',
-          );
-        }
-        zstd.applyPatch(target, payload, produced);
-      } else {
-        zstd.decompress(payload, produced);
-      }
-
-      final newBytes = produced.readAsBytesSync();
-      if (sha256.convert(newBytes).toString() != entry['newSha256']) {
-        throw UpdatePackageException('$path: the result hash does not match');
-      }
-      target.parent.createSync(recursive: true);
-      target.writeAsBytesSync(newBytes);
-    }
+    _applyEntries(archive, manifest, root, work, zstd);
 
     for (final removal in (manifest['removals'] as List).cast<Map>()) {
       final path = removal['path'] as String;
@@ -622,6 +757,121 @@ void applyUpdatePackage({
     }
   } finally {
     if (ownsWork && work.existsSync()) work.deleteSync(recursive: true);
+  }
+}
+
+/// מחיל חבילת עץ על [root] — עותק של ההתקנה הישנה, כולל symlinks. אותו
+/// סדר פעולות כמו בלקוח: הסרות, קבצים, symlinks, הרשאות.
+Future<void> applyTreeUpdatePackage({
+  required File package,
+  required Directory root,
+  required String platform,
+  required String architecture,
+  Zstd zstd = const Zstd(),
+  TreeFileSystem fs = const LocalTreeFileSystem(),
+}) async {
+  final archive = ZipDecoder().decodeBytes(package.readAsBytesSync());
+  final manifest = _openForApply(archive, platform, architecture, zstd);
+  if (manifest['schemaVersion'] != kUpdatePackageTreeSchemaVersion) {
+    throw UpdatePackageException('the package is not a tree package');
+  }
+  final work = Directory.systemTemp.createTempSync('otzaria-apply');
+  try {
+    try {
+      await removeFromTree(
+        fs: fs,
+        root: root.path,
+        linkRemovals: [
+          for (final r in (manifest['linkRemovals'] as List).cast<Map>())
+            r['path'] as String,
+        ],
+        fileRemovals: [
+          for (final r in (manifest['removals'] as List).cast<Map>())
+            r['path'] as String,
+        ],
+      );
+      _applyEntries(archive, manifest, root, work, zstd);
+      await completeTree(
+        fs: fs,
+        root: root.path,
+        links: {
+          for (final l in (manifest['links'] as List).cast<Map>())
+            l['path'] as String: l['target'] as String,
+        },
+        newTree: treeManifestOf(manifest),
+      );
+    } on TreeUpdateException catch (error) {
+      throw UpdatePackageException(error.message);
+    } on FileSystemException catch (error) {
+      throw UpdatePackageException('$error');
+    }
+  } finally {
+    if (work.existsSync()) work.deleteSync(recursive: true);
+  }
+}
+
+Map<String, Object?> _openForApply(
+  Archive archive,
+  String platform,
+  String architecture,
+  Zstd zstd,
+) {
+  final manifest = readUpdatePackageManifest(archive);
+  if (manifest['platform'] != platform ||
+      manifest['architecture'] != architecture) {
+    throw UpdatePackageException(
+      'the package targets ${manifest['platform']}/'
+      '${manifest['architecture']} but the install is $platform/$architecture',
+    );
+  }
+  if (!zstd.isAvailable) {
+    throw UpdatePackageException('zstd is not available on PATH');
+  }
+  return manifest;
+}
+
+void _applyEntries(
+  Archive archive,
+  Map<String, Object?> manifest,
+  Directory root,
+  Directory work,
+  Zstd zstd,
+) {
+  final payload = File('${work.path}/payload.bin');
+  final produced = File('${work.path}/produced.bin');
+  for (final entry in (manifest['entries'] as List).cast<Map>()) {
+    final path = entry['path'] as String;
+    final target = File('${root.path}/$path');
+    final bytes = archive.findFile(entry['entry'] as String)?.readBytes();
+    if (bytes == null) {
+      throw UpdatePackageException('$path: ${entry['entry']} is missing');
+    }
+    if (sha256.convert(bytes).toString() != entry['entrySha256']) {
+      throw UpdatePackageException('$path: the package entry is corrupt');
+    }
+    payload.writeAsBytesSync(bytes);
+
+    if (entry['method'] == 'patch') {
+      if (!target.existsSync()) {
+        throw UpdatePackageException('$path: the old file is missing');
+      }
+      final oldBytes = target.readAsBytesSync();
+      if (sha256.convert(oldBytes).toString() != entry['oldSha256']) {
+        throw UpdatePackageException(
+          '$path: the local file does not match the patch base',
+        );
+      }
+      zstd.applyPatch(target, payload, produced);
+    } else {
+      zstd.decompress(payload, produced);
+    }
+
+    final newBytes = produced.readAsBytesSync();
+    if (sha256.convert(newBytes).toString() != entry['newSha256']) {
+      throw UpdatePackageException('$path: the result hash does not match');
+    }
+    target.parent.createSync(recursive: true);
+    target.writeAsBytesSync(newBytes);
   }
 }
 
@@ -667,7 +917,7 @@ String? _optionalOption(List<String> args, String name) {
   return args[index + 1];
 }
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   const usage =
       'usage: dart run tool/release/generate_update_package.dart '
       '--old-manifest <file> --old-dir <dir> '
@@ -692,7 +942,11 @@ void main(List<String> args) {
         variant: variant,
       );
       if (args.contains('--verify')) {
-        _verify(pending, oldRoot, newManifest);
+        if (isTreeManifestPlatform(newManifest['platform'] as String)) {
+          await verifyTreePackage(pending, oldRoot, newManifest);
+        } else {
+          _verify(pending, oldRoot, newManifest);
+        }
         print('Verified ${result.assetName} against a copy of the old install');
       }
       final finalPath = '$outDir/${result.assetName}';
@@ -753,6 +1007,42 @@ void _verify(
     }
   } finally {
     if (copy.existsSync()) copy.deleteSync(recursive: true);
+  }
+}
+
+/// מחיל חבילת עץ על עותק של הישן ומשווה את העץ כולו — קבצים, symlinks,
+/// הרשאות, ושום דבר נוסף — לעץ החדש. [fs] מוזרק לבדיקות.
+Future<void> verifyTreePackage(
+  File package,
+  Directory oldRoot,
+  Map<String, Object?> newManifest, {
+  TreeFileSystem fs = const LocalTreeFileSystem(),
+  Zstd zstd = const Zstd(),
+}) async {
+  final temp = Directory.systemTemp.createTempSync('otzaria-verify');
+  final copy = Directory('${temp.path}/root');
+  try {
+    await fs.copyTree(oldRoot.path, copy.path);
+    await applyTreeUpdatePackage(
+      package: package,
+      root: copy,
+      platform: newManifest['platform'] as String,
+      architecture: newManifest['architecture'] as String,
+      zstd: zstd,
+      fs: fs,
+    );
+    final archive = ZipDecoder().decodeBytes(package.readAsBytesSync());
+    final errors = await verifyTree(
+      fs: fs,
+      root: copy.path,
+      newTree: treeManifestOf(readUpdatePackageManifest(archive)),
+      allowUnmanaged: false,
+    );
+    if (errors.isNotEmpty) {
+      throw UpdatePackageException('verify:\n - ${errors.join('\n - ')}');
+    }
+  } finally {
+    if (temp.existsSync()) temp.deleteSync(recursive: true);
   }
 }
 

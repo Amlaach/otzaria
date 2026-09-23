@@ -5,10 +5,14 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 
 import 'managed_paths.dart';
+import 'tree_fs.dart';
 
-/// גרסת הסכמה של מניפסט חבילת העדכון שהלקוח יודע לקרוא.
-/// חבילה בגרסה גבוהה יותר נדחית — היא עלולה לתאר פעולות שאינן מוכרות כאן.
+/// גרסת הסכמה של חבילת Windows. חבילה בגרסה שאינה מוכרת נדחית — היא
+/// עלולה לתאר פעולות שאינן מוכרות כאן.
 const int kUpdatePackageSchemaVersion = 1;
+
+/// גרסת הסכמה של חבילת עץ (macOS, Linux): symlinks, הרשאות והעץ החדש המלא.
+const int kUpdatePackageTreeSchemaVersion = 2;
 
 /// שם קובץ המניפסט בתוך ה-ZIP של החבילה.
 const String kUpdatePackageManifestEntryName = 'update-manifest.json';
@@ -138,7 +142,21 @@ class UpdatePackageManifest {
     required this.payloadSize,
     required this.kind,
     required this.fallbackAssetName,
+    this.newTree,
+    this.links = const {},
+    this.linkRemovals = const [],
   });
+
+  /// העץ החדש המלא — רק בחבילת עץ. מולו מאומת העותק כולו.
+  final TreeManifest? newTree;
+
+  /// symlinks ליצירה או לשינוי יעד, בחבילת עץ.
+  final Map<String, String> links;
+
+  /// symlinks שאינם בגרסה החדשה, בחבילת עץ.
+  final List<String> linkRemovals;
+
+  bool get isTree => newTree != null;
 
   /// האם זו חבילת ה-patch או חבילת הקבצים המלאים.
   final UpdatePackageKind kind;
@@ -171,8 +189,12 @@ class UpdatePackageManifest {
     }
 
     final schema = manifest['schemaVersion'];
-    if (schema != kUpdatePackageSchemaVersion) {
+    final tree = schema == kUpdatePackageTreeSchemaVersion;
+    if (schema != kUpdatePackageSchemaVersion && !tree) {
       _invalid('unsupported schemaVersion $schema');
+    }
+    if (tree == (manifest['platform'] == 'windows')) {
+      _invalid('schemaVersion $schema does not match the platform');
     }
     final fromTag = requireString('fromReleaseTag');
     final toTag = requireString('toReleaseTag');
@@ -305,6 +327,8 @@ class UpdatePackageManifest {
       _invalid('payloadSize must equal the sum of the entry sizes');
     }
 
+    final treePart = tree ? _parseTree(manifest, entries, removals) : null;
+
     return UpdatePackageManifest._(
       platform: requireString('platform'),
       architecture: requireString('architecture'),
@@ -317,6 +341,127 @@ class UpdatePackageManifest {
       payloadSize: payload,
       kind: kind,
       fallbackAssetName: fallbackAssetName as String?,
+      newTree: treePart?.$1,
+      links: treePart?.$2 ?? const {},
+      linkRemovals: treePart?.$3 ?? const [],
+    );
+  }
+
+  static (TreeManifest, Map<String, String>, List<String>) _parseTree(
+    Map manifest,
+    List<UpdatePackageEntry> entries,
+    List<ManagedRemoval> removals,
+  ) {
+    final rawTree = manifest['newTree'];
+    if (rawTree is! Map ||
+        rawTree['files'] is! List ||
+        rawTree['links'] is! List) {
+      _invalid('newTree must hold files and links lists');
+    }
+    final files = <String, TreeFile>{};
+    for (final raw in rawTree['files'] as List) {
+      if (raw is! Map || raw['path'] is! String) {
+        _invalid('newTree: a file has no path');
+      }
+      final path = raw['path'] as String;
+      final error = managedApplicationPathError(path);
+      if (error != null) _invalid('newTree $path: $error');
+      final size = raw['size'];
+      final sha = raw['sha256'];
+      final mode = raw['mode'];
+      if (size is! int ||
+          size < 0 ||
+          sha is! String ||
+          !_sha256Pattern.hasMatch(sha) ||
+          mode is! int ||
+          mode < 0 ||
+          mode > 0x1FF) {
+        _invalid('newTree $path: needs size, sha256 and mode');
+      }
+      if (files.containsKey(path)) _invalid('newTree $path: duplicate path');
+      files[path] = TreeFile(size: size, sha256: sha, mode: mode);
+    }
+
+    Map<String, String> parseLinks(Object? raw, String what) {
+      if (raw is! List) _invalid('$what must be a list');
+      final links = <String, String>{};
+      for (final link in raw) {
+        if (link is! Map ||
+            link['path'] is! String ||
+            link['target'] is! String) {
+          _invalid('$what: a link needs path and target');
+        }
+        final path = link['path'] as String;
+        final target = link['target'] as String;
+        final error =
+            managedApplicationPathError(path) ?? linkTargetError(path, target);
+        if (error != null) _invalid('$what $path: $error');
+        if (links.containsKey(path) || files.containsKey(path)) {
+          _invalid('$what $path: duplicate path');
+        }
+        links[path] = target;
+      }
+      return links;
+    }
+
+    final treeLinks = parseLinks(rawTree['links'], 'newTree links');
+    final through = pathsThroughLinksErrors([
+      ...files.keys,
+      ...treeLinks.keys,
+    ], treeLinks.keys.toSet());
+    if (through.isNotEmpty) _invalid('newTree: ${through.first}');
+
+    for (final entry in entries) {
+      final file = files[entry.path];
+      if (file == null ||
+          file.sha256 != entry.newSha256 ||
+          file.size != entry.newSize) {
+        _invalid('entry ${entry.path}: does not match newTree');
+      }
+    }
+    for (final removal in removals) {
+      if (files.containsKey(removal.path)) {
+        _invalid('removal ${removal.path}: the path is in newTree');
+      }
+    }
+
+    final links = <String, String>{};
+    final rawLinks = manifest['links'];
+    if (rawLinks is! List) _invalid('links must be a list');
+    for (final link in rawLinks) {
+      if (link is! Map || link['path'] is! String) {
+        _invalid('links: a link has no path');
+      }
+      final path = link['path'] as String;
+      if (treeLinks[path] == null || treeLinks[path] != link['target']) {
+        _invalid('link $path: does not match newTree');
+      }
+      links[path] = treeLinks[path]!;
+    }
+
+    final linkRemovals = <String>[];
+    final rawRemovals = manifest['linkRemovals'];
+    if (rawRemovals is! List) _invalid('linkRemovals must be a list');
+    for (final removal in rawRemovals) {
+      if (removal is! Map || removal['path'] is! String) {
+        _invalid('linkRemovals: an entry has no path');
+      }
+      final path = removal['path'] as String;
+      final error = managedApplicationPathError(path);
+      if (error != null) _invalid('link removal $path: $error');
+      if (treeLinks.containsKey(path)) {
+        _invalid('link removal $path: the link is in newTree');
+      }
+      linkRemovals.add(path);
+    }
+
+    return (
+      TreeManifest(
+        files: Map.unmodifiable(files),
+        links: Map.unmodifiable(treeLinks),
+      ),
+      Map.unmodifiable(links),
+      List.unmodifiable(linkRemovals),
     );
   }
 }

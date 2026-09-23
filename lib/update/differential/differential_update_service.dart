@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
+import 'managed_paths.dart';
+import 'tree_fs.dart';
 import 'update_engine.dart';
 import 'update_package.dart';
 import 'zstd_runner.dart';
@@ -100,6 +102,51 @@ bool differentialUpdateSupported({
   required bool hasUpdaterHelper,
 }) => isWindows && installRootWritable && zstdAvailable && hasUpdaterHelper;
 
+/// האם כדאי לנסות עדכון עץ (macOS, Linux נייד). ההחלפה היא שינוי שם של
+/// תיקיית ההתקנה, ולכן גם התיקייה שמכילה אותה חייבת להיות ברת-כתיבה.
+/// נתוני משתמש בתוך ההתקנה ([hasUserData]) היו מועתקים ונדרסים בהחלפה.
+bool treeUpdateSupported({
+  required bool installRootWritable,
+  required bool parentWritable,
+  required bool zstdAvailable,
+  required bool hasUserData,
+}) => installRootWritable && parentWritable && zstdAvailable && !hasUserData;
+
+/// האם בשורש ההתקנה יש נתוני משתמש (מצב נייד, קובצי סימון).
+bool installRootHasUserData(Directory installRoot) {
+  try {
+    return installRoot
+        .listSync(followLinks: false)
+        .any(
+          (entity) => isUserDataPath(p.basename(entity.path)),
+        );
+  } on FileSystemException {
+    return true;
+  }
+}
+
+/// היעד של עותק ההתקנה בעדכון עץ: לצד ההתקנה, באותו כרך, ומוסתר.
+/// השם אינו מסתיים ב-`.app`, כדי ש-macOS לא יזהה את העותק כאפליקציה.
+Directory preparedTreeDirectoryFor(Directory installRoot) {
+  final absolute = p.normalize(installRoot.absolute.path);
+  return Directory(
+    p.join(p.dirname(absolute), '.${p.basename(absolute)}.otzaria-update'),
+  );
+}
+
+/// האם התקנת Linux היא עותק נייד שאפשר לעדכן במקום. התקנת deb/rpm יושבת
+/// תחת ‎/opt‎ או ‎/usr‎ ושייכת למנהל החבילות; החותם קיים רק בחבילת ה-FULL.
+bool isLinuxPortableInstall({
+  required String executableDirectory,
+  required bool hasReleaseStamp,
+}) {
+  if (!hasReleaseStamp) return false;
+  final dir = p.posix.normalize(executableDirectory);
+  return !(dir == '/opt/otzaria' ||
+      p.posix.isWithin('/opt/otzaria', dir) ||
+      p.posix.isWithin('/usr', dir));
+}
+
 /// ארכיטקטורת הבנייה שרצה כעת. המעבד לבדו אינו קובע: בנייית x64 באמולציה
 /// על מחשב ARM היא עדיין התקנת x64, וחבילת ARM64 אינה מתאימה לה.
 String installedWindowsArchitecture({
@@ -151,8 +198,16 @@ class DifferentialUpdateService {
     required this.download,
     this.platform = 'windows',
     this.zstd = const ZstdRunner.bundled(),
+    this.preparedRoot,
+    this.treeFs = const LocalTreeFileSystem(),
+    this.allowUnmanagedFiles = false,
     Future<List<UpdatePackageAsset>> Function(String releaseTag)? fetchAssets,
   }) : fetchAssets = fetchAssets ?? fetchUpdatePackageAssets;
+
+  /// ראה [DifferentialUpdateEngine.preparedRoot].
+  final Directory? preparedRoot;
+  final TreeFileSystem treeFs;
+  final bool allowUnmanagedFiles;
 
   final Directory installRoot;
   final Directory workRoot;
@@ -198,6 +253,9 @@ class DifferentialUpdateService {
       architecture: architecture,
       installedReleaseTag: installedReleaseTag,
       zstd: zstd,
+      preparedRoot: preparedRoot,
+      treeFs: treeFs,
+      allowUnmanagedFiles: allowUnmanagedFiles,
     );
     final staged = await engine.prepare(
       patchFile,

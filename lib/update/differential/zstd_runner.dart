@@ -23,10 +23,12 @@ class ZstdRunner {
   String get resolvedExecutable =>
       executable.isNotEmpty ? executable : bundledZstdPath();
 
-  /// הנתיב לבינארי הארוז ליד קובץ ההרצה.
-  static String bundledZstdPath() => Platform.isWindows
-      ? p.join(p.dirname(Platform.resolvedExecutable), 'zstd.exe')
-      : 'zstd';
+  /// הנתיב לבינארי הארוז ליד קובץ ההרצה — ב-macOS זה `Contents/MacOS`.
+  /// לעולם לא מה-PATH: גרסה אחרת של zstd אינה מובטחת לפענח את ה-patch.
+  static String bundledZstdPath() => p.join(
+    p.dirname(Platform.resolvedExecutable),
+    Platform.isWindows ? 'zstd.exe' : 'zstd',
+  );
 
   Future<bool> get isAvailable async {
     final path = resolvedExecutable;

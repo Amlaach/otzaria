@@ -3,9 +3,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:otzaria/update/differential/tree_fs.dart'
+    show linkTargetError, pathsThroughLinksErrors;
 
-/// גרסת הסכמה של מניפסט קובצי האפליקציה. צרכן חייב לדחות גרסה גבוהה יותר.
+/// גרסת הסכמה של מניפסט קובצי האפליקציה ב-Windows. צרכן חייב לדחות גרסה
+/// שאינה מוכרת לו.
 const int kAppFileManifestSchemaVersion = 1;
+
+/// גרסת הסכמה של מניפסט עץ (macOS, Linux): כל קובץ נושא `mode`, ו-`links`
+/// מתאר כל symlink. bundle שחסר בו symlink או ביט הרצה אינו עולה.
+const int kAppFileTreeManifestSchemaVersion = 2;
+
+/// האם הפלטפורמה מנוהלת כעץ — עם symlinks והרשאות — ולא כרשימת קבצים.
+bool isTreeManifestPlatform(String platform) => platform != 'windows';
 
 /// קבצים שקיימים בארכיון הנייד אך אינם חלק מההתקנה, ולכן אינם מנוהלים.
 /// `portable.marker` נוסף ל-ZIP אחרי הבנייה (ראה "Zip Windows build").
@@ -104,6 +114,7 @@ Map<String, Object?> buildAppFileManifest({
   required String architecture,
   required Directory root,
   Set<String> exclude = kAppFileManifestExclusions,
+  int Function(File file)? modeOf,
 }) {
   if (releaseTag.trim().isEmpty) {
     throw AppFileManifestException('release tag is empty');
@@ -123,10 +134,13 @@ Map<String, Object?> buildAppFileManifest({
     throw AppFileManifestException('build directory not found: ${root.path}');
   }
 
+  final tree = isTreeManifestPlatform(platform);
+  final readMode = modeOf ?? (File file) => file.statSync().mode & 0x1FF;
   final rootPath = _normalizeDirectory(root.absolute.path);
   final files = <Map<String, Object?>>[];
+  final links = <Map<String, Object?>>[];
   for (final entity in root.listSync(recursive: true, followLinks: false)) {
-    if (entity is! File) continue;
+    if (entity is Directory) continue;
     final absolute = _normalizeSeparators(entity.absolute.path);
     if (!absolute.startsWith(rootPath)) {
       throw AppFileManifestException(
@@ -139,17 +153,30 @@ Map<String, Object?> buildAppFileManifest({
     if (error != null) {
       throw AppFileManifestException('$error: $relative');
     }
-    final bytes = entity.readAsBytesSync();
+    if (entity is Link) {
+      // symlink שנפסח בשקט היה משאיר framework חדש בלי Versions/Current.
+      if (!tree) {
+        throw AppFileManifestException('symlinks are not supported: $relative');
+      }
+      links.add({'path': relative, 'target': entity.targetSync()});
+      continue;
+    }
+    final file = entity as File;
+    final bytes = file.readAsBytesSync();
     files.add({
       'path': relative,
       'size': bytes.length,
       'sha256': sha256.convert(bytes).toString(),
+      if (tree) 'mode': readMode(file),
     });
   }
   if (files.isEmpty) {
     throw AppFileManifestException('build directory is empty: ${root.path}');
   }
-  files.sort((a, b) => (a['path'] as String).compareTo(b['path'] as String));
+  int byPath(Map<String, Object?> a, Map<String, Object?> b) =>
+      (a['path'] as String).compareTo(b['path'] as String);
+  files.sort(byPath);
+  links.sort(byPath);
 
   var installedSize = 0;
   for (final file in files) {
@@ -157,7 +184,9 @@ Map<String, Object?> buildAppFileManifest({
   }
 
   final manifest = <String, Object?>{
-    'schemaVersion': kAppFileManifestSchemaVersion,
+    'schemaVersion': tree
+        ? kAppFileTreeManifestSchemaVersion
+        : kAppFileManifestSchemaVersion,
     'releaseTag': releaseTag,
     'releaseVersion': releaseVersion,
     'platform': platform,
@@ -165,6 +194,7 @@ Map<String, Object?> buildAppFileManifest({
     'fileCount': files.length,
     'installedSize': installedSize,
     'files': files,
+    if (tree) 'links': links,
   };
 
   final errors = validateAppFileManifest(manifest);
@@ -221,8 +251,17 @@ String? appFilePathError(String path) {
 List<String> validateAppFileManifest(Object? manifest) {
   final errors = <String>[];
   if (manifest is! Map) return ['manifest is not a JSON object'];
-  if (manifest['schemaVersion'] != kAppFileManifestSchemaVersion) {
-    errors.add('schemaVersion must be $kAppFileManifestSchemaVersion');
+  final schema = manifest['schemaVersion'];
+  final tree = schema == kAppFileTreeManifestSchemaVersion;
+  if (schema != kAppFileManifestSchemaVersion && !tree) {
+    errors.add(
+      'schemaVersion must be $kAppFileManifestSchemaVersion or '
+      '$kAppFileTreeManifestSchemaVersion',
+    );
+  }
+  final platform = manifest['platform'];
+  if (platform is String && tree != isTreeManifestPlatform(platform)) {
+    errors.add('schemaVersion does not match the platform $platform');
   }
   for (final key in const [
     'releaseTag',
@@ -280,6 +319,53 @@ List<String> validateAppFileManifest(Object? manifest) {
     if (sha is! String || !_sha256Pattern.hasMatch(sha)) {
       errors.add('file $path: sha256 must be 64 lowercase hex characters');
     }
+    final mode = file['mode'];
+    if (tree && (mode is! int || mode < 0 || mode > 0x1FF)) {
+      errors.add('file $path: mode must be permission bits (0-0777)');
+    } else if (!tree && mode != null) {
+      errors.add('file $path: mode belongs to a tree manifest only');
+    }
+  }
+
+  final links = manifest['links'];
+  if (tree) {
+    if (links is! List) {
+      errors.add('links must be a list');
+    } else {
+      final linkPaths = <String>{};
+      String? previousLink;
+      for (final link in links) {
+        if (link is! Map || link['path'] is! String) {
+          errors.add('a link entry has no path');
+          continue;
+        }
+        final path = link['path'] as String;
+        final pathError = appFilePathError(path);
+        if (pathError != null) {
+          errors.add('link $path: $pathError');
+        } else if (!seen.add(path) || !linkPaths.add(path)) {
+          errors.add('link $path: duplicate path');
+        }
+        if (previousLink != null && previousLink.compareTo(path) >= 0) {
+          errors.add('link $path: entries must be sorted by path');
+        }
+        previousLink = path;
+        final target = link['target'];
+        final targetError = target is String
+            ? linkTargetError(path, target)
+            : 'link target is missing';
+        if (targetError != null) errors.add('link $path: $targetError');
+      }
+      errors.addAll(
+        pathsThroughLinksErrors([
+          for (final file in files)
+            if (file is Map && file['path'] is String) file['path'] as String,
+          ...linkPaths,
+        ], linkPaths),
+      );
+    }
+  } else if (links != null) {
+    errors.add('links belong to a tree manifest only');
   }
 
   final fileCount = manifest['fileCount'];
@@ -292,6 +378,12 @@ List<String> validateAppFileManifest(Object? manifest) {
   }
   return errors;
 }
+
+/// מפה מנתיב ה-symlink ליעדו. מניפסט Windows אינו נושא symlinks.
+Map<String, String> appFileManifestLinks(Map<String, Object?> manifest) => {
+  for (final link in (manifest['links'] as List? ?? const []).cast<Map>())
+    link['path'] as String: link['target'] as String,
+};
 
 /// מפה מנתיב ל-entry, לשימוש הצרכנים (השוואה, אימות, בניית חבילת עדכון).
 Map<String, Map<String, Object?>> appFileManifestIndex(
@@ -345,7 +437,8 @@ void main(List<String> args) {
   const usage =
       'usage: dart run tool/release/generate_app_file_manifest.dart '
       '--tag <release-tag> --version <version> --dir <install-root> '
-      '--architecture <x64|arm64> [--platform windows] [--out <file>] '
+      '--architecture <x64|arm64|universal> [--platform windows|macos|linux] '
+      '[--out <file>] '
       '[--stamp]';
   try {
     final tag = _option(args, 'tag');

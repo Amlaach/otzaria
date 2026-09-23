@@ -34,7 +34,9 @@ import 'differential/zstd_runner.dart';
 import 'hebrew_update_widgets.dart';
 import 'linux_installer.dart';
 import 'macos_installer.dart';
+import 'tree_swap.dart';
 import 'windows_installer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
 
 export 'differential/swap_recovery.dart' show differentialWorkDirectory;
@@ -236,11 +238,15 @@ String? pickMacAssetUrl(
 /// של Linux — רק בארכיטקטורה של המכונה. מסייע ההורדה לעולם אינו נבחר.
 ///
 /// הנכס ל-x64 אינו מסומן בשמו, ולכן ARM מזוהה לפי `arm64`/`aarch64` בלבד.
+/// בהתקנה ניידת ([isPortableInstall]) אין נכס כזה: deb היה מתקין עותק
+/// נפרד ב-‎/opt‎, והעותק שהמשתמש מריץ לא היה מתעדכן לעולם.
 @visibleForTesting
 String? pickLinuxAssetUrl(
   List<Map<String, dynamic>> assets, {
   required bool isArm64,
+  bool isPortableInstall = false,
 }) {
+  if (isPortableInstall) return null;
   String? firstWhere(bool Function(String name) matches) {
     for (final asset in assets) {
       final name = (asset['name'] as String).toLowerCase();
@@ -1032,6 +1038,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       assetUrl = pickLinuxAssetUrl(
         assets,
         isArm64: Abi.current() == Abi.linuxArm64,
+        isPortableInstall: _isLinuxPortableInstall(),
       );
     }
 
@@ -1092,6 +1099,11 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       return;
     }
 
+    if (Platform.isLinux && _isLinuxPortableInstall()) {
+      await _openReleasePageForManualUpdate();
+      return;
+    }
+
     try {
       final url = await _getBinaryUrl(_latestVersion!).timeout(_kGithubTimeout);
       final installerFile = await prepareUpdateInstallerFile(
@@ -1112,10 +1124,111 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
     }
   }
 
+  /// האם זו התקנת Linux ניידת — `portable.marker`, או עותק מחבילת ה-FULL
+  /// (חותם שחרור מחוץ לנתיבי מנהל החבילות).
+  bool _isLinuxPortableInstall() {
+    if (AppPaths.isPortable) return true;
+    final exeDir = p.dirname(Platform.resolvedExecutable);
+    return isLinuxPortableInstall(
+      executableDirectory: exeDir,
+      hasReleaseStamp:
+          readInstalledReleaseTag(
+            Directory(exeDir),
+            platform: 'linux',
+            architecture: Abi.current() == Abi.linuxArm64 ? 'arm64' : 'x64',
+          ) !=
+          null,
+    );
+  }
+
+  /// להתקנה ניידת אין מתקין: דף ההורדות נפתח, והמשתמש פורס את החבילה.
+  Future<void> _openReleasePageForManualUpdate() async {
+    try {
+      final release = await _fetchRelease(
+        _latestVersion!,
+      ).timeout(_kGithubTimeout);
+      final url = release['html_url'];
+      if (url is! String || !await launchUrl(Uri.parse(url))) {
+        throw Exception('the release page could not be opened');
+      }
+      if (!mounted) return;
+      setState(() => _status = UpdatStatus.dismissed);
+      UiSnack.show(LibraryMessages.portableUpdateOpenedReleasePage);
+    } catch (e, st) {
+      debugPrint('[Update] release page failed: $e\n$st');
+      _showUpdateError(LibraryMessages.updateDownloadError);
+    }
+  }
+
+  /// עדכון עץ (macOS, Linux נייד): עותק של ההתקנה לצידה, החבילה מוחלת
+  /// עליו ומאומתת מול העץ החדש, וההחלפה היא שינוי שם אחרי היציאה.
+  Future<PreparedDifferentialUpdate?> _prepareTreeUpdate() async {
+    final target = treeInstallTargetFor(
+      isMacOS: Platform.isMacOS,
+      executablePath: Platform.resolvedExecutable,
+      isArm64: Abi.current() == Abi.linuxArm64,
+      macBundlePath: Platform.isMacOS ? findInstalledMacAppBundlePath() : null,
+    );
+    if (target == null) return null;
+    final installedReleaseTag = readInstalledReleaseTag(
+      Directory(target.stampDirectory),
+      platform: target.platform,
+      architecture: target.architecture,
+    );
+    if (installedReleaseTag == null) return null;
+    if (Platform.isLinux &&
+        !isLinuxPortableInstall(
+          executableDirectory: target.installRoot,
+          hasReleaseStamp: true,
+        )) {
+      return null;
+    }
+
+    final installRoot = Directory(target.installRoot);
+    if (!treeUpdateSupported(
+      installRootWritable: isDirectoryWritable(installRoot),
+      parentWritable: isDirectoryWritable(installRoot.parent),
+      zstdAvailable: await const ZstdRunner.bundled().isAvailable,
+      hasUserData: installRootHasUserData(installRoot),
+    )) {
+      return null;
+    }
+
+    final release = await _fetchRelease(
+      _latestVersion!,
+    ).timeout(_kGithubTimeout);
+    final toReleaseTag = release['tag_name'] as String;
+
+    final work = differentialWorkDirectory();
+    if (work.existsSync()) work.deleteSync(recursive: true);
+
+    final service = DifferentialUpdateService(
+      installRoot: installRoot,
+      workRoot: work,
+      platform: target.platform,
+      architecture: target.architecture,
+      installedReleaseTag: installedReleaseTag,
+      preparedRoot: preparedTreeDirectoryFor(installRoot),
+      allowUnmanagedFiles: Platform.isLinux,
+      download: (url, target, {int? expectedSize}) async {
+        await downloadReleaseFile(
+          target,
+          url,
+          'otzaria-small-update',
+          expectedSize: expectedSize,
+        );
+        return target;
+      },
+    );
+    return await service.prepare(toReleaseTag);
+  }
+
   /// בונה את העדכון המצומצם: איתור החבילה, הורדתה ובנייה מאומתת ב-staging.
   /// מחזיר `null` כשהמסלול אינו זמין בהתקנה הזאת.
   Future<PreparedDifferentialUpdate?> _prepareDifferentialUpdate() async {
-    if (!Platform.isWindows || _latestVersion == null) return null;
+    if (_latestVersion == null) return null;
+    if (Platform.isMacOS || Platform.isLinux) return _prepareTreeUpdate();
+    if (!Platform.isWindows) return null;
 
     final installRoot = Directory(p.dirname(Platform.resolvedExecutable));
     final architecture = installedWindowsArchitecture(
@@ -1188,6 +1301,16 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
     }
 
     try {
+      final staged = prepared.staged;
+      if (staged.isTree) {
+        await launchTreeSwap(
+          installRoot: staged.installRoot,
+          preparedRoot: staged.stagingRoot,
+          workRoot: staged.workRoot,
+          relaunchApp: relaunchApp,
+        );
+        return true;
+      }
       final plan = await prepared.staged.writeSwapPlan(
         relaunchExecutable: relaunchApp ? Platform.resolvedExecutable : null,
         waitForPid: pid,

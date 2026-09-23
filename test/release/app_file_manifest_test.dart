@@ -224,4 +224,128 @@ void main() {
       }
     });
   });
+
+  group('מניפסט עץ (macOS, Linux)', () {
+    Map<String, Object?> tree() => {
+      'schemaVersion': kAppFileTreeManifestSchemaVersion,
+      'releaseTag': '0.10.1+5',
+      'releaseVersion': '0.10.1',
+      'platform': 'macos',
+      'architecture': 'universal',
+      'fileCount': 1,
+      'installedSize': 2,
+      'files': [
+        {
+          'path': 'Contents/Frameworks/A.framework/Versions/A/A',
+          'size': 2,
+          'sha256': 'a' * 64,
+          'mode': 0x1ED,
+        },
+      ],
+      'links': [
+        {
+          'path': 'Contents/Frameworks/A.framework/A',
+          'target': 'Versions/Current/A',
+        },
+        {
+          'path': 'Contents/Frameworks/A.framework/Versions/Current',
+          'target': 'A',
+        },
+      ],
+    };
+
+    test('נבנה עם הרשאות, ובסכמה 2 — Windows נשאר בסכמה 1 בלי הרשאות', () {
+      write('Contents/MacOS/app', 'exe');
+      final manifest = buildAppFileManifest(
+        releaseTag: '0.10.1+5',
+        releaseVersion: '0.10.1',
+        platform: 'macos',
+        architecture: 'universal',
+        root: root,
+        modeOf: (_) => 0x1ED,
+      );
+      expect(manifest['schemaVersion'], kAppFileTreeManifestSchemaVersion);
+      expect((manifest['files'] as List).single, containsPair('mode', 0x1ED));
+      expect(manifest['links'], isEmpty);
+      expect(
+        appFileManifestAssetName(platform: 'macos', architecture: 'universal'),
+        'otzaria-app-files-macos-universal.json',
+      );
+
+      final windows = build();
+      expect(windows['schemaVersion'], kAppFileManifestSchemaVersion);
+      expect((windows['files'] as List).single, isNot(contains('mode')));
+      expect(windows.containsKey('links'), isFalse);
+    });
+
+    test('מניפסט עץ תקין עובר', () {
+      expect(validateAppFileManifest(tree()), isEmpty);
+    });
+
+    test('קובץ בלי הרשאות, או מניפסט Windows עם הרשאות — נדחים', () {
+      final missing = tree();
+      ((missing['files'] as List).single as Map).remove('mode');
+      expect(validateAppFileManifest(missing), isNotEmpty);
+
+      final windows = tree()
+        ..['schemaVersion'] = kAppFileManifestSchemaVersion
+        ..['platform'] = 'windows'
+        ..remove('links');
+      expect(validateAppFileManifest(windows), isNotEmpty);
+    });
+
+    test('symlink מוחלט, בורח מהעץ, או שקובץ עובר דרכו — נדחה', () {
+      for (final target in ['/Library/x', '../../../../x', r'Versions\A']) {
+        final manifest = tree();
+        ((manifest['links'] as List).first as Map)['target'] = target;
+        expect(validateAppFileManifest(manifest), isNotEmpty, reason: target);
+      }
+      final through = tree()
+        ..['links'] = [
+          {'path': 'Contents/Frameworks/A.framework/Versions', 'target': 'X'},
+        ];
+      expect(validateAppFileManifest(through), isNotEmpty);
+    });
+
+    test('symlink ונתיב קובץ זהים — כפילות', () {
+      final manifest = tree();
+      (manifest['links'] as List).add({
+        'path': 'Contents/Frameworks/A.framework/Versions/A/A',
+        'target': 'B',
+      });
+      expect(validateAppFileManifest(manifest), isNotEmpty);
+    });
+
+    // symlink יחסי עם `/` אינו נפתח ב-Windows; שם הלוגיקה נבדקת במערכת
+    // קבצים מדומה (test/update/tree_update_test.dart).
+    test('סריקה אמיתית רושמת symlinks ואינה נכנסת דרכם', () {
+      write('Contents/Frameworks/A.framework/Versions/A/A', 'bin');
+      Link(
+        '${root.path}/Contents/Frameworks/A.framework/Versions/Current',
+      ).createSync('A');
+      Link(
+        '${root.path}/Contents/Frameworks/A.framework/A',
+      ).createSync('Versions/Current/A');
+      final manifest = buildAppFileManifest(
+        releaseTag: '0.10.1+5',
+        releaseVersion: '0.10.1',
+        platform: 'macos',
+        architecture: 'universal',
+        root: root,
+      );
+      expect(pathsOf(manifest), [
+        'Contents/Frameworks/A.framework/Versions/A/A',
+      ]);
+      expect(appFileManifestLinks(manifest), {
+        'Contents/Frameworks/A.framework/A': 'Versions/Current/A',
+        'Contents/Frameworks/A.framework/Versions/Current': 'A',
+      });
+    }, skip: Platform.isWindows ? 'symlinks יחסיים — POSIX בלבד' : null);
+
+    test('symlink בבניית Windows מפיל את הגנרטור ברעש', () {
+      write('otzaria.exe', 'exe');
+      Link('${root.path}/alias').createSync('otzaria.exe');
+      expect(() => build(), throwsA(isA<AppFileManifestException>()));
+    }, skip: Platform.isWindows ? 'symlinks יחסיים — POSIX בלבד' : null);
+  });
 }

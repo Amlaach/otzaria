@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'swap_plan.dart';
+import 'tree_fs.dart';
 import 'update_package.dart';
 import 'zstd_runner.dart';
 
@@ -65,7 +66,12 @@ class StagedUpdate {
     required this.workRoot,
     required this.files,
     required this.removals,
+    this.isTree = false,
   });
+
+  /// עדכון עץ: [stagingRoot] הוא עותק מלא ומאומת של ההתקנה החדשה, לצד
+  /// ההתקנה, וההחלפה היא שינוי שם של תיקייה.
+  final bool isTree;
 
   final UpdatePackageManifest manifest;
   final Directory installRoot;
@@ -109,6 +115,9 @@ class StagedUpdate {
   /// מוחק את כל תוצרי ההכנה. בטוח לקרוא גם אחרי החלפה מוצלחת.
   Future<void> discard() async {
     if (await workRoot.exists()) await workRoot.delete(recursive: true);
+    if (isTree && await stagingRoot.exists()) {
+      await stagingRoot.delete(recursive: true);
+    }
   }
 }
 
@@ -128,7 +137,20 @@ class DifferentialUpdateEngine {
     required this.architecture,
     required this.installedReleaseTag,
     this.zstd = const ZstdRunner.bundled(),
+    this.preparedRoot,
+    this.treeFs = const LocalTreeFileSystem(),
+    this.allowUnmanagedFiles = false,
   });
+
+  /// לחבילת עץ בלבד: היעד של עותק ההתקנה. חייב לשבת באותו כרך כמו
+  /// ההתקנה, כדי שההחלפה תהיה שינוי שם ולא העתקה.
+  final Directory? preparedRoot;
+
+  final TreeFileSystem treeFs;
+
+  /// האם קובץ שאינו בעץ החדש נסבל בעותק. ב-bundle של macOS הוא שובר את
+  /// החותם, ולכן שם הוא כשל.
+  final bool allowUnmanagedFiles;
 
   final Directory installRoot;
 
@@ -141,7 +163,7 @@ class DifferentialUpdateEngine {
   final ZstdRunner zstd;
 
   Directory get stagingRoot =>
-      Directory(p.join(workRoot.path, kSwapStagingDirName));
+      preparedRoot ?? Directory(p.join(workRoot.path, kSwapStagingDirName));
   Directory get backupRoot =>
       Directory(p.join(workRoot.path, kSwapBackupDirName));
 
@@ -227,10 +249,16 @@ class DifferentialUpdateEngine {
         'zstd is not available, so the package cannot be unpacked',
       );
     }
+    final tree = plan.manifest.isTree;
+    if (tree) _requireSeparatePreparedRoot();
 
     final staging = stagingRoot;
     if (await staging.exists()) await staging.delete(recursive: true);
-    await staging.create(recursive: true);
+    if (tree) {
+      await _copyInstallTree(staging);
+    } else {
+      await staging.create(recursive: true);
+    }
     final scratch = Directory(p.join(workRoot.path, 'scratch'));
     if (await scratch.exists()) await scratch.delete(recursive: true);
     await scratch.create(recursive: true);
@@ -239,6 +267,7 @@ class DifferentialUpdateEngine {
     final files = <SwapFile>[];
     final deferred = <UpdatePackageEntry>[];
     try {
+      if (tree) await _removeFromTree(staging, plan.manifest);
       for (final step in plan.work) {
         final entry = step.entry;
         if (step.action == UpdateFileAction.fromFallbackPackage) {
@@ -282,7 +311,11 @@ class DifferentialUpdateEngine {
         );
       }
 
-      await _verifyStaging(staging, files);
+      if (tree) {
+        await _completeAndVerifyTree(staging, plan.manifest);
+      } else {
+        await _verifyStaging(staging, files);
+      }
     } catch (_) {
       if (await staging.exists()) await staging.delete(recursive: true);
       rethrow;
@@ -301,7 +334,98 @@ class DifferentialUpdateEngine {
         for (final removal in plan.removals)
           SwapRemoval(path: removal.path, sha256: removal.oldSha256),
       ],
+      isTree: tree,
     );
+  }
+
+  Future<void> _copyInstallTree(Directory staging) async {
+    try {
+      await staging.parent.create(recursive: true);
+      await treeFs.copyTree(installRoot.path, staging.path);
+    } on FileSystemException catch (error) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.environment,
+        'the install could not be copied for the update: $error',
+      );
+    }
+  }
+
+  Future<void> _removeFromTree(
+    Directory staging,
+    UpdatePackageManifest manifest,
+  ) => _treeStep(
+    () => removeFromTree(
+      fs: treeFs,
+      root: staging.path,
+      linkRemovals: manifest.linkRemovals,
+      fileRemovals: [for (final removal in manifest.removals) removal.path],
+    ),
+  );
+
+  /// symlinks, הרשאות, ואז השוואת העותק כולו לעץ החדש — קובץ נוסף, חסר או
+  /// שונה אחד מספיק כדי לחזור למסלול המלא.
+  Future<void> _completeAndVerifyTree(
+    Directory staging,
+    UpdatePackageManifest manifest,
+  ) async {
+    final newTree = manifest.newTree!;
+    await _treeStep(
+      () => completeTree(
+        fs: treeFs,
+        root: staging.path,
+        links: manifest.links,
+        newTree: newTree,
+      ),
+    );
+    final errors = await verifyTree(
+      fs: treeFs,
+      root: staging.path,
+      newTree: newTree,
+      allowUnmanaged: allowUnmanagedFiles,
+    );
+    if (errors.isNotEmpty) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.stagingVerificationFailed,
+        'the prepared install does not match the new release: '
+        '${errors.take(5).join('; ')}',
+      );
+    }
+  }
+
+  Future<void> _treeStep(Future<void> Function() step) async {
+    try {
+      await step();
+    } on TreeUpdateException catch (error) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.localFileUnusable,
+        error.message,
+      );
+    } on FileSystemException catch (error) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.environment,
+        '$error',
+      );
+    }
+  }
+
+  void _requireSeparatePreparedRoot() {
+    final prepared = preparedRoot;
+    if (prepared == null) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.environment,
+        'a tree package needs a directory to prepare the new install in',
+      );
+    }
+    final install = p.canonicalize(installRoot.absolute.path);
+    final target = p.canonicalize(prepared.absolute.path);
+    if (p.equals(install, target) ||
+        p.isWithin(install, target) ||
+        p.isWithin(target, install)) {
+      throw DifferentialUpdateUnavailable(
+        UpdateAbortReason.environment,
+        'the prepared directory must be beside the install, not inside it',
+      );
+    }
   }
 
   /// כותב ערך אחד ל-staging ומאמת אותו מיד מול המניפסט. האימות המיידי הוא

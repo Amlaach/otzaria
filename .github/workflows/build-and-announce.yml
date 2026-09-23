@@ -1507,6 +1507,28 @@ jobs:
           path: pubspec.lock
           if-no-files-found: error
 
+      # עותק ה-FULL הוא ההתקנה הניידת היחידה, והוא מתעדכן במקום דרך העדכון
+      # המצומצם: zstd סטטי (רק libc) וחותם השחרור נכנסים ל-app שלו. ב-job הזה
+      # linux-build משמש את חבילת ה-FULL בלבד. אופטימיזציה בלבד.
+      - name: Build bundled zstd (Linux FULL)
+        if: matrix.target == 'full'
+        continue-on-error: true
+        timeout-minutes: 10
+        shell: bash
+        run: bash tool/release/build_zstd.sh linux-build/zstd
+
+      - name: Stamp installed release (Linux FULL)
+        if: matrix.target == 'full'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          if [ '${{ github.ref }}' = 'refs/heads/main' ]; then tag="$version"; else tag="$version+${{ github.run_number }}"; fi
+          dart run tool/release/generate_app_file_manifest.dart --stamp \
+            --tag "$tag" --version "$version" \
+            --dir linux-build --platform linux --architecture ${{ matrix.arch == 'aarch64' && 'arm64' || 'x64' }}
+
       - name: Create Linux FULL portable bundle
         if: matrix.target == 'full'
         shell: bash
@@ -1647,6 +1669,29 @@ jobs:
           esac
           [ -f "$INDEXED_ARCHIVE" ] || { echo "::error::Indexed archive is missing"; exit 1; }
           rm -f -- "$INDEXED_ARCHIVE"
+
+      # נסרק app של חבילת ה-FULL — העץ שהמשתמש פורס. portable.marker הוסר ממנו.
+      - name: Generate application file manifest (Linux)
+        id: app_file_manifest_linux
+        if: matrix.target == 'full'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          if [ '${{ github.ref }}' = 'refs/heads/main' ]; then tag="$version"; else tag="$version+${{ github.run_number }}"; fi
+          dart run tool/release/generate_app_file_manifest.dart \
+            --tag "$tag" --version "$version" \
+            --dir full_installer/otzaria-linux-full/app --platform linux --architecture ${{ matrix.arch == 'aarch64' && 'arm64' || 'x64' }}
+
+      - name: Upload application file manifest (Linux)
+        if: matrix.target == 'full' && steps.app_file_manifest_linux.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: otzaria-app-file-manifest-linux-${{ matrix.arch == 'aarch64' && 'arm64' || 'x64' }}
+          path: otzaria-app-files-linux-${{ matrix.arch == 'aarch64' && 'arm64' || 'x64' }}.json
+          if-no-files-found: warn
 
       - name: Upload Linux FULL bundle
         if: matrix.target == 'full'
@@ -2164,6 +2209,32 @@ jobs:
           [ -n "$APP_PATH" ] || { echo "::error::No .app bundle found for plugin bundling"; exit 1; }
           cp -R installer/bundled_plugins "$APP_PATH/Contents/Resources/bundled_plugins"
 
+      # zstd מפענח אצל המשתמש את חבילת העדכון המצומצם; אין ל-macOS zstd
+      # מובנה. נבנה מקוד המקור בגרסה נעולה, universal, ונכנס ל-bundle לפני
+      # החתימה. אופטימיזציה בלבד: בלעדיו העדכון נשאר ה-zip המלא.
+      - name: Build bundled zstd (macOS)
+        continue-on-error: true
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          bash tool/release/build_zstd.sh "$APP_PATH/Contents/MacOS/zstd" universal
+
+      # חותם השחרור ב-Contents/Resources: קובץ נתונים בשורש ה-bundle או
+      # ב-Contents/MacOS שובר את החתימה. נכתב לפני החתימה, ולכן נחתם איתו.
+      - name: Stamp installed release (macOS)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          version=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          if [ '${{ github.ref }}' = 'refs/heads/main' ]; then tag="$version"; else tag="$version+${{ github.run_number }}"; fi
+          dart run tool/release/generate_app_file_manifest.dart --stamp \
+            --tag "$tag" --version "$version" \
+            --dir "$APP_PATH/Contents/Resources" --platform macos --architecture universal
+
       # כל שינוי בתוכן ה-bundle מבטל את חותם _CodeSignature, ואז Gatekeeper
       # מכריז אצל המשתמש "האפליקציה פגומה". חייב לרוץ לפני ה-DMG וה-zip-ים.
       - name: Re-sign and verify the app bundle
@@ -2172,12 +2243,40 @@ jobs:
           set -euo pipefail
           APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
           [ -n "$APP_PATH" ] || { echo "::error::No .app bundle found for re-signing"; exit 1; }
+          # קוד מקונן ב-Contents/MacOS נחתם לפני ה-bundle, אחרת --deep נכשל.
+          if [ -f "$APP_PATH/Contents/MacOS/zstd" ]; then
+            codesign --force --sign - "$APP_PATH/Contents/MacOS/zstd"
+          fi
           # אותה חתימה ad-hoc שה-Xcode עושה (CODE_SIGN_IDENTITY = "-"); בלי
           # --entitlements החתימה מחדש מוחקת את ההרשאות שהבינארי קיבל.
           codesign --force --sign - \
             --entitlements macos/Runner/Release.entitlements \
             "$APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      # מניפסט העץ (קבצים, symlinks, הרשאות) נסרק מה-bundle החתום — בדיוק
+      # מה שמגיע למשתמש. אופטימיזציה בלבד: בלעדיו אין עדכון מצומצם הבא.
+      - name: Generate application file manifest (macOS)
+        id: app_file_manifest_macos
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          version=$(grep '^version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          if [ '${{ github.ref }}' = 'refs/heads/main' ]; then tag="$version"; else tag="$version+${{ github.run_number }}"; fi
+          dart run tool/release/generate_app_file_manifest.dart \
+            --tag "$tag" --version "$version" \
+            --dir "$APP_PATH" --platform macos --architecture universal
+
+      - name: Upload application file manifest (macOS)
+        if: steps.app_file_manifest_macos.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: otzaria-app-file-manifest-macos
+          path: otzaria-app-files-macos-universal.json
+          if-no-files-found: warn
 
       - name: Create DMG installer
         run: |
@@ -2632,6 +2731,16 @@ jobs:
               echo "::warning::application file manifest for $arch is missing - the next release will have no differential update for it"
             fi
           done
+          for src in \
+            artifacts/otzaria-app-file-manifest-macos/otzaria-app-files-macos-universal.json \
+            artifacts/otzaria-app-file-manifest-linux-x64/otzaria-app-files-linux-x64.json \
+            artifacts/otzaria-app-file-manifest-linux-arm64/otzaria-app-files-linux-arm64.json; do
+            if [ -f "$src" ]; then
+              cp "$src" release-files/
+            else
+              echo "::warning::$(basename "$src") is missing - the next release will have no differential update for it"
+            fi
+          done
 
       # מתקין ה-FULL מתקרב למגבלת ה-2 GiB לנכס בודד ב-GitHub. כשיחצה אותה
       # הוא יפוצל לחלקים, ומסייע ההורדה מרכיב אותם חזרה לקובץ הפעלה אחד.
@@ -3022,6 +3131,41 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" --repo "$UPDATE_PACKAGES_SOURCE_REPO" \
             --clobber update-packages/*
+
+      # macOS ו-Linux נייד: חבילות עץ (symlinks, הרשאות, העץ החדש המלא).
+      # שלב נפרד, כדי שכשל או חריגת זמן כאן לא יגעו בחבילות Windows. בסיסי
+      # Linux הם app של חבילות ה-FULL — נמשכים בזרם, בלי לשמור 2GB לדיסק.
+      - name: Publish differential update packages (macOS, Linux)
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        timeout-minutes: 90
+        env:
+          UPDATE_PACKAGES_SOURCE_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # bsdtar משחזר symlinks מ-zip של ditto; unzip אינו מבטיח זאת.
+          command -v bsdtar >/dev/null || sudo apt-get install -y libarchive-tools
+          flutter pub get
+          rm -rf tree-update-packages
+          mkdir -p tree-update-packages
+          UPDATE_PACKAGES_PLATFORM=macos bash tool/release/build_update_packages.sh \
+            universal "$RELEASE_TAG" release-files/otzaria-app-files-macos-universal.json \
+            release-files/otzaria-macos.zip tree-update-packages 2 || true
+          for arch in x64 arm64; do
+            archive="release-files/otzaria-linux-full.tar.zst"
+            [ "$arch" = "x64" ] || archive="release-files/otzaria-linux-full-$arch.tar.zst"
+            UPDATE_PACKAGES_PLATFORM=linux bash tool/release/build_update_packages.sh \
+              "$arch" "$RELEASE_TAG" "release-files/otzaria-app-files-linux-$arch.json" \
+              "$archive" tree-update-packages 2 || true
+          done
+          if [ -z "$(ls -A tree-update-packages)" ]; then
+            echo "::warning::no macOS/Linux differential update packages were produced"
+            exit 0
+          fi
+          gh release upload "$RELEASE_TAG" --repo "$UPDATE_PACKAGES_SOURCE_REPO" \
+            --clobber tree-update-packages/*
 
   trigger_google_play_deploy:
     if: "!cancelled() && needs.check_version.outputs.is_version == 'true' && needs.build_android.result == 'success' && github.event_name != 'release' && github.event_name != 'pull_request'"

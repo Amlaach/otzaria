@@ -133,8 +133,10 @@ void main() {
       expect(workflow, contains(r'tag=$VERSION+${{ github.run_number }}'));
       expect(
         r'"$version+${{ github.run_number }}"'.allMatches(workflow).length,
-        5,
-        reason: 'חותם ומניפסט בשתי הארכיטקטורות, ומסייע ההורדה',
+        9,
+        reason:
+            'חותם ומניפסט ב-Windows (שתי ארכיטקטורות), ב-macOS וב-Linux, '
+            'ומסייע ההורדה',
       );
     });
 
@@ -163,7 +165,24 @@ void main() {
           architecture: arch,
         );
         expect(workflow, contains(name), reason: arch);
-        expect(script, contains('otzaria-app-files-windows-'));
+      }
+      // הסקריפט מרכיב את השם מהפלטפורמה ומהארכיטקטורה, כמו הגנרטור.
+      expect(
+        script,
+        contains(
+          r'manifest_asset="otzaria-app-files-${platform}-${arch}.json"',
+        ),
+      );
+      for (final (platform, arch) in [
+        ('macos', 'universal'),
+        ('linux', 'x64'),
+        ('linux', 'arm64'),
+      ]) {
+        final name = appFileManifestAssetName(
+          platform: platform,
+          architecture: arch,
+        );
+        expect(workflow, contains(name), reason: name);
       }
     });
 
@@ -265,6 +284,164 @@ void main() {
         ),
       );
       expect(script, contains(r'[ "$kind" = stable ] && stable_covered=true'));
+    });
+  });
+
+  group('עדכון עץ: macOS ו-Linux נייד', () {
+    String step(String name, [int length = 1400]) {
+      final at = indexOfStep(name);
+      return workflow.substring(at, at + length);
+    }
+
+    test('macOS: zstd וחותם נכנסים ל-bundle לפני החתימה, והמניפסט אחריה', () {
+      final zstd = indexOfStep('Build bundled zstd (macOS)');
+      final stamp = indexOfStep('Stamp installed release (macOS)');
+      final sign = indexOfStep('Re-sign and verify the app bundle');
+      final manifest = indexOfStep(
+        'Generate application file manifest (macOS)',
+      );
+      expect(indexOfStep('Bundle plugins into the app bundle'), lessThan(zstd));
+      expect(zstd, lessThan(sign));
+      expect(stamp, lessThan(sign));
+      expect(manifest, greaterThan(sign));
+      // ה-DMG, ה-zip וה-FULL נבנים מה-bundle החתום, ולכן כולם נושאים אותם.
+      expect(sign, lessThan(indexOfStep('Create DMG installer')));
+      expect(sign, lessThan(indexOfStep('Create macOS update zip')));
+
+      expect(
+        step('Build bundled zstd (macOS)'),
+        contains('Contents/MacOS/zstd" universal'),
+      );
+      // נתונים בשורש ה-bundle או ב-Contents/MacOS שוברים את החתימה.
+      expect(
+        step('Stamp installed release (macOS)'),
+        contains(
+          r'--dir "$APP_PATH/Contents/Resources" --platform macos --architecture universal',
+        ),
+      );
+      expect(
+        step('Generate application file manifest (macOS)'),
+        contains(
+          r'--dir "$APP_PATH" --platform macos --architecture universal',
+        ),
+      );
+    });
+
+    test('macOS: zstd נחתם לפני ה-bundle', () {
+      final body = step('Re-sign and verify the app bundle');
+      expect(
+        body.indexOf(
+          r'codesign --force --sign - "$APP_PATH/Contents/MacOS/zstd"',
+        ),
+        allOf(greaterThan(-1), lessThan(body.indexOf('--entitlements'))),
+      );
+    });
+
+    test('Linux: zstd וחותם ב-app של חבילת ה-FULL, המניפסט מה-app שנארז', () {
+      final zstd = indexOfStep('Build bundled zstd (Linux FULL)');
+      final stamp = indexOfStep('Stamp installed release (Linux FULL)');
+      final bundle = indexOfStep('Create Linux FULL portable bundle');
+      final manifest = indexOfStep(
+        'Generate application file manifest (Linux)',
+      );
+      expect(zstd, lessThan(bundle));
+      expect(stamp, lessThan(bundle));
+      expect(manifest, greaterThan(bundle));
+      expect(manifest, lessThan(indexOfStep('Upload Linux FULL bundle')));
+      expect(
+        step('Build bundled zstd (Linux FULL)'),
+        contains("if: matrix.target == 'full'"),
+      );
+      expect(
+        step('Stamp installed release (Linux FULL)'),
+        contains('--dir linux-build --platform linux'),
+      );
+      expect(
+        step('Generate application file manifest (Linux)'),
+        contains(
+          '--dir full_installer/otzaria-linux-full/app --platform linux',
+        ),
+      );
+    });
+
+    test('כל שלב חדש אינו פטאלי', () {
+      for (final name in [
+        'Build bundled zstd (macOS)',
+        'Stamp installed release (macOS)',
+        'Generate application file manifest (macOS)',
+        'Upload application file manifest (macOS)',
+        'Build bundled zstd (Linux FULL)',
+        'Stamp installed release (Linux FULL)',
+        'Generate application file manifest (Linux)',
+        'Upload application file manifest (Linux)',
+        'Publish differential update packages (macOS, Linux)',
+      ]) {
+        expect(
+          step(name, 400),
+          contains('continue-on-error: true'),
+          reason: name,
+        );
+      }
+    });
+
+    test('חבילות העץ נבנות בשלב נפרד אחרי השחרור, עם מגבלת זמן', () {
+      final publish = indexOfStep(
+        'Publish differential update packages (macOS, Linux)',
+      );
+      expect(publish, greaterThan(indexOfStep('Create Release')));
+      expect(
+        publish,
+        greaterThan(indexOfStep('Publish differential update packages')),
+      );
+      final body = step(
+        'Publish differential update packages (macOS, Linux)',
+        2400,
+      );
+      expect(body, contains('timeout-minutes:'));
+      expect(body, contains('UPDATE_PACKAGES_PLATFORM=macos'));
+      expect(body, contains('UPDATE_PACKAGES_PLATFORM=linux'));
+      expect(body, contains('release-files/otzaria-macos.zip'));
+      expect(body, contains('otzaria-linux-full-\$arch.tar.zst'));
+      expect(body, contains('$kUpdateBaseReleaseCount || true'));
+      expect(body, contains('gh release upload'));
+    });
+
+    test('המניפסטים של macOS ו-Linux עולים עם השחרור', () {
+      final body = step('Stage application file manifests', 1600);
+      for (final name in [
+        'otzaria-app-files-macos-universal.json',
+        'otzaria-app-files-linux-x64.json',
+        'otzaria-app-files-linux-arm64.json',
+      ]) {
+        expect(body, contains(name));
+      }
+    });
+
+    test('הסקריפט פורס לכל פלטפורמה את העץ הנכון', () {
+      expect(
+        script,
+        contains(r'platform=${UPDATE_PACKAGES_PLATFORM:-windows}'),
+      );
+      expect(script, contains('base_asset="otzaria-macos.zip"'));
+      expect(script, contains('base_asset="otzaria-linux-full.tar.zst"'));
+      // bsdtar משחזר symlinks; ב-Linux נפרס app/ בלבד, בזרם.
+      expect(script, contains('bsdtar -xf'));
+      expect(script, contains('tar -x -C "\$dest" otzaria-linux-full/app'));
+      expect(script, contains('--output -'));
+    });
+
+    test('zstd נבנה מקוד המקור של facebook/zstd בגרסה נעולה ב-hash', () {
+      final build = File('tool/release/build_zstd.sh').readAsStringSync();
+      expect(
+        build,
+        contains(
+          'https://github.com/facebook/zstd/releases/download/v\$version/',
+        ),
+      );
+      expect(build, contains(RegExp(r'sha256=[0-9a-f]{64}')));
+      expect(build, contains('HAVE_ZLIB=0 HAVE_LZMA=0 HAVE_LZ4=0'));
+      expect(build, contains('-arch x86_64 -arch arm64'));
+      expect(build, isNot(contains('http://')));
     });
   });
 }
