@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
@@ -14,6 +15,8 @@ import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/settings/panels/tools_management_panel.dart';
 import 'package:otzaria/tools/built_in_tools_catalog.dart';
+
+import '../../test_helpers/memory_cache_provider.dart';
 
 // ─── Test doubles ─────────────────────────────────────────────────────────────
 
@@ -174,6 +177,8 @@ Future<TestGesture> _hoverRow(WidgetTester tester, String name) async {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 void main() {
+  setUpAll(() => Settings.init(cacheProvider: MemoryCacheProvider()));
+
   testWidgets(
     'built-in section is collapsed by default and expands on tap',
     (tester) async {

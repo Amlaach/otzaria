@@ -120,6 +120,9 @@ import 'package:otzaria/plugins/services/plugin_settings_access_policy.dart';
 import 'package:otzaria/plugins/services/plugin_shortcut_registry.dart';
 import 'package:otzaria/plugins/services/plugin_shortcut_service.dart';
 import 'package:otzaria/plugins/services/plugin_path_safety.dart';
+import 'package:otzaria/plugins/services/plugin_user_folder.dart';
+import 'package:otzaria/plugins/services/plugin_user_folder_grants.dart';
+import 'package:otzaria/utils/file/file_book_path_resolver.dart';
 import 'package:otzaria/plugins/services/plugin_network_fetch_service.dart';
 import 'package:otzaria/plugins/services/reader_selection_service.dart';
 import 'package:otzaria/plugins/services/plugin_highlight_registry.dart';
@@ -645,7 +648,12 @@ class PluginBridgeAdapter {
            highlightRegistry ?? PluginHighlightRegistry.instance,
        _pluginFsService = fsService,
        _pluginShortcutService = shortcutService,
-       _fileServer = fileServer ?? PluginFileServer.instance;
+       _fileServer = fileServer ?? PluginFileServer.instance {
+    _stopFolderRevocationListener = PluginUserFolderGrants.onRevoke(
+      plugin.pluginId,
+      _removeTemporaryFolderGrant,
+    );
+  }
 
   // שרת הקבצים הפנימי שמגיש קבצים אישיים ל-WebView (מופע יחיד לכל האפליקציה
   // כברירת מחדל; ניתן להזרקה לבדיקות).
@@ -677,10 +685,16 @@ class PluginBridgeAdapter {
   ///
   /// **גבול האבטחה לכתיבה/מחיקה בדיסק:** פעולות `fs.extractZip`,
   /// `fs.deleteFile` ו-`network.download` עם `destPath` מותרות אך ורק על
-  /// נתיבים בתוך אחת מהתיקיות הללו. כך גישת התוסף לדיסק נובעת מהסכמה מפורשת
-  /// של המשתמש בדיאלוג בחירת התיקייה — ולא מהרשאת manifest. הקבוצה מאופסת עם
-  /// `dispose` (טעינה/השבתה מחדש של התוסף).
+  /// נתיבים בתוך אחת מהתיקיות הללו, או בתוך תיקייה עם גישה קבועה
+  /// (`fs.pickUserFolder`, ראה [_isPathInGrantedFolder]). כך גישת התוסף לדיסק
+  /// נובעת מהסכמה מפורשת של המשתמש בדיאלוג בחירת התיקייה — ולא מהרשאת
+  /// manifest. הקבוצה מאופסת עם `dispose` (טעינה/השבתה מחדש של התוסף).
   final Set<String> _grantedFolders = <String>{};
+  late final void Function() _stopFolderRevocationListener;
+
+  void _removeTemporaryFolderGrant(String path) {
+    _grantedFolders.removeWhere((root) => p.equals(root, path));
+  }
 
   // שירות בקשות HTTP — מופע יחיד לכל adapter; ניתן להזרקה
   // לבדיקות, נוצר עם השימוש הראשון אם לא הוזרק, ומשוחרר ב-dispose.
@@ -692,6 +706,8 @@ class PluginBridgeAdapter {
   // getBookContent. ראה _loadBookRawText.
   final Map<PluginBookIdentityKey, String> _bookContentCache = {};
   static const int _bookContentCacheMaxEntries = 4;
+  static int _bookContentRevision = 0;
+  int _seenBookContentRevision = 0;
 
   /// אורך מקסימלי לשם שולחן עבודה שתוסף יוצר — השם מוצג בממשק המשתמש.
   static const int _workspaceNameMaxLength = 100;
@@ -735,6 +751,7 @@ class PluginBridgeAdapter {
   }
 
   void dispose() {
+    _stopFolderRevocationListener();
     // מסיר רק את תרומות המופע הזה — מופע אחר של אותו תוסף ממשיך לתפקד,
     // וה-dedup בציור חושף את העותקים שלו.
     final key = (pluginId: plugin.pluginId, instanceId: instanceId);
@@ -775,6 +792,10 @@ class PluginBridgeAdapter {
   /// לא-מעודכן אם המשתמש עורך ספר בזמן שתוסף קורא אותו — מקרה קצה נדיר
   /// בנתיב קריאה-בלבד.
   Future<String> _loadBookRawText(Book book) async {
+    if (_seenBookContentRevision != _bookContentRevision) {
+      _bookContentCache.clear();
+      _seenBookContentRevision = _bookContentRevision;
+    }
     final key = PluginBookIdentity.keyOf(book);
     final cached = _bookContentCache.remove(key);
     if (cached != null) {
@@ -1332,13 +1353,35 @@ class PluginBridgeAdapter {
         // path אופציונלי: מצמצם את העץ לתת-קטגוריה לפי הנתיב שלה (כמו '/תנך/ראשונים').
         //   ברירת מחדל: כל הספרייה.
         // includeBooks אופציונלי (ברירת מחדל true): האם לכלול את רשימות הספרים.
+        // types אופציונלי (מ-0.9.98): רק ספרים שה-type שלהם ברשימה, וקטגוריות
+        //   שאין תחתן אף ספר כזה נגזמות — עץ "ספרי Word" בלי אלפי ענפים ריקים.
         final path = args['path']?.toString();
         final includeBooks = args['includeBooks'] as bool? ?? true;
+        final types = _optionalStringList(
+          args['types'],
+          'types',
+        )?.map((t) => t.toLowerCase()).toSet();
         final root = (path == null || path.isEmpty || path == '/')
             ? library
             : _findCategoryByPath(library, path);
         if (root == null) return null;
+        if (types != null) {
+          return _categoryToFilteredTree(
+                root,
+                types: types,
+                includeBooks: includeBooks,
+              ) ??
+              // שורש בלי אף ספר מתאים הוא עץ ריק, לא "נתיב לא נמצא" (null).
+              {
+                'title': root.title,
+                'path': root.path,
+                'categories': const <Map<String, dynamic>>[],
+                if (includeBooks) 'books': const <Map<String, dynamic>>[],
+              };
+        }
         return _categoryToTree(root, includeBooks: includeBooks);
+      case 'openBookFile':
+        return await _openBookFile(library, args);
       case 'getCommentators':
         return await _getCommentators(library, args);
       case 'getLinks':
@@ -1868,6 +1911,83 @@ class PluginBridgeAdapter {
       entry['topics'] = book.topics;
     }
     return entry;
+  }
+
+  /// כמו [_categoryToTree], אבל רק עם ספרים שה-`type` שלהם ב-[types].
+  /// מחזיר `null` כשאין תחת [category] אף ספר מתאים, כך שענף ריק נגזם עוד
+  /// לפני שנבנה עבורו אובייקט. העבודה היא מעבר אחד על הקטלוג שכבר בזיכרון,
+  /// ומה שחוצה את הגשר הוא רק תת-העץ הגזום.
+  Map<String, dynamic>? _categoryToFilteredTree(
+    Category category, {
+    required Set<String> types,
+    required bool includeBooks,
+  }) {
+    final children = <Map<String, dynamic>>[];
+    for (final sub in category.subCategories) {
+      final node = _categoryToFilteredTree(
+        sub,
+        types: types,
+        includeBooks: includeBooks,
+      );
+      if (node != null) children.add(node);
+    }
+    final books = category.books
+        .where((b) => types.contains(PluginBookIdentity.typeOf(b)))
+        .toList();
+    if (children.isEmpty && books.isEmpty) return null;
+    return {
+      'title': category.title,
+      'path': category.path,
+      'categories': children,
+      if (includeBooks) 'books': books.map(_bookToTreeEntry).toList(),
+    };
+  }
+
+  /// `library.openBookFile` — מוסר לתוסף את הקובץ שמאחורי ספר בספרייה, כ-token
+  /// של קובץ משתמש רגיל (resolve/commit/revoke עובדים עליו). הקובץ אינו מועתק:
+  /// הנתיב הקיים נרשם בשרת הקבצים.
+  ///
+  /// כתיבה מותרת לספר אישי בלבד. ספר של הספרייה משותף לכל עדכון ספרייה עתידי,
+  /// ושמירה במקום הייתה נדרסת בעדכון הבא — או גרוע מזה, משנה את מה שכל
+  /// המשתמשים רואים כ"ספר".
+  Future<Map<String, dynamic>> _openBookFile(
+    Library library,
+    Map<String, dynamic> args,
+  ) async {
+    final bookId = (args['bookId'] ?? args['title']) as String?;
+    if (PluginBookIdentity.parseId(args['id']) == null &&
+        bookId == null &&
+        (args['bookUid'] as String?)?.trim().isNotEmpty != true) {
+      throw Exception('error.invalid_params: id, bookUid or bookId required');
+    }
+    final writable = _parseUserFileAccess(args);
+    final book = _findPluginBook(library, args);
+    if (book == null) throw Exception('error.not_found: book not found');
+    if (book is! FileBook) {
+      throw Exception('error.unsupported: book has no local file');
+    }
+    final source = PluginBookIdentity.sourceOf(book);
+    if (writable) {
+      if (source != 'user') {
+        throw Exception('error.permission_denied: library books are read-only');
+      }
+      await _requireWritePermission();
+    }
+    final canonical = canonicalizeNearestExisting(
+      resolveMovedFileBookPath(book.path),
+    );
+    if (canonical == null || !await File(canonical).exists()) {
+      throw Exception('error.not_found: book file does not exist');
+    }
+    final grant = await _grantUserFile(canonical, writable: writable);
+    return {
+      'token': grant.token,
+      'url': grant.url,
+      'name': p.basename(canonical),
+      'size': await File(canonical).length(),
+      'access': grant.writable ? 'readwrite' : 'read',
+      'source': source,
+    };
   }
 
   // ----------------------------------------------------------------
@@ -3410,7 +3530,11 @@ class PluginBridgeAdapter {
         if (rejection != null) {
           throw Exception('error.forbidden: $rejection');
         }
-        _grantedFolders.add(p.normalize(p.absolute(path)));
+        final canonical = canonicalizeNearestExisting(path);
+        if (canonical == null) {
+          throw Exception('error.forbidden: selected folder no longer exists');
+        }
+        _grantedFolders.add(canonical);
         return {'path': path};
       case 'print':
         final printer = _dependencies.printPluginPage ?? _defaultPrintPage;
@@ -3699,23 +3823,38 @@ class PluginBridgeAdapter {
     );
   }
 
-  /// בודקת אם [targetPath] נמצא בתוך תיקייה שהמשתמש אישר דרך `ui.pickFolder`.
+  /// בודקת אם [targetPath] נמצא בתוך תיקייה שהמשתמש אישר — חד-פעמית דרך
+  /// `ui.pickFolder` בריצה הזו, או לצמיתות דרך `fs.pickUserFolder` (הרשאה
+  /// קבועה כוללת את החד-פעמית).
   ///
   /// זהו גבול האבטחה לכל פעולות הכתיבה/מחיקה לדיסק של התוסף. הבדיקה מתבצעת על
   /// הנתיב הקנוני (אחרי פתרון symlinks) של **שני** הצדדים — היעד והתיקייה
   /// המאושרת — כדי לנטרל גם `..` (path-traversal) וגם symlink שמצביע מתוך
   /// תיקייה מאושרת אל מחוץ לה. בלי פתרון ה-symlink בדיקת [p.isWithin] על המחרוזת
   /// בלבד הייתה מאשרת כתיבה/מחיקה מחוץ לתיקייה דרך קישור סימבולי.
-  bool _isPathInGrantedFolder(String targetPath, {bool allowRoot = true}) {
+  ///
+  /// בהיעדר התאמה להרשאה חד-פעמית, התיקיות הקבועות נקראות מה-KV כדי שביטול
+  /// ממסך ההגדרות יחול גם על תוסף שרץ כרגע.
+  Future<bool> _isPathInGrantedFolder(
+    String targetPath, {
+    bool allowRoot = true,
+  }) async {
     final canonicalTarget = canonicalizeNearestExisting(targetPath);
     if (canonicalTarget == null) return false;
+    bool inside(String root) =>
+        (allowRoot && p.equals(canonicalTarget, root)) ||
+        p.isWithin(root, canonicalTarget);
     for (final root in _grantedFolders) {
       final canonicalRoot = canonicalizeNearestExisting(root);
-      if (canonicalRoot == null) continue;
-      if ((allowRoot && p.equals(canonicalTarget, canonicalRoot)) ||
-          p.isWithin(canonicalRoot, canonicalTarget)) {
-        return true;
+      if (canonicalRoot == null || !p.equals(canonicalRoot, root)) continue;
+      if (inside(canonicalRoot)) return true;
+    }
+    for (final grant in await _folderGrants.list(plugin.pluginId)) {
+      final canonicalRoot = canonicalizeNearestExisting(grant.path);
+      if (canonicalRoot == null || !p.equals(canonicalRoot, grant.path)) {
+        continue;
       }
+      if (inside(canonicalRoot)) return true;
     }
     return false;
   }
@@ -3733,8 +3872,8 @@ class PluginBridgeAdapter {
             'error.invalid_params: zipPath and destFolder required',
           );
         }
-        if (!_isPathInGrantedFolder(zipPath) ||
-            !_isPathInGrantedFolder(destFolder)) {
+        if (!await _isPathInGrantedFolder(zipPath) ||
+            !await _isPathInGrantedFolder(destFolder)) {
           throw Exception(
             'error.forbidden: path outside a user-selected folder',
           );
@@ -3746,7 +3885,7 @@ class PluginBridgeAdapter {
         if (path == null) {
           throw Exception('error.invalid_params: path required');
         }
-        if (!_isPathInGrantedFolder(path)) {
+        if (!await _isPathInGrantedFolder(path)) {
           throw Exception(
             'error.forbidden: path outside a user-selected folder',
           );
@@ -3758,7 +3897,7 @@ class PluginBridgeAdapter {
         if (folderPath == null) {
           throw Exception('error.invalid_params: path required');
         }
-        if (!_isPathInGrantedFolder(folderPath, allowRoot: false)) {
+        if (!await _isPathInGrantedFolder(folderPath, allowRoot: false)) {
           throw Exception(
             'error.forbidden: path outside a user-selected folder',
           );
@@ -3771,8 +3910,8 @@ class PluginBridgeAdapter {
         if (from == null || to == null) {
           throw Exception('error.invalid_params: from and to required');
         }
-        if (!_isPathInGrantedFolder(from, allowRoot: false) ||
-            !_isPathInGrantedFolder(to, allowRoot: false)) {
+        if (!await _isPathInGrantedFolder(from, allowRoot: false) ||
+            !await _isPathInGrantedFolder(to, allowRoot: false)) {
           throw Exception(
             'error.forbidden: path outside a user-selected folder',
           );
@@ -3807,6 +3946,19 @@ class PluginBridgeAdapter {
             : {'exists': true, ...entry.toJson()};
       case 'pickUserFile':
         return await _pickUserFile(args);
+      case 'pickUserFolder':
+        return await _pickUserFolder(args);
+      case 'listUserFolder':
+        return await _listUserFolder(args);
+      case 'openFolderFile':
+        return await _openFolderFile(args);
+      case 'revokeFolder':
+        final folderToken = args['folderToken'];
+        if (folderToken is! String || folderToken.isEmpty) {
+          throw Exception('error.invalid_params: folderToken required');
+        }
+        await _folderGrants.revoke(plugin.pluginId, folderToken);
+        return true;
       case 'beginBinaryWrite':
         return await _beginBinaryWrite(args);
       case 'commitUserFileWrite':
@@ -3976,21 +4128,9 @@ class PluginBridgeAdapter {
               .where((e) => e.isNotEmpty)
               .toList()
         : null;
-    // ברירת המחדל נשארת קריאה: תוסף ותיק שאינו מכיר את השדה מקבל בדיוק מה
-    // שקיבל תמיד. בקשת כתיבה דורשת גם את הרשאת הכתיבה, בנוסף להרשאת הקריאה
-    // שהגשר כבר אכף.
-    final access = args['access'] as String? ?? 'read';
-    if (access != 'read' && access != 'readwrite') {
-      throw Exception(
-        "error.invalid_params: access must be 'read' or 'readwrite'",
-      );
-    }
-    final writable = access == 'readwrite';
-    if (writable && !await _hasWritePermission()) {
-      throw Exception(
-        'error.permission_denied: fs.user_files.write is required for readwrite access',
-      );
-    }
+    final writable = _parseUserFileAccess(args);
+    if (writable) await _requireWritePermission();
+    final access = writable ? 'readwrite' : 'read';
 
     final path = await picker(
       allowedExtensions: extensions,
@@ -4021,6 +4161,30 @@ class PluginBridgeAdapter {
   Future<bool> _hasWritePermission() async =>
       await _pluginRepo.getPermission(plugin.pluginId, 'fs.user_files.write') ??
       false;
+
+  /// קורא את `access` של פתיחת קובץ משתמש ומחזיר האם התבקשה כתיבה.
+  ///
+  /// ברירת המחדל נשארת קריאה: תוסף ותיק שאינו מכיר את השדה מקבל בדיוק מה
+  /// שקיבל תמיד.
+  bool _parseUserFileAccess(Map<String, dynamic> args) {
+    final access = args['access'] as String? ?? 'read';
+    if (access != 'read' && access != 'readwrite') {
+      throw Exception(
+        "error.invalid_params: access must be 'read' or 'readwrite'",
+      );
+    }
+    return access == 'readwrite';
+  }
+
+  /// בקשת כתיבה דורשת גם את הרשאת הכתיבה, בנוסף להרשאת הקריאה שהגשר כבר
+  /// אכף — היא תלויה בארגומנט, ולכן נאכפת כאן ולא בטבלת ההרשאות.
+  Future<void> _requireWritePermission() async {
+    if (!await _hasWritePermission()) {
+      throw Exception(
+        'error.permission_denied: fs.user_files.write is required for readwrite access',
+      );
+    }
+  }
 
   /// `fs.beginBinaryWrite` — פותח העלאה ומחזיר לאן לשלוח את הבייטים.
   ///
@@ -4097,6 +4261,8 @@ class PluginBridgeAdapter {
           throw Exception('error.not_found: file no longer exists');
         }
         await _atomicWrite(upload, canonical);
+        // מטמוני getBookContent של כל מופעי התוסף מתעדכנים בקריאה הבאה.
+        _bookContentRevision++;
         return {
           'cancelled': false,
           'token': targetToken,
@@ -4265,7 +4431,7 @@ class PluginBridgeAdapter {
     }
   }
 
-  static const String _stagingExt = '.otztmp';
+  static const String _stagingExt = kUserFolderStagingExtension;
 
   /// suffix אקראי ולא חתימת זמן: שתי שמירות באותה מיקרו-שנייה היו מתנגשות.
   String _randomSuffix() {
@@ -4412,6 +4578,213 @@ class PluginBridgeAdapter {
         jsonEncode(grants),
       );
     }
+  }
+
+  /// רושם את [canonical] כקובץ משתמש מאושר, או משתמש שוב ב-token שכבר קיים
+  /// לאותו נתיב.
+  ///
+  /// הכפילות חשובה: התוסף ממפתח את רשימת "אחרונים" לפי token, ופתיחה חוזרת
+  /// של אותו קובץ מתיקייה או מהספרייה הייתה מוסיפה לה שורה בכל פעם. grant
+  /// קיים לקריאה משודרג לכתיבה כשהתבקשה ואושרה; grant לכתיבה אינו מורד — ה-
+  /// `writable` שחוזר הוא מה שה-token מאפשר בפועל.
+  Future<({String token, String url, bool writable})> _grantUserFile(
+    String canonical, {
+    required bool writable,
+  }) async {
+    final grants = await _readUserFileGrants();
+    for (final MapEntry(key: token, :value) in grants.entries) {
+      final path = switch (value) {
+        final String path => path,
+        {'path': final String path} => path,
+        _ => null,
+      };
+      if (path == null || !p.equals(path, canonical)) continue;
+      final existingWritable = value is Map && value['access'] == 'readwrite';
+      if (writable && !existingWritable) {
+        await _saveUserFileGrant(token, canonical, writable: true);
+      }
+      final url = await _fileServer.registerWithToken(
+        pluginId: plugin.pluginId,
+        canonicalPath: canonical,
+        token: token,
+      );
+      return (token: token, url: url, writable: writable || existingWritable);
+    }
+    final registration = await _fileServer.register(
+      pluginId: plugin.pluginId,
+      canonicalPath: canonical,
+    );
+    await _saveUserFileGrant(registration.token, canonical, writable: writable);
+    return (
+      token: registration.token,
+      url: registration.url,
+      writable: writable,
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // fs.* — תיקיות משתמש עם גישה קבועה
+  // ----------------------------------------------------------------
+
+  // תיקיות שהמשתמש הוסיף לתוסף נשמרות ב-KV (`_internal/user_folder_grants`),
+  // דרך [PluginUserFolderGrants] — אותו שירות שמסך הגדרות התוסף מבטל דרכו.
+  // בניגוד ל-`ui.pickFolder` ה-grant קבוע: זו רשימת התיקיות שבעץ "פתח מסמך",
+  // והמשתמש מצפה למצוא אותן גם מחר.
+  PluginUserFolderGrants get _folderGrants =>
+      PluginUserFolderGrants(_pluginRepo);
+
+  /// `fs.pickUserFolder` — דיאלוג בחירת תיקייה ואחריו דיאלוג הסכמה של אוצריא
+  /// לגישה **קבועה**. בחירה חוזרת של תיקייה שכבר אושרה מחזירה את אותו token
+  /// בלי לשאול שוב.
+  ///
+  /// דיאלוג ההסכמה הוא ממשק של המארח, ואין ארגומנט שמדלג עליו: רשומה ב-KV
+  /// נוצרת רק אחרי "המשך". דחייה מחזירה `{cancelled: true}` ואינה שומרת דבר.
+  Future<Map<String, dynamic>> _pickUserFolder(
+    Map<String, dynamic> args,
+  ) async {
+    // בורר ברירת המחדל עובר דרך סיסמת "מצב בטוח", כמו pickUserFile.
+    final picker = _dependencies.pickFolder ?? _defaultPickFolder;
+    final picked = await picker(title: args['title'] as String?);
+    if (picked == null || picked.isEmpty) return {'cancelled': true};
+    final rejection = await pluginFolderRejectionReason(picked);
+    if (rejection != null) throw Exception('error.forbidden: $rejection');
+    final canonical = canonicalizeNearestExisting(picked);
+    if (canonical == null || !await Directory(canonical).exists()) {
+      throw Exception('error.not_found: selected folder does not exist');
+    }
+    final name = p.basename(canonical);
+    var folderToken = (await _folderGrants.byPath(
+      plugin.pluginId,
+      canonical,
+    ))?.token;
+    if (folderToken == null) {
+      final consented = await _dependencies.showWarningDialog(
+        title: 'גישה קבועה לתיקייה',
+        content:
+            'התוסף „${plugin.name}” מבקש גישה קבועה לתיקייה „$name”: לקרוא '
+            'ולכתוב בה גם בהפעלות הבאות של אוצריא, בלי לשאול שוב.',
+        subtitle: 'אפשר לבטל את הגישה בכל עת בהגדרות התוסף.',
+      );
+      if (!consented) return {'cancelled': true};
+      folderToken = 'dir-${_randomSuffix()}${_randomSuffix()}';
+      await _folderGrants.add(plugin.pluginId, (
+        token: folderToken,
+        path: canonical,
+      ));
+    }
+    return {
+      'cancelled': false,
+      'folderToken': folderToken,
+      'name': name,
+      'path': canonical,
+    };
+  }
+
+  /// השורש הקנוני של תיקייה מאושרת. תיקייה שנעלמה מהדיסק אינה מבטלת את ה-
+  /// grant: כונן חיצוני שנותק יחזור, והמשתמש לא אמור להוסיף אותו מחדש.
+  Future<String> _userFolderRoot(Map<String, dynamic> args) async {
+    final folderToken = args['folderToken'];
+    if (folderToken is! String || folderToken.isEmpty) {
+      throw Exception('error.invalid_params: folderToken required');
+    }
+    final grant = await _folderGrants.byToken(plugin.pluginId, folderToken);
+    if (grant == null) {
+      throw Exception('error.not_found: unknown folder token');
+    }
+    final path = grant.path;
+    try {
+      if (await Directory(path).exists()) {
+        final current = await Directory(path).resolveSymbolicLinks();
+        if (!p.equals(current, path)) {
+          throw Exception('error.forbidden: granted folder path changed');
+        }
+        return current;
+      }
+    } on FileSystemException {
+      // נופל ל-not_found למטה.
+    }
+    throw Exception('error.not_found: folder no longer exists');
+  }
+
+  /// מפענח את `path` של קריאה על תיקייה מאושרת ופותר אותו בתוכה.
+  Future<({List<String> segments, String resolved})> _resolveInUserFolder(
+    String root,
+    Object? rawPath,
+  ) async {
+    if (rawPath != null && rawPath is! String) {
+      throw Exception('error.invalid_params: path must be a string');
+    }
+    final segments = parseUserFolderRelativePath(rawPath as String? ?? '');
+    final resolved = segments == null
+        ? null
+        : await resolveUserFolderPath(root, segments);
+    if (segments == null || resolved == null) {
+      throw Exception('error.forbidden: path outside the granted folder');
+    }
+    return (segments: segments, resolved: resolved);
+  }
+
+  /// `fs.listUserFolder` — רמה אחת של תיקייה מאושרת (העץ בתוסף טוען בעצלות).
+  Future<Map<String, dynamic>> _listUserFolder(
+    Map<String, dynamic> args,
+  ) async {
+    final extensions = normalizeUserFolderExtensions(
+      _optionalStringList(args['extensions'], 'extensions'),
+    );
+    final root = await _userFolderRoot(args);
+    final target = await _resolveInUserFolder(root, args['path']);
+    if (await FileSystemEntity.type(target.resolved) !=
+        FileSystemEntityType.directory) {
+      throw Exception('error.not_found: folder not found');
+    }
+    final relativePath = joinUserFolderRelativePath(target.segments);
+    final UserFolderListing listing;
+    try {
+      listing = await listUserFolderEntries(
+        canonicalRoot: root,
+        canonicalDir: target.resolved,
+        relativePath: relativePath,
+        extensions: extensions,
+      );
+    } on FileSystemException catch (e) {
+      throw Exception('error.forbidden: cannot read folder (${e.message})');
+    }
+    return {
+      'folderToken': args['folderToken'],
+      'name': p.basename(root),
+      'path': relativePath,
+      'entries': listing.entries,
+      'truncated': listing.truncated,
+    };
+  }
+
+  /// `fs.openFolderFile` — פותח קובץ מתוך תיקייה מאושרת כקובץ משתמש רגיל,
+  /// באותה צורת תשובה של `fs.pickUserFile`. הקובץ אינו מועתק.
+  Future<Map<String, dynamic>> _openFolderFile(
+    Map<String, dynamic> args,
+  ) async {
+    final writable = _parseUserFileAccess(args);
+    final rawPath = args['path'];
+    if (rawPath is! String || rawPath.trim().isEmpty) {
+      throw Exception('error.invalid_params: path required');
+    }
+    if (writable) await _requireWritePermission();
+    final root = await _userFolderRoot(args);
+    final target = await _resolveInUserFolder(root, rawPath);
+    if (target.segments.isEmpty ||
+        await FileSystemEntity.type(target.resolved) !=
+            FileSystemEntityType.file) {
+      throw Exception('error.not_found: file not found');
+    }
+    final grant = await _grantUserFile(target.resolved, writable: writable);
+    return {
+      'cancelled': false,
+      'token': grant.token,
+      'url': grant.url,
+      'name': p.basename(target.resolved),
+      'size': await File(target.resolved).length(),
+      'access': grant.writable ? 'readwrite' : 'read',
+    };
   }
 
   // ----------------------------------------------------------------
@@ -6125,7 +6498,7 @@ class PluginBridgeAdapter {
         final destPath = args['destPath'] as String?;
         final resume = args['resume'] == true;
         if (destPath != null && destPath.isNotEmpty) {
-          if (!_isPathInGrantedFolder(destPath)) {
+          if (!await _isPathInGrantedFolder(destPath)) {
             throw Exception(
               'error.forbidden: destPath outside a user-selected folder',
             );

@@ -38,6 +38,7 @@
 | `library.getBookDetails` | ✓ | ✓ | ✓ | ✓ |
 | `library.listRecentBooks` | ✓ | ✓ | ✓ | ✓ |
 | `library.getTree` | ✓ | ✓ | ✓ | ✓ |
+| `library.openBookFile` | קלט | קלט | קלט | קלט |
 | `reader.openBook` | קלט | קלט | קלט | קלט |
 | `reader.openBookAtRef` | קלט | קלט | קלט | קלט |
 
@@ -152,6 +153,7 @@ if (response.success) {
 | `library.listBookAltStructures` | 0.9.96 |
 | `library.getBookAltToc` | 0.9.96 |
 | `library.getTree` | 0.9.93 |
+| `library.openBookFile` | 0.9.98 |
 | `library.getCommentators` | 0.9.97 |
 | `library.getLinks` | 0.9.97 |
 | `library.getRawLinks` | 0.9.97 |
@@ -235,6 +237,10 @@ if (response.success) {
 | `fs.stat` | 0.9.97 |
 | `fs.deleteFolder` | 0.9.98 |
 | `fs.moveEntry` | 0.9.98 |
+| `fs.pickUserFolder` | 0.9.98 |
+| `fs.listUserFolder` | 0.9.98 |
+| `fs.openFolderFile` | 0.9.98 |
+| `fs.revokeFolder` | 0.9.98 |
 | `feedback.sendEmail` | 0.9.89 |
 | `feedback.report` | 0.9.97 |
 | `feedback.hasReporterEmail` | 0.9.97 |
@@ -765,7 +771,8 @@ const { data } = await Otzaria.call('library.listRecentBooks');
 ```javascript
 const { data } = await Otzaria.call('library.getTree', {
   path: '/תנך/ראשונים',  // אופציונלי: צמצום לתת-קטגוריה לפי נתיב. ברירת מחדל: כל הספרייה
-  includeBooks: true       // אופציונלי, ברירת מחדל: true — האם לכלול את רשימות הספרים
+  includeBooks: true,      // אופציונלי, ברירת מחדל: true — האם לכלול את רשימות הספרים
+  types: ['docx', 'odt']   // אופציונלי (מ-0.9.98): רק ספרים מסוגים אלו
 });
 // {
 //   title: "ספריית אוצריא",
@@ -786,6 +793,49 @@ const { data } = await Otzaria.call('library.getTree', {
 // }
 // כש-path לא נמצא: מוחזר null.
 ```
+
+`types` (מגרסה 0.9.98) משאיר רק ספרים שה-`type` שלהם ברשימה, וגוזם כל קטגוריה
+שאין תחתיה — בשום עומק — אף ספר כזה. כך עץ "ספרי Word" חוצה את הגשר כתת-עץ
+קטן ולא כספרייה כולה. שורש שאין תחתיו אף ספר מתאים מוחזר ריק (`categories: []`),
+לא `null`. בלי `types` ההתנהגות לא השתנתה. גרסה ישנה מתעלמת מהשדה ומחזירה את
+העץ המלא, ולכן תוסף שתומך בה צריך לגזום גם בעצמו.
+
+### `library.openBookFile`
+**הרשאה:** `library.content.read` · **מגרסה:** 0.9.98
+
+מוסר לתוסף את הקובץ שמאחורי ספר בספרייה — DOCX/ODT/RTF וכו', PDF או EPUB —
+כ-`token` ו-`url` של קובץ משתמש רגיל. הבייטים אינם חוצים את הגשר והקובץ אינו
+מועתק: הנתיב הקיים נרשם בשרת הקבצים, ועל ה-`token` עובדים
+[`fs.resolveFileUrl`](#fsresolvefileurl),
+[`fs.commitUserFileWrite`](#fscommituserfilewrite) ו-[`fs.revokeFile`](#fsrevokefile).
+
+קלט: אותם שדות זהות כמו `library.getBookMetadata` — `bookUid` (מומלץ), `id` או
+`bookId` + `type`.
+
+```javascript
+const { data } = await Otzaria.call('library.openBookFile', {
+  bookUid: 'uid:42',
+  access: 'readwrite'   // אופציונלי: 'read' (ברירת מחדל) או 'readwrite'
+});
+// data = { token, url, name, size, access, source }
+```
+
+`source` זהה לשדה הזהות (`library`/`user`/`attached`). כתיבה (`access: 'readwrite'`)
+מותרת **לספר אישי בלבד** (`source: 'user'`) ודורשת גם `fs.user_files.write`;
+על ספר של הספרייה מוחזר `error.permission_denied: library books are read-only`,
+והתוסף פותח אותו מחדש לקריאה. `access` שחוזר הוא מה שה-token מאפשר בפועל.
+
+פתיחה חוזרת של אותו קובץ — מכאן, מ-`fs.openFolderFile` או מ-`fs.pickUserFile`
+קודם — מחזירה את **אותו `token`**, כדי שרשימת "אחרונים" שממופתחת לפיו לא
+תתמלא כפילויות. token לקריאה משודרג לכתיבה כשהיא התבקשה ואושרה.
+
+שמירה במקום של ספר אישי אינה משאירה טקסט ישן: מטמון ההמרה של המסמכים ממופתח לפי
+גודל הקובץ וזמן השינוי שלו. כדי שגם החיפוש יכיר את התוכן החדש יש לקרוא
+ל-`library.refreshUserBooks`.
+
+שגיאות: `error.not_found` (ספר לא מוכר, או שהקובץ שלו נמחק),
+`error.unsupported` (ספר בלי קובץ מקומי — טקסט מהמסד או ספר חיצוני),
+`error.permission_denied`, `error.invalid_params` (אין זהות, או `access` לא חוקי).
 
 ### `library.getBookContent`
 **הרשאה:** `library.content.read`
@@ -2443,7 +2493,8 @@ const { data } = await Otzaria.call('ui.showWarning', {
 מכאן ואילך מותר לו להוריד אליה (`network.download` עם `destPath`), לחלץ
 אליה (`fs.extractZip`) ולמחוק קבצים בתוכה (`fs.deleteFile`). זהו גבול
 האבטחה לגישת התוסף לדיסק — היא נובעת מהסכמת המשתמש בדיאלוג, לא מהרשאת
-manifest. ההרשאה לתיקייה תקפה למשך ריצת התוסף.
+manifest. ההרשאה לתיקייה תקפה למשך ריצת התוסף. תיקייה שהמשתמש אישר לצמיתות דרך
+[`fs.pickUserFolder`](#fspickuserfolder) נחשבת מאושרת גם כאן, בלי לבחור אותה שוב.
 
 **תיקיות מוגנות:** בחירה בתיקייה רגישה נדחית עם `error.forbidden` — כלומר
 `ui.pickFolder` יכולה גם להיכשל, לא רק להחזיר `path: null`. נדחים:
@@ -2580,7 +2631,8 @@ async function save() {
 ## fs.* - פעולות קבצים
 
 > פעולות הקבצים מותרות אך ורק בתוך תיקייה שהמשתמש בחר דרך
-> [`ui.pickFolder`](#uipickfolder). נתיב מחוץ לתיקייה מאושרת מוחזר עם
+> [`ui.pickFolder`](#uipickfolder) בריצה הזו, או בתוך תיקייה עם גישה קבועה
+> ([`fs.pickUserFolder`](#fspickuserfolder)). נתיב מחוץ לתיקייה מאושרת מוחזר עם
 > `error.forbidden`. אין צורך בהרשאת manifest ייעודית — הסכמת המשתמש
 > בבחירת התיקייה היא גבול האבטחה.
 
@@ -2938,6 +2990,116 @@ await Otzaria.call('fs.revokeFile', { token });
 שגיאות אפשריות: `error.not_found` (token לא מוכר / קובץ נמחק),
 `error.invalid_params` (token חסר), `error.too_large` (קובץ טקסט מעל 10MB),
 `error.internal`.
+
+### `fs.pickUserFolder`
+**הרשאה:** `fs.user_files.read` · מגרסה 0.9.98
+
+פותח דיאלוג בחירת תיקייה ומעניק לתוסף גישה **קבועה** אליה — בשונה
+מ-`ui.pickFolder`, שההרשאה שלו לריצה הנוכחית בלבד ואין בה מנייה. זו התשתית
+לרשימת "התיקיות שלי" בדיאלוג פתיחה.
+
+**הסכמת המשתמש.** אחרי בחירת התיקייה אוצריא מציגה דיאלוג משלה, "גישה קבועה
+לתיקייה", שמציין את שם התוסף ואת שם התיקייה ומבהיר שהגישה נשארת גם בהפעלות הבאות
+בלי לשאול שוב. "ביטול" מחזיר `{ cancelled: true }` ולא נשמר דבר. הדיאלוג הוא
+ממשק של אוצריא, ואין ארגומנט שמדלג עליו. בחירה חוזרת של תיקייה שכבר אושרה מחזירה
+את אותו `folderToken` בלי הדיאלוג.
+
+**מה הגישה כוללת.** עיון (`fs.listUserFolder`) ופתיחת קבצים (`fs.openFolderFile`;
+כתיבה לקובץ דורשת גם `fs.user_files.write`). בנוסף, גישה קבועה כוללת את מה
+ש-`ui.pickFolder` מעניק: `network.download` עם `destPath`, `fs.extractZip`,
+`fs.deleteFile`, `fs.deleteFolder` ו-`fs.moveEntry` מותרים בתוך התיקייה, גם אחרי
+הפעלה מחדש של אוצריא.
+
+**ביטול.** המשתמש רואה את התיקיות ומסיר אותן בהגדרות התוסף, תחת "תיקיות עם גישה
+קבועה". התוסף עצמו מסיר דרך [`fs.revokeFolder`](#fsrevokefolder). ביטול חל מיד,
+גם על תוסף שרץ כרגע.
+
+```javascript
+const { data } = await Otzaria.call('fs.pickUserFolder', {
+  title: 'הוספת תיקייה'   // אופציונלי
+});
+// data = { cancelled: false, folderToken, name, path }  — או { cancelled: true }
+```
+
+`name` הוא שם התיקייה ו-`path` הנתיב המלא, לתצוגה בלבד — כל הקריאות הבאות
+עובדות לפי `folderToken`. תיקיות המערכת, תיקיות אוצריא, שורש כונן, תיקיית הבית
+עצמה ותיקיית רשת נדחות ב-`error.forbidden`, בדיוק כמו ב-`ui.pickFolder`.
+
+### `fs.listUserFolder`
+**הרשאה:** `fs.user_files.read` · מגרסה 0.9.98
+
+רמה אחת של תיקייה מאושרת — לא רקורסיבי, כדי שהעץ ייטען בעצלות.
+
+```javascript
+const { data } = await Otzaria.call('fs.listUserFolder', {
+  folderToken,
+  path: 'שיעורים/תשפ"ו',          // אופציונלי: '' (ברירת מחדל) = שורש התיקייה
+  extensions: ['docx', '.odt']     // אופציונלי: מסנן קבצים בלבד
+});
+// data = {
+//   folderToken, name, path: 'שיעורים/תשפ"ו',
+//   entries: [
+//     { name: 'חורף', path: 'שיעורים/תשפ"ו/חורף', type: 'dir', size: 0, modified: '2026-09-01T08:00:00.000Z' },
+//     { name: 'בראשית.docx', path: 'שיעורים/תשפ"ו/בראשית.docx', type: 'file', size: 18233, modified: '...' }
+//   ],
+//   truncated: false
+// }
+```
+
+`path` תמיד יחסי לשורש התיקייה ומופרד ב-`/`. הסדר: תיקיות ואחריהן קבצים, כל
+קבוצה לפי שם. `extensions` אינו תלוי רישיות, עם נקודה או בלעדיה, ותיקיות מוחזרות
+תמיד. `modified` הוא ISO-8601 ב-UTC, או `null` כשאינו ידוע.
+
+לא מוחזרים: שמות שמתחילים בנקודה, קובצי נעילה של Office (`~$…`), קובצי ביניים
+של שמירה (`*.otztmp`), וקישור סימבולי או junction שמצביע אל מחוץ לתיקייה. מעל
+2000 רשומות ברמה אחת מוחזרות 2000 הראשונות עם `truncated: true`.
+
+שגיאות: `error.not_found: unknown folder token`, `error.not_found: folder no
+longer exists` (התיקייה אינה בדיסק — למשל כונן שנותק; ההרשאה **נשמרת** ותעבוד
+כשיחזור), `error.forbidden` (`..`, נתיב מוחלט או יציאה מהתיקייה דרך קישור),
+`error.invalid_params`.
+
+אם הנתיב של תיקייה מאושרת הוחלף בקישור ליעד אחר, הגישה נדחית ב-
+`error.forbidden`; יש לבחור את התיקייה מחדש כדי לאשר את היעד החדש.
+
+### `fs.openFolderFile`
+**הרשאה:** `fs.user_files.read` · מגרסה 0.9.98
+
+פותח קובץ מתוך תיקייה מאושרת. התשובה זהה לזו של
+[`fs.pickUserFile`](#fspickuserfile), וה-`token` הוא token רגיל של קובץ משתמש:
+`fs.resolveFileUrl`, `fs.commitUserFileWrite({ targetToken })` ו-`fs.revokeFile`
+עובדים עליו. הקובץ אינו מועתק.
+
+```javascript
+const { data } = await Otzaria.call('fs.openFolderFile', {
+  folderToken,
+  path: 'שיעורים/בראשית.docx',
+  access: 'readwrite'   // אופציונלי: 'read' (ברירת מחדל) או 'readwrite'
+});
+// data = { cancelled: false, token, url, name, size, access }
+```
+
+`access: 'readwrite'` דורש גם `fs.user_files.write`, כמו ב-`pickUserFile`.
+פתיחה חוזרת של אותו קובץ מחזירה את **אותו `token`** (ראו
+[`library.openBookFile`](#libraryopenbookfile)); `access` שחוזר הוא מה שה-token
+מאפשר בפועל.
+
+שגיאות: `error.not_found` (token תיקייה לא מוכר, תיקייה שנעלמה, או קובץ שאינו
+קיים), `error.forbidden` (נתיב מחוץ לתיקייה), `error.permission_denied`,
+`error.invalid_params`.
+
+### `fs.revokeFolder`
+**הרשאה:** `fs.user_files.read` · מגרסה 0.9.98
+
+מסיר תיקייה מההרשאות הקבועות של התוסף. idempotent — `true` גם כשלא הייתה.
+גם הרשאת `ui.pickFolder` של אותה תיקייה בריצה הזו מוסרת, כך שכתיבה ומחיקה בה
+דורשות בחירה מחדש. קבצים שכבר נפתחו ממנה שומרים על ה-`token` שלהם; לביטולם יש
+`fs.revokeFile`. זו אותה פעולה כמו הסרת התיקייה בהגדרות התוסף.
+
+```javascript
+await Otzaria.call('fs.revokeFolder', { folderToken });
+// data = true
+```
 
 ---
 

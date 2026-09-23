@@ -145,6 +145,9 @@ class PluginBridgeHandler {
       // error.timeout בזמן שהמשתמש בוחר תיקייה, והתוסף היה חושב שהשמירה נכשלה
       // אחרי שהקובץ כבר נכתב.
       method == 'fs.commitUserFileWrite' ||
+      // בחירת תיקייה ממתינה לדיאלוג המערכת, וה-grant שלה קבוע: timeout גנרי
+      // היה מחזיר שגיאה לתוסף בזמן שהתיקייה עוד נשמרת אחרי שהמשתמש בחר.
+      method == 'fs.pickUserFolder' ||
       // דיאלוג ההדפסה של המערכת ממתין לבחירת מדפסת ללא הגבלת זמן.
       method == 'ui.print' ||
       method == 'ui.exportPdf' ||
@@ -345,6 +348,9 @@ class PluginBridgeHandler {
     'library.listRecentBooks': 'library.books.read',
     'library.getTree': 'library.books.read',
     'library.getBookContent': 'library.content.read',
+    // כתיבה (`access: 'readwrite'`, ספר אישי בלבד) דורשת גם
+    // fs.user_files.write — נאכף באדפטר, כי הוא תלוי בארגומנט.
+    'library.openBookFile': 'library.content.read',
     'library.getBookToc': 'library.content.read',
     'library.listBookAltStructures': 'library.content.read',
     'library.getBookAltToc': 'library.content.read',
@@ -476,6 +482,12 @@ class PluginBridgeHandler {
     'fs.resolveFileUrl': 'fs.user_files.read',
     'fs.readTextFile': 'fs.user_files.read',
     'fs.revokeFile': 'fs.user_files.read',
+    // תיקיות שהמשתמש הוסיף לתוסף: עיון וקריאה בלבד. openFolderFile עם
+    // access: 'readwrite' דורש גם fs.user_files.write, כמו pickUserFile.
+    'fs.pickUserFolder': 'fs.user_files.read',
+    'fs.listUserFolder': 'fs.user_files.read',
+    'fs.openFolderFile': 'fs.user_files.read',
+    'fs.revokeFolder': 'fs.user_files.read',
     // כתיבה לקובץ של המשתמש. pickUserFile עם access: 'readwrite' דורש את שתי
     // ההרשאות — הקריאה נאכפת כאן והכתיבה באדפטר, כי היא תלויה בארגומנט.
     'fs.beginBinaryWrite': 'fs.user_files.write',
