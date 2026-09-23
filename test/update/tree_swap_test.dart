@@ -83,7 +83,7 @@ void main() {
         ]);
         expect(compile.exitCode, 0, reason: '${compile.stderr}');
         File(p.join(installed.path, 'v')).writeAsStringSync('old');
-        expect(await atomicTreeSwapSupported(installed), isTrue);
+        expect(await atomicTreeSwapSupported(installed, swapper), isTrue);
         final missing = Directory(p.join(temp.path, 'missing'));
         final failed = await Process.run(swapper.path, [
           installed.path,
@@ -112,7 +112,7 @@ void main() {
         expect(prepared.existsSync(), isFalse);
         expect(work.existsSync(), isFalse);
 
-        expect(await atomicTreeSwapSupported(installed), isTrue);
+        expect(await atomicTreeSwapSupported(installed, swapper), isTrue);
       } finally {
         temp.deleteSync(recursive: true);
       }
@@ -130,7 +130,7 @@ void main() {
           ..writeAsStringSync('#!/bin/sh\nexit 1\n');
         final chmod = await Process.run('chmod', ['+x', helper.path]);
         expect(chmod.exitCode, 0);
-        expect(await atomicTreeSwapSupported(installed), isFalse);
+        expect(await atomicTreeSwapSupported(installed, helper), isFalse);
         final script = File(p.join(work.path, 'swap.sh'))
           ..writeAsStringSync(
             buildTreeSwapScript(
@@ -145,6 +145,25 @@ void main() {
         expect(result.exitCode, isNot(0));
         expect(File(p.join(installed.path, 'v')).readAsStringSync(), 'old');
         expect(File(p.join(prepared.path, 'v')).readAsStringSync(), 'new');
+      } finally {
+        temp.deleteSync(recursive: true);
+      }
+    }, skip: Platform.isWindows ? 'רץ ב-POSIX בלבד (ב-Windows — WSL)' : null);
+
+    // ב-macOS שורש ההתקנה הוא ה-.app והעזר ב-Contents/MacOS; חיפוש בשורש
+    // החזיר false תמיד, והעדכון המצומצם לא רץ אף פעם.
+    test('העזר נמצא ליד קובץ ההרצה, לא בשורש ה-bundle', () async {
+      final temp = Directory.systemTemp.createTempSync('otzaria-swap-bundle');
+      try {
+        final bundle = Directory(p.join(temp.path, 'אוצריא.app'));
+        final macOS = Directory(p.join(bundle.path, 'Contents', 'MacOS'))
+          ..createSync(recursive: true);
+        final helper = atomicTreeSwapHelperFor(p.join(macOS.path, 'אוצריא'))
+          ..writeAsStringSync('#!/bin/sh\nexit 0\n');
+        expect(helper.parent.path, macOS.path);
+        final chmod = await Process.run('chmod', ['+x', helper.path]);
+        expect(chmod.exitCode, 0);
+        expect(await atomicTreeSwapSupported(bundle, helper), isTrue);
       } finally {
         temp.deleteSync(recursive: true);
       }

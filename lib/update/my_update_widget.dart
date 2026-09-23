@@ -1196,7 +1196,12 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
     )) {
       return null;
     }
-    if (!await atomicTreeSwapSupported(installRoot)) return null;
+    if (!await atomicTreeSwapSupported(
+      installRoot,
+      atomicTreeSwapHelperFor(Platform.resolvedExecutable),
+    )) {
+      return null;
+    }
 
     final release = await _fetchRelease(
       _latestVersion!,

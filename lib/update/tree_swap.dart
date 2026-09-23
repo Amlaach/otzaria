@@ -12,8 +12,8 @@ File atomicTreeSwapHelperFor(String executablePath) =>
     File(p.join(p.dirname(executablePath), kAtomicTreeSwapHelperName));
 
 /// בודק שהכרך של ההתקנה תומך בהחלפה אטומית לפני הורדת חבילת העדכון.
-Future<bool> atomicTreeSwapSupported(Directory installRoot) async {
-  final helper = File(p.join(installRoot.path, kAtomicTreeSwapHelperName));
+/// [helper] הוא אותו עזר שהסקריפט יריץ: ב-macOS הוא ב-`Contents/MacOS`, לא בשורש ה-bundle.
+Future<bool> atomicTreeSwapSupported(Directory installRoot, File helper) async {
   if (!await helper.exists()) return false;
   Directory? first;
   Directory? second;
