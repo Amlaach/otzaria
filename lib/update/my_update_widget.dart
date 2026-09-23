@@ -1189,10 +1189,14 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       installRootWritable: isDirectoryWritable(installRoot),
       parentWritable: isDirectoryWritable(installRoot.parent),
       zstdAvailable: await const ZstdRunner.bundled().isAvailable,
+      swapHelperAvailable: atomicTreeSwapHelperFor(
+        Platform.resolvedExecutable,
+      ).existsSync(),
       hasUserData: installRootHasUserData(installRoot),
     )) {
       return null;
     }
+    if (!await atomicTreeSwapSupported(installRoot)) return null;
 
     final release = await _fetchRelease(
       _latestVersion!,

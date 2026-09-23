@@ -94,10 +94,42 @@ guint otz_assembled_parts(const gint64 *sizes, guint count, gint64 existing,
   return done;
 }
 
+static gboolean verify_assembled(const char *path, const char *expected,
+                                 OtzBytesFunc progress, gpointer user_data,
+                                 GCancellable *cancellable, GError **error) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return io_error(error, "open", path);
+  g_autoptr(GChecksum) checksum = g_checksum_new(G_CHECKSUM_SHA256);
+  guint8 buffer[64 * 1024];
+  for (;;) {
+    if (g_cancellable_set_error_if_cancelled(cancellable, error)) {
+      close(fd);
+      return FALSE;
+    }
+    ssize_t n = read(fd, buffer, sizeof(buffer));
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0) {
+      io_error(error, "read", path);
+      close(fd);
+      return FALSE;
+    }
+    if (n == 0) break;
+    g_checksum_update(checksum, buffer, (gsize)n);
+    if (progress != NULL) progress(n, user_data);
+  }
+  close(fd);
+  if (strcmp(g_checksum_get_string(checksum), expected) == 0) return TRUE;
+  g_unlink(path);
+  g_set_error(error, OTZ_ERROR, OTZ_ERROR_CORRUPT, "%s: assembled sha256 mismatch", path);
+  return FALSE;
+}
+
 gboolean otz_assemble(const char *tmp_path, const char *dest_path,
                       GPtrArray *part_paths, const gint64 *sizes, guint first,
-                      gint64 total, OtzBytesFunc progress, gpointer user_data,
+                      gint64 total, const char *sha256,
+                      OtzBytesFunc progress, gpointer user_data,
                       void (*on_part)(guint index, gpointer user_data),
+                      void (*on_verify)(gpointer user_data),
                       GCancellable *cancellable, GError **error) {
   gint64 offset = 0;
   for (guint i = 0; i < first; i++) offset += sizes[i];
@@ -146,6 +178,9 @@ gboolean otz_assemble(const char *tmp_path, const char *dest_path,
                 offset, total);
     return FALSE;
   }
+  if (on_verify != NULL) on_verify(user_data);
+  if (!verify_assembled(tmp_path, sha256, progress, user_data, cancellable,
+                        error)) return FALSE;
   if (g_rename(tmp_path, dest_path) != 0)
     return io_error(error, "rename", tmp_path);
   return TRUE;

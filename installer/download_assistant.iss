@@ -606,8 +606,7 @@ begin
   Result := GetTickCount();
 end;
 
-{ המקום היחיד שמחשב hash. GetSHA256OfFile עולה ~17 שניות ל-2GB, ולכן כל
-  קריאה נרשמת ללוג — כך אפשר לאמת שכל קובץ עובר hash פעם אחת לכל היותר. }
+{ מחשב hash ומתעד את משך הקריאה; הרכבה מחודשת מחייבת גם אימות של התוצר. }
 function HashFile(const Path: String): String;
 var
   Started: Int64;
@@ -2174,8 +2173,7 @@ begin
   end;
 end;
 
-{ כל חלק אומת מול ה-sha256 שלו, ולכן הקובץ המורכב נבדק בספירת בתים בלבד.
-  כל חלק נמחק מיד אחרי שנוסף: שיא הדיסק הוא הקובץ המורכב ועוד חלק אחד. }
+{ כל חלק נמחק מיד אחרי שנוסף: שיא הדיסק הוא הקובץ המורכב ועוד חלק אחד. }
 function AssembleAsset(AssetIndex: Integer; const Caption: String): Boolean;
 var
   TmpPath, FinalPath, PartPath: String;
@@ -2229,6 +2227,17 @@ begin
   begin
     LoadErrorHeb := 'הקובץ המאוחד נמצא פגום ולכן לא נשמר.';
     LoadErrorTech := 'assembled size mismatch: ' + AssetName[AssetIndex];
+    DeleteFile(TmpPath);
+    DeleteFile(TmpPath + '.sha256');
+    exit;
+  end;
+  WorkPage.SetText('בודק את הקובץ המאוחד: ' + Caption,
+    'מאמת את תוכן הקובץ מול המניפסט');
+  WorkPage.SetProgress(0, 1);
+  if HashFile(TmpPath) <> Lowercase(AssetSha[AssetIndex]) then
+  begin
+    LoadErrorHeb := 'הקובץ המאוחד נמצא פגום ולכן לא נשמר.';
+    LoadErrorTech := 'assembled sha256 mismatch: ' + AssetName[AssetIndex];
     DeleteFile(TmpPath);
     DeleteFile(TmpPath + '.sha256');
     exit;

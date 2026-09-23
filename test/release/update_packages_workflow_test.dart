@@ -443,5 +443,25 @@ void main() {
       expect(build, contains('-arch x86_64 -arch arm64'));
       expect(build, isNot(contains('http://')));
     });
+
+    test('כלי ההחלפה האטומית נארז ונחתם לפני מניפסט העץ', () {
+      final workflow = File(
+        '.github/workflows/build-and-announce.yml',
+      ).readAsStringSync();
+      expect(workflow, contains('Build atomic updater (Linux FULL)'));
+      expect(workflow, contains('Build atomic updater (macOS)'));
+      expect(
+        workflow,
+        contains(
+          'codesign --force --sign - "\$APP_PATH/Contents/MacOS/otzaria-atomic-swap"',
+        ),
+      );
+      expect(
+        workflow.indexOf('Build atomic updater (macOS)'),
+        lessThan(
+          workflow.indexOf('Generate application file manifest (macOS)'),
+        ),
+      );
+    });
   });
 }

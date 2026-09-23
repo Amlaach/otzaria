@@ -552,6 +552,20 @@ static void test_marker(void) {
   g_rmdir(dir);
 }
 
+typedef struct {
+  gboolean verifying;
+  gint64 verified;
+} AssemblyProgress;
+
+static void mark_verifying(gpointer data) {
+  ((AssemblyProgress *)data)->verifying = TRUE;
+}
+
+static void count_verification(gint64 bytes, gpointer data) {
+  AssemblyProgress *progress = data;
+  if (progress->verifying) progress->verified += bytes;
+}
+
 static void test_assembly(void) {
   g_autofree char *dir = temp_dir();
   const char *chunks[] = {"first-part-", "second-part-", "third"};
@@ -566,6 +580,8 @@ static void test_assembly(void) {
     g_ptr_array_add(paths, path);
   }
   gint64 total = sizes[0] + sizes[1] + sizes[2];
+  g_autofree char *whole_sha = g_compute_checksum_for_string(
+      G_CHECKSUM_SHA256, "first-part-second-part-third", -1);
   g_autofree char *dest = g_build_filename(dir, "archive.tar.zst", NULL);
   g_autofree char *tmp = g_strconcat(dest, ".partial", NULL);
 
@@ -580,8 +596,12 @@ static void test_assembly(void) {
   g_assert_cmpint(offset, ==, sizes[0]);
 
   g_autoptr(GError) error = NULL;
-  g_assert_true(otz_assemble(tmp, dest, paths, sizes, first, total, NULL, NULL, NULL,
+  AssemblyProgress verification = {0};
+  g_assert_true(otz_assemble(tmp, dest, paths, sizes, first, total, whole_sha,
+                             count_verification, &verification, NULL, mark_verifying,
                              NULL, &error));
+  g_assert_true(verification.verifying);
+  g_assert_cmpint(verification.verified, ==, total);
   g_assert_no_error(error);
   g_autofree char *content = NULL;
   g_assert_true(g_file_get_contents(dest, &content, NULL, NULL));
@@ -600,12 +620,26 @@ static void test_assembly(void) {
   g_autoptr(GPtrArray) one = g_ptr_array_new();
   g_ptr_array_add(one, g_ptr_array_index(paths, 0));
   g_clear_error(&error);
-  g_assert_false(otz_assemble(tmp, dest, one, wrong, 0, 50, NULL, NULL, NULL, NULL,
+  g_assert_false(otz_assemble(tmp, dest, one, wrong, 0, 50, whole_sha,
+                              NULL, NULL, NULL, NULL, NULL,
                               &error));
   g_assert_error(error, OTZ_ERROR, OTZ_ERROR_IO);
   g_assert_false(g_file_test(dest, G_FILE_TEST_EXISTS));
   g_unlink(tmp);
   g_unlink(g_ptr_array_index(paths, 0));
+
+  /* A resumed prefix with the right length but wrong bytes must not be published. */
+  write_file(tmp, "Xirst-part-", -1);
+  write_file(g_ptr_array_index(paths, 1), chunks[1], -1);
+  write_file(g_ptr_array_index(paths, 2), chunks[2], -1);
+  g_clear_error(&error);
+  g_assert_false(otz_assemble(tmp, dest, paths, sizes, 1, total, whole_sha,
+                              NULL, NULL, NULL, NULL, NULL, &error));
+  g_assert_error(error, OTZ_ERROR, OTZ_ERROR_CORRUPT);
+  g_assert_false(g_file_test(dest, G_FILE_TEST_EXISTS));
+  g_assert_false(g_file_test(tmp, G_FILE_TEST_EXISTS));
+  g_unlink(g_ptr_array_index(paths, 1));
+  g_unlink(g_ptr_array_index(paths, 2));
   g_rmdir(dir);
 }
 
@@ -845,7 +879,7 @@ static void test_space_verdict(void) {
   g_assert_true(otz_space_is_enough(10, 5, FALSE, -1, -1));
 }
 
-static void test_rate_limit_fallback(void) {
+static void test_api_fallback(void) {
   g_autofree char *url = otz_direct_manifest_url("0.10.3+143");
   g_assert_cmpstr(url, ==,
                   "https://github.com/Otzaria/otzaria/releases/download/"
@@ -854,9 +888,14 @@ static void test_rate_limit_fallback(void) {
   g_autoptr(GError) limited =
       g_error_new_literal(OTZ_ERROR, OTZ_ERROR_RATE_LIMITED, "HTTP 403");
   g_autoptr(GError) missing = g_error_new_literal(OTZ_ERROR, OTZ_ERROR_HTTP, "404");
+  g_autoptr(GError) network = g_error_new_literal(OTZ_ERROR, OTZ_ERROR_NETWORK, "offline");
+  g_autoptr(GError) cancelled = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_CANCELLED, "cancelled");
   g_assert_true(otz_api_failure_uses_direct_manifest(limited, "0.10.3+143"));
+  g_assert_true(otz_api_failure_uses_direct_manifest(missing, "0.10.3+143"));
+  g_assert_true(otz_api_failure_uses_direct_manifest(network, "0.10.3+143"));
   g_assert_false(otz_api_failure_uses_direct_manifest(limited, ""));
-  g_assert_false(otz_api_failure_uses_direct_manifest(missing, "0.10.3+143"));
+  g_assert_false(otz_api_failure_uses_direct_manifest(limited, "unsafe/tag"));
+  g_assert_false(otz_api_failure_uses_direct_manifest(cancelled, "0.10.3+143"));
   g_assert_false(otz_api_failure_uses_direct_manifest(NULL, "0.10.3+143"));
 }
 
@@ -905,7 +944,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/output/place-file", test_place_file);
   g_test_add_func("/release/tag", test_release_tag);
   g_test_add_func("/release/asset-url", test_asset_url_and_sizes);
-  g_test_add_func("/release/rate-limit-fallback", test_rate_limit_fallback);
+  g_test_add_func("/release/api-fallback", test_api_fallback);
   g_test_add_func("/http/long-header", test_http_long_header);
   g_test_add_func("/job/failure-kind", test_job_failure_kind);
   g_test_add_func("/job/complete-download-promoted",

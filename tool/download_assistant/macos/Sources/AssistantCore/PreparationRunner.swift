@@ -4,6 +4,7 @@ public enum PreparationPhase: Equatable {
     case checkingCache
     case downloading
     case assembling
+    case verifyingAssembly
     case copying
 }
 
@@ -244,6 +245,14 @@ public final class PreparationRunner {
                             self.post(PreparationStatus(
                                 phase: .assembling, title: "מחבר את הקבצים", detail: caption,
                                 doneBytes: base + appended, totalBytes: total
+                            ))
+                        },
+                        verificationProgress: { verified in
+                            guard verified == 0 || verified - lastPost >= 32 * 1024 * 1024 || verified == size else { return }
+                            lastPost = verified
+                            self.post(PreparationStatus(
+                                phase: .verifyingAssembly, title: "בודק את הקובץ המאוחד", detail: caption,
+                                doneBytes: verified, totalBytes: size
                             ))
                         },
                         isCancelled: { self.isCancelled }

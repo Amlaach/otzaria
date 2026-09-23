@@ -12,6 +12,7 @@ typedef enum {
   OTZ_PHASE_CHECK,    /* hashing a cached file that has no marker */
   OTZ_PHASE_DOWNLOAD,
   OTZ_PHASE_ASSEMBLE,
+  OTZ_PHASE_VERIFY_ASSEMBLY,
   OTZ_PHASE_PLACE,    /* link or copy into the chosen folder */
   OTZ_PHASE_DONE,
 } OtzPhase;

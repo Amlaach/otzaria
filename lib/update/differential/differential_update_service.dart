@@ -109,8 +109,14 @@ bool treeUpdateSupported({
   required bool installRootWritable,
   required bool parentWritable,
   required bool zstdAvailable,
+  required bool swapHelperAvailable,
   required bool hasUserData,
-}) => installRootWritable && parentWritable && zstdAvailable && !hasUserData;
+}) =>
+    installRootWritable &&
+    parentWritable &&
+    zstdAvailable &&
+    swapHelperAvailable &&
+    !hasUserData;
 
 /// האם בשורש ההתקנה יש נתוני משתמש (מצב נייד, קובצי סימון).
 bool installRootHasUserData(Directory installRoot) {

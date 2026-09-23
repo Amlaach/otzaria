@@ -1843,8 +1843,13 @@ void main() {
         assemble.indexOf('WriteMarker(AssetName[AssetIndex]'),
         greaterThan(promoteFinal),
       );
-      // כל חלק אומת מול ה-sha256 שלו; הקובץ המורכב נבדק בספירת בתים.
-      expect(assemble, isNot(contains('HashFile(')));
+      final hashVerify = assemble.indexOf('HashFile(TmpPath)');
+      expect(hashVerify, greaterThan(sizeVerify));
+      expect(promoteFinal, greaterThan(hashVerify));
+      expect(
+        assemble.indexOf('DeleteFile(TmpPath);', hashVerify),
+        lessThan(promoteFinal),
+      );
       expect(
         _routine(_script(_assistant), 'function AppendFileTo('),
         contains('(Copied = Expected)'),

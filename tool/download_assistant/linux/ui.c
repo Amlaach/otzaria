@@ -528,6 +528,9 @@ static gboolean on_tick(gpointer data) {
       phase = g_strdup_printf("מחבר את הקבצים: %s", name);
       detail = g_strdup_printf("חלק %u מתוך %u · %s מתוך %s", p.part_index + 1,
                                p.part_count, done, total);
+    } else if (p.phase == OTZ_PHASE_VERIFY_ASSEMBLY) {
+      phase = g_strdup_printf("בודק את הקובץ המאוחד: %s", name);
+      detail = g_strdup_printf("%s מתוך %s", done, total);
     } else {
       phase = g_strdup_printf("מעתיק לתיקייה שנבחרה: %s", name);
       detail = g_strdup_printf("%s מתוך %s", done, total);

@@ -82,7 +82,8 @@ char *otz_direct_manifest_url(const char *tag) {
 gboolean otz_api_failure_uses_direct_manifest(const GError *api_error,
                                               const char *embedded_tag) {
   return embedded_tag != NULL && *embedded_tag != '\0' &&
-         g_error_matches(api_error, OTZ_ERROR, OTZ_ERROR_RATE_LIMITED);
+         otz_is_safe_token(embedded_tag) && api_error != NULL &&
+         !g_error_matches(api_error, G_IO_ERROR, G_IO_ERROR_CANCELLED);
 }
 
 static OtzManifest *fetch_manifest(const char *url, GCancellable *cancellable,
@@ -95,8 +96,7 @@ static OtzManifest *fetch_manifest(const char *url, GCancellable *cancellable,
   return otz_manifest_parse(data, size, error);
 }
 
-/* The API is rate-limited per IP (filtered networks share one), but the
- * release download path is not: the embedded tag alone locates the manifest. */
+/* The embedded tag locates the manifest even when the API is unavailable. */
 static OtzManifest *load_direct(const char *tag, const GError *api_error,
                                 char **pinned_tag, const char **user_message,
                                 GCancellable *cancellable, GError **error) {

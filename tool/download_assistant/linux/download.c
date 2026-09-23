@@ -29,6 +29,7 @@ typedef struct {
 typedef struct {
   gboolean assemble;
   char *name;
+  char *sha256;
   gint64 size;
   GPtrArray *items; /* Item*, borrowed; parts in order when assembling */
   guint first_part;
@@ -71,6 +72,7 @@ static void free_item(gpointer data) {
 static void free_output(gpointer data) {
   Output *output = data;
   g_free(output->name);
+  g_free(output->sha256);
   g_free(output->partial_path);
   g_ptr_array_unref(output->items);
   g_free(output);
@@ -219,6 +221,7 @@ static gboolean plan_asset(OtzJob *job, const OtzAsset *asset, GError **error) {
   }
 
   Output *output = add_output(job, TRUE, asset->name, asset->size);
+  output->sha256 = g_strdup(asset->sha256);
   g_autofree gint64 *sizes = g_new(gint64, asset->parts->len);
   for (guint p = 0; p < asset->parts->len; p++) {
     const OtzPart *part = g_ptr_array_index(asset->parts, p);
@@ -296,6 +299,14 @@ static void set_part(guint index, gpointer user_data) {
   OtzJob *job = user_data;
   g_mutex_lock(&job->lock);
   job->progress.part_index = index;
+  g_mutex_unlock(&job->lock);
+}
+
+static void begin_assembly_verify(gpointer user_data) {
+  OtzJob *job = user_data;
+  g_mutex_lock(&job->lock);
+  job->progress.phase = OTZ_PHASE_VERIFY_ASSEMBLY;
+  job->progress.phase_done = 0;
   g_mutex_unlock(&job->lock);
 }
 
@@ -765,8 +776,11 @@ static gboolean produce_outputs(OtzJob *job, GError **error) {
     g_mutex_unlock(&job->lock);
     remove_stale_siblings(output->partial_path, output->name, ".partial");
     if (!otz_assemble(output->partial_path, dest, paths, sizes, output->first_part, output->size,
-                      add_phase_bytes, job, set_part, job->inner, error)) {
-      job->failure = OTZ_FAILURE_ASSEMBLE;
+                      output->sha256,
+                      add_phase_bytes, job, set_part, begin_assembly_verify,
+                      job->inner, error)) {
+      job->failure = g_error_matches(*error, OTZ_ERROR, OTZ_ERROR_CORRUPT)
+                         ? OTZ_FAILURE_CORRUPT : OTZ_FAILURE_ASSEMBLE;
       return FALSE;
     }
   }

@@ -6,19 +6,47 @@ import 'package:path/path.dart' as p;
 import 'differential/swap_plan.dart';
 import 'shell_quote.dart';
 
-/// שם הגיבוי של ההתקנה הישנה בזמן ההחלפה. קבוע ולא לפי pid, כדי שהתקנה
-/// שנקטעה בין שני שינויי השם תימצא תמיד באותו מקום.
-const String kTreeSwapOldSuffix = '.otzaria-old';
+const String kAtomicTreeSwapHelperName = 'otzaria-atomic-swap';
+
+File atomicTreeSwapHelperFor(String executablePath) =>
+    File(p.join(p.dirname(executablePath), kAtomicTreeSwapHelperName));
+
+/// בודק שהכרך של ההתקנה תומך בהחלפה אטומית לפני הורדת חבילת העדכון.
+Future<bool> atomicTreeSwapSupported(Directory installRoot) async {
+  final helper = File(p.join(installRoot.path, kAtomicTreeSwapHelperName));
+  if (!await helper.exists()) return false;
+  Directory? first;
+  Directory? second;
+  try {
+    final parent = installRoot.parent.path;
+    first = await Directory(parent).createTemp('.otzaria-swap-check-');
+    second = await Directory(parent).createTemp('.otzaria-swap-check-');
+    final result = await Process.run(helper.path, [first.path, second.path]);
+    return result.exitCode == 0;
+  } on FileSystemException {
+    return false;
+  } on ProcessException {
+    return false;
+  } finally {
+    if (first != null && await first.exists()) {
+      await first.delete(recursive: true);
+    }
+    if (second != null && await second.exists()) {
+      await second.delete(recursive: true);
+    }
+  }
+}
 
 /// בונה את סקריפט ההחלפה של עדכון עץ (macOS, Linux נייד): ממתין ליציאת
-/// אוצריא, ומחליף את תיקיית ההתקנה בעותק המוכן בשני שינויי שם באותו כרך.
-/// כשל בשני משחזר את הישנה; אוצריא שלא יצאה בזמן — הסקריפט מוותר לפני
+/// אוצריא, ומחליף את תיקיית ההתקנה בעותק המוכן בפעולה אטומית באותו כרך.
+/// אוצריא שלא יצאה בזמן — הסקריפט מוותר לפני
 /// שנגע בדבר וכותב את [kSwapGaveUpFileName], כמו המעדכן של Windows.
 @visibleForTesting
 String buildTreeSwapScript({
   required String installedPath,
   required String preparedPath,
   required String workPath,
+  required String swapHelperPath,
   required int appPid,
   String? relaunchCommand,
   Duration waitTimeout = const Duration(minutes: 2),
@@ -31,7 +59,7 @@ String buildTreeSwapScript({
 INSTALLED=${shellQuote(installedPath)}
 PREPARED=${shellQuote(preparedPath)}
 WORK=${shellQuote(workPath)}
-OLD="\$INSTALLED$kTreeSwapOldSuffix"
+SWAPPER=${shellQuote(swapHelperPath)}
 ${logToWork ? 'exec >"\$WORK/swap.log" 2>&1\n' : ''}
 relaunch() {
   ${relaunchCommand ?? ':'}
@@ -53,19 +81,12 @@ if [ ! -d "\$PREPARED" ]; then
   echo "שגיאה: העדכון המוכן חסר" >&2
   exit 1
 fi
-rm -rf "\$OLD"
-if ! mv "\$INSTALLED" "\$OLD"; then
-  echo "שגיאה: אין אפשרות להזיז את ההתקנה" >&2
+if ! "\$SWAPPER" "\$INSTALLED" "\$PREPARED"; then
+  echo "שגיאה בהתקנה — הגרסה הקודמת נשארה במקומה" >&2
   relaunch
   exit 1
 fi
-if ! mv "\$PREPARED" "\$INSTALLED"; then
-  mv "\$OLD" "\$INSTALLED"
-  echo "שגיאה בהתקנה — הגרסה הקודמת שוחזרה" >&2
-  relaunch
-  exit 1
-fi
-rm -rf "\$OLD" "\$WORK"
+rm -rf "\$PREPARED" "\$WORK"
 echo "העדכון הושלם בהצלחה"
 relaunch
 ''';
@@ -98,6 +119,10 @@ Future<void> launchTreeSwap({
 }) async {
   final isMac = Platform.isMacOS;
   final installed = installRoot.absolute.path;
+  final helper = atomicTreeSwapHelperFor(Platform.resolvedExecutable);
+  if (!await helper.exists()) {
+    throw FileSystemException('atomic swap helper is missing', helper.path);
+  }
   final script = File(
     p.join(
       workRoot.path,
@@ -112,6 +137,7 @@ Future<void> launchTreeSwap({
       installedPath: installed,
       preparedPath: preparedRoot.absolute.path,
       workPath: workRoot.absolute.path,
+      swapHelperPath: helper.absolute.path,
       appPid: pid,
       relaunchCommand: relaunchApp
           ? treeRelaunchCommand(
@@ -123,7 +149,10 @@ Future<void> launchTreeSwap({
       logToWork: !isMac,
     ),
   );
-  await Process.run('chmod', ['+x', script.path]);
+  final scriptChmod = await Process.run('chmod', ['+x', script.path]);
+  if (scriptChmod.exitCode != 0) {
+    throw FileSystemException('swap script is not executable', script.path);
+  }
 
   if (isMac) {
     final result = await Process.run('open', [script.path]);

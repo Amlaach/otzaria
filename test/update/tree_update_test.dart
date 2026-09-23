@@ -177,6 +177,43 @@ void main() {
     if (temp.existsSync()) temp.deleteSync(recursive: true);
   });
 
+  test('אימות עץ מגבב גם קובץ גדול ממקטע קריאה בלי לאבד דיוק', () async {
+    final root = Directory(p.join(temp.path, 'large-tree'))..createSync();
+    final file = File(p.join(root.path, 'large.bin'));
+    final bytes = List<int>.generate(2 * 1024 * 1024 + 17, (i) => i & 0xff);
+    file.writeAsBytesSync(bytes);
+    final manifest = TreeManifest(
+      files: {
+        'large.bin': TreeFile(
+          size: bytes.length,
+          sha256: sha256.convert(bytes).toString(),
+          mode: file.statSync().mode & 0x1ff,
+        ),
+      },
+      links: const {},
+    );
+    expect(
+      await verifyTree(
+        fs: const LocalTreeFileSystem(),
+        root: root.path,
+        newTree: manifest,
+        allowUnmanaged: false,
+      ),
+      isEmpty,
+    );
+    bytes[0] ^= 1;
+    file.writeAsBytesSync(bytes);
+    expect(
+      await verifyTree(
+        fs: const LocalTreeFileSystem(),
+        root: root.path,
+        newTree: manifest,
+        allowUnmanaged: false,
+      ),
+      contains('large.bin: the content does not match'),
+    );
+  });
+
   DifferentialUpdateEngine engine(
     Directory install, {
     bool allowUnmanaged = false,

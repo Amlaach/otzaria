@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:otzaria/update/differential/swap_plan.dart';
@@ -41,8 +42,33 @@ class SwapFileSystem {
     }
   }
 
-  String hashOf(String path) =>
-      sha256.convert(File(path).readAsBytesSync()).toString();
+  String hashOf(String path) {
+    final sink = _DigestSink();
+    final hash = sha256.startChunkedConversion(sink);
+    final file = File(path).openSync();
+    final buffer = Uint8List(1024 * 1024);
+    try {
+      while (true) {
+        final count = file.readIntoSync(buffer);
+        if (count == 0) break;
+        hash.add(Uint8List.sublistView(buffer, 0, count));
+      }
+    } finally {
+      file.closeSync();
+    }
+    hash.close();
+    return sink.digest.toString();
+  }
+}
+
+class _DigestSink implements Sink<Digest> {
+  late final Digest digest;
+
+  @override
+  void add(Digest value) => digest = value;
+
+  @override
+  void close() {}
 }
 
 enum SwapOutcome { succeeded, abortedBeforeAnyChange, rolledBack, corrupted }

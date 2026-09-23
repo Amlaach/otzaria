@@ -163,6 +163,21 @@ void main() {
     if (temp.existsSync()) temp.deleteSync(recursive: true);
   });
 
+  test('hash בזרימה נשאר נכון בגבול מקטע הקריאה ובקובץ ריק', () {
+    final file = File(p.join(temp.path, 'hash-test.bin'));
+    file.writeAsBytesSync([]);
+    expect(
+      const SwapFileSystem().hashOf(file.path),
+      sha256.convert([]).toString(),
+    );
+    final bytes = List<int>.generate(1024 * 1024 + 17, (i) => i & 0xff);
+    file.writeAsBytesSync(bytes);
+    expect(
+      const SwapFileSystem().hashOf(file.path),
+      sha256.convert(bytes).toString(),
+    );
+  });
+
   SwapPlan plan({List<SwapRemoval>? removals}) => SwapPlan(
     platform: 'windows',
     architecture: 'x64',

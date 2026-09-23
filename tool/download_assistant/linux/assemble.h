@@ -1,6 +1,4 @@
-/* Placing verified cache files in the output folder, and joining split parts.
- * Nothing here hashes: every part was verified when it was downloaded, so the
- * checks are byte counts per append and the final size ("מהירות" in the doc). */
+/* Placing verified cache files in the output folder, and joining split parts. */
 #pragma once
 
 #include <gio/gio.h>
@@ -25,9 +23,11 @@ guint otz_assembled_parts(const gint64 *sizes, guint count, gint64 existing,
 
 /* Appends parts[first..] to tmp_path after truncating it to the end of part
  * first-1, deletes each part and its .sha256 marker once appended, checks the
- * total and renames tmp_path to dest_path. */
+ * total SHA-256 and renames tmp_path to dest_path. */
 gboolean otz_assemble(const char *tmp_path, const char *dest_path,
                       GPtrArray *part_paths, const gint64 *sizes, guint first,
-                      gint64 total, OtzBytesFunc progress, gpointer user_data,
+                      gint64 total, const char *sha256,
+                      OtzBytesFunc progress, gpointer user_data,
                       void (*on_part)(guint index, gpointer user_data),
+                      void (*on_verify)(gpointer user_data),
                       GCancellable *cancellable, GError **error);

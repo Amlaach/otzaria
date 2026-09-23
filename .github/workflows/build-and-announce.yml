@@ -1517,6 +1517,12 @@ jobs:
         shell: bash
         run: bash tool/release/build_zstd.sh linux-build/zstd
 
+      - name: Build atomic updater (Linux FULL)
+        if: matrix.target == 'full'
+        continue-on-error: true
+        shell: bash
+        run: cc -O2 -Wall -Wextra tool/updater/atomic_tree_swap.c -o linux-build/otzaria-atomic-swap
+
       - name: Stamp installed release (Linux FULL)
         if: matrix.target == 'full'
         continue-on-error: true
@@ -2221,6 +2227,16 @@ jobs:
           APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
           bash tool/release/build_zstd.sh "$APP_PATH/Contents/MacOS/zstd" universal
 
+      - name: Build atomic updater (macOS)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          cc -O2 -Wall -Wextra -arch x86_64 -arch arm64 -mmacosx-version-min=12.0 \
+            tool/updater/atomic_tree_swap.c -o "$APP_PATH/Contents/MacOS/otzaria-atomic-swap"
+          lipo "$APP_PATH/Contents/MacOS/otzaria-atomic-swap" -verify_arch x86_64 arm64
+
       # חותם השחרור ב-Contents/Resources: קובץ נתונים בשורש ה-bundle או
       # ב-Contents/MacOS שובר את החתימה. נכתב לפני החתימה, ולכן נחתם איתו.
       - name: Stamp installed release (macOS)
@@ -2246,6 +2262,9 @@ jobs:
           # קוד מקונן ב-Contents/MacOS נחתם לפני ה-bundle, אחרת --deep נכשל.
           if [ -f "$APP_PATH/Contents/MacOS/zstd" ]; then
             codesign --force --sign - "$APP_PATH/Contents/MacOS/zstd"
+          fi
+          if [ -f "$APP_PATH/Contents/MacOS/otzaria-atomic-swap" ]; then
+            codesign --force --sign - "$APP_PATH/Contents/MacOS/otzaria-atomic-swap"
           fi
           # אותה חתימה ad-hoc שה-Xcode עושה (CODE_SIGN_IDENTITY = "-"); בלי
           # --entitlements החתימה מחדש מוחקת את ההרשאות שהבינארי קיבל.

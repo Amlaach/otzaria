@@ -167,11 +167,15 @@ final class FileTests: XCTestCase {
         let (whole, parts) = try makeParts([30, 30, 7], in: store)
         let destination = directory.appendingPathComponent("out/w.tar.zst")
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var verified: [Int64] = []
 
         try assembleSplitAsset(
             name: "w.tar.zst", size: 67, sha256: sha(whole), parts: parts, destination: destination,
-            partURL: { store.fileURL($0.name) }, removePart: { store.remove(name: $0.name) }
+            partURL: { store.fileURL($0.name) }, removePart: { store.remove(name: $0.name) },
+            verificationProgress: { verified.append($0) }
         )
+        XCTAssertEqual(verified.first, 0)
+        XCTAssertEqual(verified.last, 67)
         XCTAssertEqual(try Data(contentsOf: destination), whole)
         for part in parts {
             XCTAssertFalse(FileManager.default.fileExists(atPath: store.fileURL(part.name).path))
@@ -201,6 +205,25 @@ final class FileTests: XCTestCase {
             partURL: { store.fileURL($0.name) }, removePart: { store.remove(name: $0.name) }
         )
         XCTAssertEqual(try Data(contentsOf: outDir.appendingPathComponent("w.tar.zst")), whole)
+    }
+
+    func testAssemblyRejectsCorruptResumedPrefix() throws {
+        let store = CacheStore(directory: directory.appendingPathComponent("cache"))
+        let (whole, parts) = try makeParts([30, 30], in: store)
+        let working = directory.appendingPathComponent(assemblyPartialName(name: "w.tar.zst", sha256: sha(whole)))
+        var corrupt = whole.prefix(30)
+        corrupt[0] ^= 0x01
+        try corrupt.write(to: working)
+        store.remove(name: parts[0].name)
+        let destination = directory.appendingPathComponent("w.tar.zst")
+
+        XCTAssertThrowsError(try assembleSplitAsset(
+            name: "w.tar.zst", size: 60, sha256: sha(whole), parts: parts,
+            destination: destination, partURL: { store.fileURL($0.name) },
+            removePart: { store.remove(name: $0.name) }
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: working.path))
     }
 
     func testShortPartFailsTheByteCountCheck() throws {

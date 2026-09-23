@@ -1,7 +1,7 @@
+import CryptoKit
 import Foundation
 
-/// מוסיף חלק לסוף הקובץ המורכב. בודק שנוסף בדיוק גודל החלק — בלי hash של הקובץ השלם,
-/// כי כל חלק כבר אומת מול ה-sha256 שלו והשרשור דטרמיניסטי.
+/// מוסיף חלק לסוף הקובץ המורכב ובודק שנוסף בדיוק גודל החלק.
 public func appendPart(
     _ part: URL, expectedSize: Int64, to output: FileHandle,
     progress: ((Int64) -> Void)? = nil, isCancelled: () -> Bool = { false }
@@ -31,7 +31,9 @@ public func appendPart(
 public func assembleSplitAsset(
     name: String, size: Int64, sha256: String, parts: [DownloadItem],
     destination: URL, partURL: (DownloadItem) -> URL, removePart: (DownloadItem) -> Void,
-    progress: ((Int64) -> Void)? = nil, isCancelled: () -> Bool = { false }
+    progress: ((Int64) -> Void)? = nil,
+    verificationProgress: ((Int64) -> Void)? = nil,
+    isCancelled: () -> Bool = { false }
 ) throws {
     let fileManager = FileManager.default
     let working = destination.deletingLastPathComponent()
@@ -67,6 +69,16 @@ public func assembleSplitAsset(
         throw AssistantError(
             "הקובץ המאוחד נמצא פגום ולכן לא נשמר.",
             technical: "\(name): assembled \(fileSize(working) ?? -1) bytes, expected \(size)"
+        )
+    }
+    verificationProgress?(0)
+    if hexString(try hashFilePrefix(
+        working, length: size, progress: verificationProgress, isCancelled: isCancelled
+    ).finalize()) != sha256 {
+        try? fileManager.removeItem(at: working)
+        throw AssistantError(
+            "הקובץ המאוחד נמצא פגום ולכן לא נשמר.",
+            technical: "\(name): assembled sha256 mismatch"
         )
     }
     if fileManager.fileExists(atPath: destination.path) {

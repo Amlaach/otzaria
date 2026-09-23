@@ -357,10 +357,13 @@ Future<List<String>> verifyTree({
   return errors;
 }
 
-List<(int, String)> _hashFiles(List<String> paths) => [
-  for (final path in paths)
-    () {
-      final bytes = File(path).readAsBytesSync();
-      return (bytes.length, sha256.convert(bytes).toString());
-    }(),
-];
+Future<List<(int, String)>> _hashFiles(List<String> paths) async {
+  final digests = <(int, String)>[];
+  for (final path in paths) {
+    final file = File(path);
+    final size = await file.length();
+    final digest = await sha256.bind(file.openRead()).first;
+    digests.add((size, digest.toString()));
+  }
+  return digests;
+}
