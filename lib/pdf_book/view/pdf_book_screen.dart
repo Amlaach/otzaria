@@ -43,6 +43,7 @@ import 'package:otzaria/pdf_book/utils/pdf_spread_layout.dart';
 import 'package:otzaria/pdf_book/utils/trackpad_axis_lock.dart';
 import 'package:otzaria/pdf_book/utils/trackpad_pan_recognizer.dart';
 import 'package:otzaria/widgets/misc/app_cursors.dart';
+import 'package:otzaria/pdf_book/view/widgets/open_url_confirmation.dart';
 import 'package:otzaria/pdf_book/view/page_turn_geometry.dart';
 import 'package:otzaria/pdf_book/view/pdf_page_number_display.dart';
 import 'package:otzaria/pdf_book/view/pdf_commentary_panel.dart';
@@ -4845,40 +4846,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
   }
 
   Future<bool> shouldOpenUrl(BuildContext context, Uri url) async {
-    final result = await showDialog<bool?>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('לעבור לURL?'),
-          content: AppSelectionArea(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(text: 'האם לעבור לכתובת הבאה\n'),
-                  TextSpan(
-                    text: url.toString(),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('ביטול'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('עבור'),
-            ),
-          ],
-        );
-      },
-    );
+    final result = await showOpenUrlConfirmation(context, url);
 
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4888,7 +4856,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
       });
     }
 
-    return result ?? false;
+    return result;
   }
 
   Widget _buildPdfActions(BuildContext context) {
