@@ -93,7 +93,7 @@ dependencies:
   googleapis_auth: ^2.3.3
   characters: ^1.4.1
   collection: ^1.19.1
-  otzaria_search_engine: ^0.8.4
+  otzaria_search_engine: ^0.8.5
   seforim_library_updater:
     git:
       url: https://github.com/Otzaria/otzaria_library_updater
