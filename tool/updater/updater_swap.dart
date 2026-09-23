@@ -281,13 +281,20 @@ SwapRecoveryResult recoverInterruptedSwap(
   var changed = 0;
   try {
     _deleteIncoming(at, fs);
+    final alreadyInstalled = <String>{};
     final canComplete = plan.files.every(
-      (file) => _isInstalled(file, at, fs) || isStaged(file),
+      (file) {
+        if (_isInstalled(file, at, fs)) {
+          alreadyInstalled.add(file.path);
+          return true;
+        }
+        return isStaged(file);
+      },
     );
 
     if (canComplete) {
       for (final file in _installOrder(plan.files)) {
-        if (_isInstalled(file, at, fs)) continue;
+        if (alreadyInstalled.contains(file.path)) continue;
         _installOne(file, at, fs);
         changed++;
       }

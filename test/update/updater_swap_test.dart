@@ -101,6 +101,16 @@ class _RecordingFileSystem extends SwapFileSystem {
   }
 }
 
+class _CountingHashFileSystem extends SwapFileSystem {
+  final hashes = <String, int>{};
+
+  @override
+  String hashOf(String path) {
+    hashes.update(path, (count) => count + 1, ifAbsent: () => 1);
+    return super.hashOf(path);
+  }
+}
+
 /// קובץ יעד שתהליך אחר מחזיק — בלי לנעול קובץ אמיתי במערכת ההפעלה.
 class _HeldFileSystem extends SwapFileSystem {
   _HeldFileSystem(this.held);
@@ -384,6 +394,14 @@ void main() {
       ).copySync(p.join(install.path, 'otzaria.exe'));
       return built;
     }
+
+    test('קובץ שכבר הותקן מאומת פעם אחת בלבד בשחזור', () {
+      final fs = _CountingHashFileSystem();
+      final result = recoverInterruptedSwap(halfApplied(), fs: fs);
+
+      expect(result.outcome, SwapRecovery.completed);
+      expect(fs.hashes[p.join(install.path, 'otzaria.exe')], 1);
+    });
 
     test('קובץ מוחזק בידי תהליך חי — לא נוגעים, והגיבוי נשאר', () {
       final built = halfApplied();
