@@ -32,6 +32,10 @@ class RtlTextField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final bool obscureText;
   final Color? cursorColor;
+  final ScrollController? scrollController;
+
+  /// ממלא את הגובה הזמין. מחייב `maxLines: null` ו-`minLines: null`.
+  final bool expands;
 
   const RtlTextField({
     super.key,
@@ -52,6 +56,8 @@ class RtlTextField extends StatefulWidget {
     this.inputFormatters,
     this.obscureText = false,
     this.cursorColor,
+    this.scrollController,
+    this.expands = false,
   });
 
   @override
@@ -179,6 +185,8 @@ class _RtlTextFieldState extends State<RtlTextField> {
 
     Widget textField = TextField(
       controller: _effectiveController,
+      scrollController: widget.scrollController,
+      expands: widget.expands,
       focusNode: _effectiveFocusNode,
       decoration: widget.decoration,
       contextMenuBuilder: (context, editableTextState) =>
@@ -294,11 +302,16 @@ class _RtlTextFieldState extends State<RtlTextField> {
     final focusContext = FocusManager.instance.primaryFocus?.context;
     if (focusContext == null) return;
 
+    final selection = _effectiveController.selection;
+    final forward = _isRtlAtCaret(focusContext, selection)
+        ? !isVisualRight
+        : isVisualRight;
+
     if (byWord) {
       Actions.invoke(
         focusContext,
         ExtendSelectionToNextWordBoundaryIntent(
-          forward: !isVisualRight,
+          forward: forward,
           collapseSelection: !extendSelection,
         ),
       );
@@ -306,11 +319,29 @@ class _RtlTextFieldState extends State<RtlTextField> {
       Actions.invoke(
         focusContext,
         ExtendSelectionByCharacterIntent(
-          forward: !isVisualRight,
+          forward: forward,
           collapseSelection: !extendSelection,
         ),
       );
     }
+  }
+
+  bool _isRtlAtCaret(BuildContext context, TextSelection selection) {
+    final length = _effectiveController.text.length;
+    if (!selection.isValid || length == 0) return true;
+    final index =
+        (selection.affinity == TextAffinity.downstream
+                ? selection.extentOffset
+                : selection.extentOffset - 1)
+            .clamp(0, length - 1);
+    // כיוון התו המעוצב כולל גם ספרות ופיסוק, בלי סריקה חוזרת של הטקסט.
+    final boxes = context
+        .findAncestorStateOfType<EditableTextState>()
+        ?.renderEditable
+        .getBoxesForSelection(
+          TextSelection(baseOffset: index, extentOffset: index + 1),
+        );
+    return boxes?.firstOrNull?.direction != TextDirection.ltr;
   }
 
   void _showContextMenu(
