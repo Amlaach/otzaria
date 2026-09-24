@@ -104,7 +104,7 @@ class _HiddenBooksListDialogState extends State<_HiddenBooksListDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      context.settingsText('ספרים מוסתרים'),
+                      context.settingsText('בחירות הסתרה ישירות'),
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
@@ -119,13 +119,22 @@ class _HiddenBooksListDialogState extends State<_HiddenBooksListDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                context.settingsText(
+                  'הרשימה מציגה בחירות ישירות. להסרת הסתרה בירושה, בטלו את הסתרת קטגוריית האב.',
+                ),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 12),
               Flexible(
                 child: entries.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 32),
                         child: Text(
-                          context.settingsText('אין ספרים מוסתרים'),
+                          context.settingsText('אין בחירות הסתרה'),
                           textAlign: TextAlign.center,
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),

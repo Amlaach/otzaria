@@ -547,9 +547,9 @@ class _LibrarySettingsTabState extends State<LibrarySettingsTab> {
                     kSettingsCardSpacing,
                     SettingsCard(
                       cardId: 'library.hidden_books',
-                      title: context.settingsText('ספרים מוסתרים'),
+                      title: context.settingsText('ספרים וקטגוריות מוסתרים'),
                       subtitle: context.settingsText(
-                        'הסתרת ספרים מהממשק — מסך הספרייה, האיתור והחיפוש. מסד הספרים אינו משתנה, וספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
+                        'הסתרת ספרים וקטגוריות מהממשק — מסך הספרייה, האיתור והחיפוש. מסד הספרים אינו משתנה, וספר מוסתר עדיין נפתח מקישור או מההיסטוריה',
                       ),
                       children: const [HiddenBooksPanel()],
                     ),

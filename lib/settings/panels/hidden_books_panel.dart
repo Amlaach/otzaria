@@ -64,11 +64,11 @@ class HiddenBooksPanel extends StatefulWidget {
     ),
     SettingsSearchEntry(
       id: 'library.hidden_books.list',
-      title: 'ספרים מוסתרים',
-      subtitle: 'הצגת הספרים שהוסתרו וביטול ההסתרה',
+      title: 'ספרים וקטגוריות מוסתרים',
+      subtitle: 'בחירת ספרים וקטגוריות להסתרה וביטול הסתרה',
       tab: SettingsTab.library,
       cardId: 'library.hidden_books',
-      keywords: ['הסתרה', 'מוסתר', 'ביטול', 'שחזור', 'ספרים'],
+      keywords: ['הסתרה', 'מוסתר', 'ביטול', 'שחזור', 'ספרים', 'קטגוריות'],
     ),
   ];
 
@@ -133,13 +133,21 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
 
     final picked = await showHiddenBooksPickerDialog(
       context: context,
-      books: library.getAllBooks(),
-      hiddenBookKeys: _hidden.bookKeys,
+      library: library,
+      hidden: _hidden,
     );
     if (picked == null || !mounted) return;
 
-    final added = picked.difference(_hidden.bookKeys);
-    await _save(_hidden.copyWith(bookKeys: picked));
+    final added = picked.bookKeys.difference(_hidden.bookKeys);
+    final addedCategories = picked.categoryPaths.difference(
+      _hidden.categoryPaths,
+    );
+    for (final category in library.getAllCategories()) {
+      if (addedCategories.contains(category.path)) {
+        added.addAll(category.getAllBooks().map(PerBookSettings.bookKey));
+      }
+    }
+    await _save(picked);
     await _dropFromIndex(library, added);
     await _loadTitles();
   }
@@ -219,9 +227,9 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
       children: [
         SettingsActionTile.text(
           icon: OtzariaIcons.book_24_regular,
-          title: context.settingsText('בחירת ספרים להסתרה'),
+          title: context.settingsText('בחירת ספרים וקטגוריות להסתרה'),
           subtitle: context.settingsText(
-            'רשימת כל הספרים בספרייה, עם חיפוש וסימון',
+            'בחירת ספרים או קטגוריות מתוך הספרייה, עם חיפוש וסימון',
           ),
           actions: [
             ActionButton.recommended(
@@ -246,9 +254,9 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
         SettingsActionTile.text(
           icon: FluentIcons.eye_off_24_regular,
           title: count == 0
-              ? context.settingsText('אין ספרים מוסתרים')
+              ? context.settingsText('אין בחירות הסתרה')
               : context.settingsText(
-                  'פריטים מוסתרים: {count}',
+                  'בחירות הסתרה ישירות: {count}',
                   args: {'count': count},
                 ),
           subtitle: context.settingsText(

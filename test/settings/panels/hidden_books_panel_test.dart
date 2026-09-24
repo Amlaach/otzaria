@@ -13,6 +13,7 @@ import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/settings/panels/hidden_books_panel.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
+import 'package:otzaria/widgets/text/rtl_text_field.dart';
 
 Library _library() {
   final tora = Category(
@@ -35,6 +36,22 @@ Library _library() {
 String _key(String title) =>
     PerBookSettings.bookKey(TextBook(title: title, categoryId: 10));
 
+Library _nestedLibrary() {
+  final library = _library();
+  final parent = library.subCategories.single;
+  final child = Category(
+    title: 'פרשות',
+    description: '',
+    shortDescription: '',
+    order: 1,
+    subCategories: [],
+    books: [TextBook(title: 'ויקרא', categoryId: 11)],
+    parent: parent,
+  );
+  parent.subCategories.add(child);
+  return library;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -56,6 +73,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     Future<String?> Function()? pickFile,
+    Future<Library> Function()? libraryLoader,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1000, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -69,7 +87,7 @@ void main() {
               body: SingleChildScrollView(
                 child: HiddenBooksPanel(
                   pickFileOverride: pickFile,
-                  libraryLoader: () async => _library(),
+                  libraryLoader: libraryLoader ?? () async => _library(),
                   indexDropper: (books) async {
                     droppedFromIndex.addAll(books.map((b) => b.title));
                     return true;
@@ -90,7 +108,7 @@ void main() {
     await tester.tap(find.text('פתח רשימה'));
     await tester.pumpAndSettle();
 
-    expect(find.text('בחירת ספרים להסתרה'), findsWidgets);
+    expect(find.text('בחירת ספרים וקטגוריות להסתרה'), findsWidgets);
     await tester.tap(find.byType(CheckboxListTile).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('שמור'));
@@ -138,7 +156,7 @@ void main() {
   ) async {
     await pump(tester);
 
-    expect(find.text('אין ספרים מוסתרים'), findsOneWidget);
+    expect(find.text('אין בחירות הסתרה'), findsOneWidget);
     expect(
       find.text('הצג רשימה'),
       findsNothing,
@@ -163,7 +181,7 @@ void main() {
       {_key('בראשית')},
       reason: 'רק השם שהותאם נשמר',
     );
-    expect(find.text('פריטים מוסתרים: 1'), findsOneWidget);
+    expect(find.text('בחירות הסתרה ישירות: 1'), findsOneWidget);
   });
 
   testWidgets('ספר שהוסתר יורד מאינדקס החיפוש (issue #1448)', (tester) async {
@@ -189,7 +207,7 @@ void main() {
     );
 
     await pump(tester);
-    expect(find.text('פריטים מוסתרים: 1'), findsOneWidget);
+    expect(find.text('בחירות הסתרה ישירות: 1'), findsOneWidget);
 
     await tester.tap(find.text('הצג רשימה'));
     await tester.pumpAndSettle();
@@ -201,7 +219,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(const HiddenLibraryStore().load().isEmpty, isTrue);
-    expect(find.text('אין ספרים מוסתרים'), findsOneWidget);
+    expect(find.text('אין בחירות הסתרה'), findsOneWidget);
   });
 
   testWidgets('קטגוריה מוסתרת מוצגת בחלון לפי הנתיב (issue #1448)', (
@@ -216,6 +234,96 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('/תנ"ך/תורה'), findsOneWidget);
+  });
+
+  testWidgets('חיפוש, הסתרה וביטול הסתרה של קטגוריה וצאצאיה', (tester) async {
+    await pump(tester, libraryLoader: () async => _nestedLibrary());
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('קטגוריות'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(RtlTextField), 'תורה');
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckboxListTile), findsNWidgets(2));
+    expect(find.text('/תורה/פרשות'), findsOneWidget);
+    final parentRow = find.ancestor(
+      of: find.text('/תורה'),
+      matching: find.byType(CheckboxListTile),
+    );
+    await tester.tap(parentRow);
+    await tester.pumpAndSettle();
+    final childRow = find.ancestor(
+      of: find.text('/תורה/פרשות'),
+      matching: find.byType(CheckboxListTile),
+    );
+    expect(tester.widget<CheckboxListTile>(childRow).value, isTrue);
+    expect(tester.widget<CheckboxListTile>(childRow).onChanged, isNull);
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().categoryPaths, {'/תורה'});
+    expect(const HiddenLibraryStore().load().bookKeys, isEmpty);
+    expect(droppedFromIndex, ['בראשית', 'שמות', 'ויקרא']);
+    expect(
+      libraryBloc.addedEvents.whereType<HiddenBooksChanged>(),
+      hasLength(1),
+    );
+    expect(find.text('בחירות הסתרה ישירות: 1'), findsOneWidget);
+
+    await tester.tap(find.text('הצג רשימה'));
+    await tester.pumpAndSettle();
+    expect(find.text('בחירות הסתרה ישירות'), findsOneWidget);
+    expect(find.text('/תורה'), findsOneWidget);
+    expect(find.text('/תורה/פרשות'), findsNothing);
+    expect(
+      find.text(
+        'הרשימה מציגה בחירות ישירות. להסרת הסתרה בירושה, בטלו את הסתרת קטגוריית האב.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('סגור'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('הצג רק מוסתרים'));
+    await tester.pumpAndSettle();
+    expect(find.text('בחירות ישירות: 0'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNWidgets(3));
+    for (final tile in tester.widgetList<CheckboxListTile>(
+      find.byType(CheckboxListTile),
+    )) {
+      expect(tile.value, isTrue);
+      expect(tile.onChanged, isNull);
+    }
+    expect(find.text('מוסתר דרך /תורה'), findsNWidgets(3));
+
+    await tester.tap(find.text('קטגוריות'));
+    await tester.pumpAndSettle();
+    expect(find.text('בחירות ישירות: 1'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNWidgets(2));
+    final inheritedRow = find.ancestor(
+      of: find.text('/תורה/פרשות'),
+      matching: find.byType(CheckboxListTile),
+    );
+    expect(tester.widget<CheckboxListTile>(inheritedRow).value, isTrue);
+    expect(tester.widget<CheckboxListTile>(inheritedRow).onChanged, isNull);
+    await tester.tap(
+      find.ancestor(
+        of: find.text('/תורה'),
+        matching: find.byType(CheckboxListTile),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(
+      libraryBloc.addedEvents.whereType<HiddenBooksChanged>(),
+      hasLength(2),
+    );
   });
 
   testWidgets('הרשימה אינה מוצגת בגוף מסך ההגדרות (issue #1448)', (

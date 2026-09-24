@@ -2,40 +2,51 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 
-/// בוחר ספרים להסתרה מתוך כל ספרי הספרייה (issue #1448).
-///
-/// הבחירה נעשית ממקום אחד ולא מכרטיס הספר: כך אין צורך להוסיף כפתור לכל
-/// כרטיס בספרייה, וגם ביטול ההסתרה נעשה מאותו מסך.
-///
-/// מחזיר את קבוצת מפתחות הספרים המוסתרים, או `null` בביטול.
-Future<Set<String>?> showHiddenBooksPickerDialog({
+/// בוחר ספרים וקטגוריות להסתרה מתוך הספרייה.
+Future<HiddenLibrarySelection?> showHiddenBooksPickerDialog({
   required BuildContext context,
-  required List<Book> books,
-  required Set<String> hiddenBookKeys,
+  required Library library,
+  required HiddenLibrarySelection hidden,
 }) {
-  return showDialog<Set<String>>(
+  return showDialog<HiddenLibrarySelection>(
     context: context,
     builder: settingsDialogBuilder(
       context,
-      (_) => _HiddenBooksPickerDialog(books: books, hidden: hiddenBookKeys),
+      (_) => _HiddenBooksPickerDialog(library: library, hidden: hidden),
     ),
   );
 }
 
 class _HiddenBooksPickerDialog extends StatefulWidget {
-  final List<Book> books;
-  final Set<String> hidden;
+  final Library library;
+  final HiddenLibrarySelection hidden;
 
-  const _HiddenBooksPickerDialog({required this.books, required this.hidden});
+  const _HiddenBooksPickerDialog({required this.library, required this.hidden});
 
   @override
   State<_HiddenBooksPickerDialog> createState() =>
       _HiddenBooksPickerDialogState();
+}
+
+class _CategoryRow {
+  final String title;
+  final String path;
+  final int depth;
+
+  _CategoryRow(Category category)
+    : title = category.title,
+      path = category.path,
+      depth = category.path.split('/').length - 2;
+
+  bool matches(String query) =>
+      title.toLowerCase().contains(query) || path.toLowerCase().contains(query);
 }
 
 class _PickerRow {
@@ -43,15 +54,16 @@ class _PickerRow {
   final String title;
   final String details;
   final String haystack;
+  final String categoryPath;
 
-  _PickerRow(Book book)
+  _PickerRow(Book book, this.categoryPath)
     : key = PerBookSettings.bookKey(book),
       title = book.title,
       details = [
         if ((book.author ?? '').isNotEmpty) book.author!,
-        if ((book.categoryPath ?? '').isNotEmpty) book.categoryPath!,
+        categoryPath,
       ].join(' · '),
-      haystack = '${book.title} ${book.author ?? ''} ${book.categoryPath ?? ''}'
+      haystack = '${book.title} ${book.author ?? ''} $categoryPath'
           .toLowerCase();
 
   bool matches(String query) => haystack.contains(query.toLowerCase());
@@ -60,19 +72,47 @@ class _PickerRow {
 class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
   late final List<_PickerRow> _rows;
   late List<_PickerRow> _visible;
-  late final Set<String> _selected;
+  late final List<_CategoryRow> _categories;
+  late List<_CategoryRow> _visibleCategories;
+  late final Set<String> _selectedBooks;
+  late final Set<String> _selectedCategories;
   final TextEditingController _search = TextEditingController();
   final ScrollController _scroll = ScrollController();
+  bool _showCategories = false;
 
-  /// מציג רק את המוסתרים — הדרך המהירה לבטל הסתרה בלי לחפש בין אלפי ספרים.
   bool _hiddenOnly = false;
+
+  String? _hidingCategory(String path, {bool includeSelf = true}) {
+    var current = includeSelf ? path : path.substring(0, path.lastIndexOf('/'));
+    while (current.isNotEmpty) {
+      if (_selectedCategories.contains(current)) return current;
+      final separator = current.lastIndexOf('/');
+      if (separator <= 0) break;
+      current = current.substring(0, separator);
+    }
+    return null;
+  }
+
+  void _addCategory(Category category) {
+    _categories.add(_CategoryRow(category));
+    _rows.addAll(category.books.map((book) => _PickerRow(book, category.path)));
+    for (final child in category.subCategories) {
+      _addCategory(child);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _rows = widget.books.map(_PickerRow.new).toList();
-    _selected = {...widget.hidden};
+    _rows = [];
+    _categories = [];
+    for (final category in widget.library.subCategories) {
+      _addCategory(category);
+    }
+    _selectedBooks = {...widget.hidden.bookKeys};
+    _selectedCategories = {...widget.hidden.categoryPaths};
     _visible = _rows;
+    _visibleCategories = _categories;
     _search.addListener(_applyFilter);
   }
 
@@ -85,13 +125,24 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
   }
 
   void _applyFilter() {
-    final query = _search.text.trim();
+    final query = _search.text.trim().toLowerCase();
     setState(() {
       _visible = _rows
           .where(
             (row) =>
                 (query.isEmpty || row.matches(query)) &&
-                (!_hiddenOnly || _selected.contains(row.key)),
+                (!_hiddenOnly ||
+                    _selectedBooks.contains(row.key) ||
+                    _hidingCategory(row.categoryPath) != null),
+          )
+          .toList();
+      _visibleCategories = _categories
+          .where(
+            (row) =>
+                (query.isEmpty || row.matches(query)) &&
+                (!_hiddenOnly ||
+                    _selectedCategories.contains(row.path) ||
+                    _hidingCategory(row.path, includeSelf: false) != null),
           )
           .toList();
     });
@@ -121,12 +172,19 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      context.settingsText('בחירת ספרים להסתרה'),
+                      context.settingsText('בחירת ספרים וקטגוריות להסתרה'),
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
                   Text(
-                    '${_selected.length} / ${_rows.length}',
+                    context.settingsText(
+                      'בחירות ישירות: {count}',
+                      args: {
+                        'count': _showCategories
+                            ? _selectedCategories.length
+                            : _selectedBooks.length,
+                      },
+                    ),
                     style:
                         Theme.of(
                           context,
@@ -137,14 +195,45 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
                 ],
               ),
               const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                segments: [
+                  ButtonSegment(
+                    value: false,
+                    label: Text(context.settingsText('ספרים')),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text(context.settingsText('קטגוריות')),
+                  ),
+                ],
+                selected: {_showCategories},
+                onSelectionChanged: (selection) {
+                  setState(() => _showCategories = selection.single);
+                  _search.clear();
+                  if (_scroll.hasClients) _scroll.jumpTo(0);
+                },
+              ),
+              if (_showCategories)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    context.settingsText(
+                      'הסתרת קטגוריה כוללת את תתי־הקטגוריות וכל הספרים שבתוכה',
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
               RtlTextField(
                 controller: _search,
                 autofocus: true,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(OtzariaIcons.search_24_regular),
-                  hintText: context.settingsText(
-                    'חיפוש לפי שם, מחבר או קטגוריה',
-                  ),
+                  hintText: _showCategories
+                      ? context.settingsText('חיפוש קטגוריה לפי שם או נתיב')
+                      : context.settingsText('חיפוש לפי שם, מחבר או קטגוריה'),
                   border: const OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -161,7 +250,9 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
                   ),
                   label: Text(
                     _hiddenOnly
-                        ? context.settingsText('הצג את כל הספרים')
+                        ? _showCategories
+                              ? context.settingsText('הצג את כל הקטגוריות')
+                              : context.settingsText('הצג את כל הספרים')
                         : context.settingsText('הצג רק מוסתרים'),
                   ),
                   onPressed: () {
@@ -172,10 +263,15 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
               ),
               const SizedBox(height: 4),
               Expanded(
-                child: _visible.isEmpty
+                child:
+                    (_showCategories
+                        ? _visibleCategories.isEmpty
+                        : _visible.isEmpty)
                     ? Center(
                         child: Text(
-                          context.settingsText('לא נמצאו ספרים'),
+                          _showCategories
+                              ? context.settingsText('לא נמצאו קטגוריות')
+                              : context.settingsText('לא נמצאו ספרים'),
                           style: TextStyle(color: cs.onSurfaceVariant),
                         ),
                       )
@@ -184,28 +280,94 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
                         thumbVisibility: true,
                         child: ListView.separated(
                           controller: _scroll,
-                          itemCount: _visible.length,
+                          itemCount: _showCategories
+                              ? _visibleCategories.length
+                              : _visible.length,
                           separatorBuilder: (_, _) => Divider(
                             height: 1,
                             color: cs.surfaceContainerHighest,
                           ),
                           itemBuilder: (_, i) {
+                            if (_showCategories) {
+                              final row = _visibleCategories[i];
+                              final inherited = _hidingCategory(
+                                row.path,
+                                includeSelf: false,
+                              );
+                              return CheckboxListTile(
+                                value:
+                                    inherited != null ||
+                                    _selectedCategories.contains(row.path),
+                                title: Padding(
+                                  padding: EdgeInsetsDirectional.only(
+                                    start: row.depth * 12.0,
+                                  ),
+                                  child: Text(row.title),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(row.path),
+                                    if (inherited != null)
+                                      Text(
+                                        context.settingsText(
+                                          'מוסתר דרך {category}',
+                                          args: {'category': inherited},
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                secondary: const Icon(
+                                  FluentIcons.folder_24_regular,
+                                ),
+                                onChanged: inherited != null
+                                    ? null
+                                    : (checked) {
+                                        setState(() {
+                                          if (checked == true) {
+                                            _selectedCategories.add(row.path);
+                                          } else {
+                                            _selectedCategories.remove(
+                                              row.path,
+                                            );
+                                          }
+                                        });
+                                        if (_hiddenOnly) _applyFilter();
+                                      },
+                              );
+                            }
                             final row = _visible[i];
+                            final inherited = _hidingCategory(row.categoryPath);
                             return CheckboxListTile(
-                              value: _selected.contains(row.key),
+                              value:
+                                  inherited != null ||
+                                  _selectedBooks.contains(row.key),
                               title: Text(row.title),
-                              subtitle: row.details.isEmpty
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(row.details),
+                                  if (inherited != null)
+                                    Text(
+                                      context.settingsText(
+                                        'מוסתר דרך {category}',
+                                        args: {'category': inherited},
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              onChanged: inherited != null
                                   ? null
-                                  : Text(row.details),
-                              onChanged: (checked) {
-                                setState(() {
-                                  if (checked == true) {
-                                    _selected.add(row.key);
-                                  } else {
-                                    _selected.remove(row.key);
-                                  }
-                                });
-                              },
+                                  : (checked) {
+                                      setState(() {
+                                        if (checked == true) {
+                                          _selectedBooks.add(row.key);
+                                        } else {
+                                          _selectedBooks.remove(row.key);
+                                        }
+                                      });
+                                      if (_hiddenOnly) _applyFilter();
+                                    },
                             );
                           },
                         ),
@@ -216,7 +378,12 @@ class _HiddenBooksPickerDialogState extends State<_HiddenBooksPickerDialog> {
                 children: [
                   ActionButton.recommended(
                     text: context.settingsText('שמור'),
-                    onPressed: () => Navigator.of(context).pop(_selected),
+                    onPressed: () => Navigator.of(context).pop(
+                      HiddenLibrarySelection(
+                        bookKeys: _selectedBooks,
+                        categoryPaths: _selectedCategories,
+                      ),
+                    ),
                   ),
                   const Spacer(),
                   ActionButton.ghost(
