@@ -28,6 +28,7 @@ import 'package:otzaria/widgets/dialogs/error_report_sender_email_dialog.dart';
 import 'package:otzaria/widgets/misc/app_selection_area.dart';
 import 'package:otzaria/widgets/misc/phone_report_tab.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria/utils/text/ref_helper.dart';
 import 'package:otzaria/utils/canonical_json.dart';
@@ -636,7 +637,7 @@ $detailsSection
       path: email,
     );
     try {
-      await launchUrl(emailUri, mode: LaunchMode.externalApplication);
+      await saferLaunchUrl(context, emailUri, mode: LaunchMode.externalApplication);
     } catch (e) {
       if (context.mounted) {
         UiSnack.show(ReportMessages.cannotOpenMailApp);
@@ -909,7 +910,7 @@ $detailsSection
       );
 
       try {
-        if (!await launchUrl(emailUri, mode: LaunchMode.externalApplication)) {
+        if (!await saferLaunchUrl(context, emailUri, mode: LaunchMode.externalApplication)) {
           if (context.mounted) {
             showSimpleSnack(context, ReportMessages.cannotOpenMailApp);
           }
@@ -1479,6 +1480,7 @@ class _RegularReportTabState extends State<RegularReportTab> {
   /// פותח את עמוד התיקון העצמי באתר, ממוקד בקטע שנבחר, וסוגר את טופס הדיווח.
   Future<void> _openDictaSelfEdit() async {
     final opened = await launchDictaEditPage(
+      context,
       widget.bookTitle,
       selectedText: widget.selectedText,
     );
@@ -1730,6 +1732,7 @@ class _RegularReportTabState extends State<RegularReportTab> {
 /// (כשנמסר). מחזיר אם הפתיחה הצליחה (כדי שהקורא יוכל להציג הודעת שגיאה
 /// כשהדפדפן לא נפתח).
 Future<bool> launchDictaEditPage(
+  BuildContext context,
   String bookTitle, {
   String selectedText = '',
 }) async {
@@ -1738,7 +1741,7 @@ Future<bool> launchDictaEditPage(
       ErrorReportHelper.dictaEditUrlFor(bookTitle, selectedText: selectedText),
     );
     if (await canLaunchUrl(uri)) {
-      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return await saferLaunchUrl(context, uri, mode: LaunchMode.externalApplication);
     }
   } catch (e) {
     debugPrint('פתיחת עמוד עריכת דיקטה נכשלה: $e');

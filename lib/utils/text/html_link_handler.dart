@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -203,7 +204,8 @@ class HtmlLinkHandler {
 
       final externalUri = externalUriFor(url);
       if (externalUri != null) {
-        final launched = await launchUrl(
+        final launched = await saferLaunchUrl(
+          context,
           externalUri,
           mode: LaunchMode.externalApplication,
         );

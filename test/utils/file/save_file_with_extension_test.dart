@@ -10,6 +10,7 @@ import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 
 void main() {
@@ -136,6 +137,56 @@ void main() {
 
       await future;
       expect(saveResult, isNull);
+    });
+
+    testWidgets('במצב קיוסק מנוהל (isKioskMode) — חוסם שמירה מיד ללא דיאלוג', (
+      tester,
+    ) async {
+      isKioskMode = true;
+      try {
+        final settingsBloc = _MockSettingsBloc();
+        final repository = _FakeSettingsRepo();
+
+        whenListen(
+          settingsBloc,
+          const Stream<SettingsState>.empty(),
+          initialState: SettingsState.initial().copyWith(
+            protectedModeEnabled: true,
+          ),
+        );
+
+        String? saveResult;
+        late BuildContext testContext;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RepositoryProvider<SettingsRepository>.value(
+              value: repository,
+              child: BlocProvider<SettingsBloc>.value(
+                value: settingsBloc,
+                child: Builder(
+                  builder: (context) {
+                    testContext = context;
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final result = await saveFileWithExtension(
+          fileName: 'test.pdf',
+          extension: 'pdf',
+          bytes: Uint8List.fromList([1, 2, 3]),
+          context: testContext,
+        );
+
+        expect(result, isNull);
+        expect(find.byType(SaferModePasswordDialog), findsNothing);
+      } finally {
+        isKioskMode = false;
+      }
     });
   });
 }

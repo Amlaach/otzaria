@@ -99,6 +99,7 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       transformer: sequential(),
     );
     on<UpdateSettingsLanguageCode>(_onUpdateSettingsLanguageCode);
+    on<ForceKioskModeEnabled>(_onForceKioskMode);
   }
 
   Future<void> _onLoadSettings(
@@ -324,6 +325,14 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   ) async {
     await _repository.updateProtectedModeEnabled(event.enabled);
     emit(state.copyWith(protectedModeEnabled: event.enabled));
+  }
+
+  Future<void> _onForceKioskMode(
+    ForceKioskModeEnabled event,
+    Emitter<SettingsState> emit,
+  ) async {
+    await _repository.updateProtectedModeEnabled(true);
+    emit(state.copyWith(protectedModeEnabled: true));
   }
 
   Future<void> _onUpdateProtectedModePassword(

@@ -8,6 +8,7 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/core/messages/library_messages.dart';
 import 'package:updat/updat.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 /// עוטף את צ'יפ העדכון בצבע פעולה בולט, בלי לצאת מצבעי התמה.
 Widget _updateChipSurface(BuildContext context, Widget child) {
@@ -296,7 +297,7 @@ void hebrewDefaultDialog({
                   : MarkdownBody(
                       data: changelogText,
                       onTapLink: (text, href, title) {
-                        if (href != null) launchUrl(Uri.parse(href));
+                        if (href != null) saferLaunchUrl(context, Uri.parse(href));
                       },
                     ),
             ),

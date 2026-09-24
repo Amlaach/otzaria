@@ -169,7 +169,13 @@ class OtzarBookDialog extends StatelessWidget {
           ElevatedButton.icon(
             icon: const Icon(FluentIcons.desktop_24_regular),
             label: const Text('פתח מקומית'),
-            onPressed: () {
+            onPressed: () async {
+              if (isKioskMode) {
+                UiSnack.show('פתיחת תוכנת אוצר החכמה חסומה במצב קיוסק');
+                return;
+              }
+              if (!await verifySaferModePassword(context)) return;
+              if (!context.mounted) return;
               Navigator.of(context).pop();
               OtzarUtils.launchOtzarLocal(book.id!);
             },
@@ -182,8 +188,10 @@ class OtzarBookDialog extends StatelessWidget {
           icon: const Icon(FluentIcons.open_24_regular),
           label: const Text('פתח באתר'),
           onPressed: () async {
+            if (!await verifySaferModePassword(context)) return;
+            if (!context.mounted) return;
             Navigator.of(context).pop();
-            if (await OtzarUtils.launchOtzarWeb(book.link)) {
+            if (await OtzarUtils.launchOtzarWeb(book.link, context: context)) {
               // Success
             } else {
               UiSnack.showError(LibraryMessages.cannotOpenLinkInBrowser);

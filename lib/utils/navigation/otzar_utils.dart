@@ -2,8 +2,11 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 
+import 'package:flutter/material.dart';
+
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher_string.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 class OtzarUtils {
   static final List<String> _availableDrives = [
@@ -195,7 +198,7 @@ class OtzarUtils {
     }
   }
 
-  static Future<bool> launchOtzarWeb(String url) async {
-    return await canLaunchUrlString(url) && await launchUrlString(url);
+  static Future<bool> launchOtzarWeb(String url, {BuildContext? context}) async {
+    return saferLaunchUrlString(context, url);
   }
 }

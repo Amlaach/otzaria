@@ -21,6 +21,10 @@ Future<String?> saveFileWithExtension({
   String? initialDirectory,
   BuildContext? context,
 }) async {
+  if (isKioskMode) {
+    UiSnack.show('שמירת קבצים למערכת ההפעלה חסומה במצב קיוסק');
+    return null;
+  }
   final effectiveContext = context ?? navigatorKey.currentContext;
   if (effectiveContext != null &&
       !await verifySaferModePassword(effectiveContext)) {

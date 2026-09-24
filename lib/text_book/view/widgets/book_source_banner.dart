@@ -6,7 +6,7 @@ import 'package:otzaria/models/books.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/text_book/view/book_source_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 /// המקורות שעבורם מוצג באנר קרדיט מעל תחילת הספר.
 enum BookSourceBannerKind { nationalLibrary, wikiJewishBooks }
 
@@ -103,7 +103,7 @@ class _BookSourceBannerState extends State<BookSourceBanner> {
     _recognizer = TapGestureRecognizer()
       ..onTap = () async {
         if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
+          await saferLaunchUrl(context, uri);
         }
       };
   }

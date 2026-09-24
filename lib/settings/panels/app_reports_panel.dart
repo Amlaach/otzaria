@@ -23,6 +23,7 @@ import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 /// כרטיס "דיווחים על התוכנה" במסך ההגדרות: פתיחת הטופס, מצב הדיווח אחרי
 /// קריסה, וניהול התור וההיסטוריה — באותו מבנה כמו דיווחי הטעויות והתוספים.
@@ -439,7 +440,7 @@ class _AppReportsPanelState extends State<AppReportsPanel> {
 
   Future<void> _openIssue(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null || !await launchUrl(uri)) {
+    if (uri == null || !await saferLaunchUrl(context, uri)) {
       UiSnack.showError(ReportMessages.appReportCannotOpenIssue);
     }
   }
