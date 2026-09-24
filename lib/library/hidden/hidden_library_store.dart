@@ -13,6 +13,12 @@ import 'package:otzaria/settings/engine/settings_repository.dart';
 /// יושב ב-`app_preferences`, ולכן מגובה אוטומטית: `BackupService` סורק את כל
 /// מפתחות ההגדרות. אין כאן box חדש ואין קובץ נפרד.
 class HiddenLibraryStore {
+  static final StreamController<HiddenLibrarySelection> _changes =
+      StreamController<HiddenLibrarySelection>.broadcast(sync: true);
+
+  /// בחירה שנשמרה בחלון הנוכחי, אחרי ששני המפתחות נכתבו.
+  Stream<HiddenLibrarySelection> get changes => _changes.stream;
+
   /// המפתחות מוצהרים ב-[SettingsRepository] ונמצאים ב-`allKeys`, כדי
   /// שהגיבוי יתפוס אותם גם במסלול הנסיגה שבו Hive אינו פתוח ונאספת רשימת
   /// המפתחות המוצהרת בלבד.
@@ -126,14 +132,20 @@ class HiddenLibraryStore {
   );
 
   Future<void> save(HiddenLibrarySelection selection) async {
-    await Settings.setValue<String>(
-      bookKeysSetting,
-      jsonEncode(selection.bookKeys.toList()..sort()),
-    );
-    await Settings.setValue<String>(
-      categoryPathsSetting,
-      jsonEncode(selection.categoryPaths.toList()..sort()),
-    );
+    final before = load();
+    try {
+      await Settings.setValue<String>(
+        bookKeysSetting,
+        jsonEncode(selection.bookKeys.toList()..sort()),
+      );
+      await Settings.setValue<String>(
+        categoryPathsSetting,
+        jsonEncode(selection.categoryPaths.toList()..sort()),
+      );
+    } finally {
+      final actual = load();
+      if (actual != before) _changes.add(actual);
+    }
   }
 
   /// מחזיר את המצב שנשמר בפועל גם כשכתיבת המפתח השני נכשלת.

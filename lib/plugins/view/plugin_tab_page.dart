@@ -322,7 +322,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
     final searchRepository = SearchRepository();
     final personalNotesRepository = PersonalNotesRepository();
     final pluginRegistryRepository = PluginRegistryRepository();
-    _findRefRepository = buildFindRefRepository();
+    _findRefRepository = buildFindRefRepository(respectHiddenLibrary: false);
     final findRefRepository = _findRefRepository;
 
     final dependencies = PluginBridgeDependencies(

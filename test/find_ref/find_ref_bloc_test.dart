@@ -13,6 +13,9 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 Future<List<DbReferenceResult>> _emptyFindRefs(String _) async => const [];
 
 class _FakeRepository implements FindRefRepository {
+  @override
+  bool get respectHiddenLibrary => false;
+
   final Future<List<DbReferenceResult>> Function(String) _fn;
   final Exception? _error;
 
