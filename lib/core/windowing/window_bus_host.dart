@@ -15,7 +15,11 @@ import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
 import 'package:otzaria/indexing/bloc/indexing_event.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/bloc/library_bloc.dart';
+import 'package:otzaria/library/bloc/library_event.dart';
 import 'package:otzaria/navigation/bloc/navigation_bloc.dart';
 import 'package:otzaria/navigation/bloc/navigation_event.dart';
 import 'package:otzaria/navigation/bloc/navigation_state.dart';
@@ -91,12 +95,23 @@ class _WindowBusHostState extends State<WindowBusHost> {
     // ⚠️ הגדרה שהשתנתה בחלון אחר כבר נכתבה ל-box המקומי, אבל ה-state
     // שנגזר ממנה עוד לא. בלי הטעינה מחדש המשתמש היה מחליף ערכת נושא
     // בחלון אחד ורואה שני חלונות של אותה תוכנה נראים שונה.
-    _settingsChanged = SettingsSync.instance.changes.listen((_) {
-      if (mounted) context.read<SettingsBloc>().add(LoadSettings());
+    _settingsChanged = SettingsSync.instance.changes.listen((key) {
+      if (!mounted) return;
+      context.read<SettingsBloc>().add(LoadSettings());
+      if (key == HiddenLibraryStore.bookKeysSetting ||
+          key == HiddenLibraryStore.categoryPathsSetting) {
+        _hiddenRefresh?.cancel();
+        _hiddenRefresh = Timer(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            context.read<LibraryBloc>().add(const HiddenBooksChanged());
+          }
+        });
+      }
     });
   }
 
   StreamSubscription<String>? _settingsChanged;
+  Timer? _hiddenRefresh;
 
   /// קולט מטען שנשלח לחלון שהוחזר לשימוש.
   ///
@@ -151,6 +166,7 @@ class _WindowBusHostState extends State<WindowBusHost> {
   void dispose() {
     _peerRefresh?.cancel();
     unawaited(_settingsChanged?.cancel());
+    _hiddenRefresh?.cancel();
     SettingsSync.instance.dispose();
     // ⚠️ המשבצת, ה-`onRequest` ומטפל הערוץ **אינם** משוחררים כאן: ב-
     // `RestartWidget` ה-`initState` החדש רץ לפני ה-`dispose` הזה, ושחרור
@@ -170,7 +186,13 @@ class _WindowBusHostState extends State<WindowBusHost> {
       case MultiWindowService.requestOpenUri:
         return _openUri(request['uri']);
       case MultiWindowService.requestIndex:
-        return _runIndexRequest(request['op']);
+        return _runIndexRequest(request);
+      case MultiWindowService.requestIndexVisibilityResult:
+        final id = request['operationId'];
+        final success = request['success'];
+        return id is String &&
+            success is bool &&
+            MultiWindowService.completeVisibilityRequest(id, success);
       case MultiWindowService.requestDragLeave:
         externalTabDrag.value = null;
         return true;
@@ -224,15 +246,86 @@ class _WindowBusHostState extends State<WindowBusHost> {
   /// בלעדית, והנעילה שלו.
   ///
   /// מחזיר true רק אחרי שהאירוע נשלח בפועל, כי השולח מדווח למשתמש לפיו.
-  bool _runIndexRequest(Object? op) {
+  Future<Object?> _runIndexRequest(Map<String, dynamic> request) async {
     if (!mounted || WindowRole.isSecondary) return false;
     final indexing = context.read<IndexingBloc>();
-    switch (op) {
+    switch (request['op']) {
       case MultiWindowService.indexOpAll:
-        final library = context.read<LibraryBloc>().state.library;
-        if (library == null) return false;
+        final library = await DataRepository.instance.library;
+        if (!mounted) return false;
         indexing.add(StartIndexing(library));
         return true;
+      case MultiWindowService.indexOpVisibility:
+        final bookKeys = request['bookKeys'];
+        final categoryPaths = request['categoryPaths'];
+        final previousBookKeys = request['previousBookKeys'];
+        final previousCategoryPaths = request['previousCategoryPaths'];
+        final fromSlot = request['fromSlot'];
+        final operationId = request['operationId'];
+        if (bookKeys is! List ||
+            categoryPaths is! List ||
+            previousBookKeys is! List ||
+            previousCategoryPaths is! List ||
+            fromSlot is! int ||
+            fromSlot < 1 ||
+            fromSlot > WindowBus.slotCount ||
+            operationId is! String) {
+          return false;
+        }
+        final base = HiddenLibrarySelection(
+          bookKeys: previousBookKeys.whereType<String>().toSet(),
+          categoryPaths: previousCategoryPaths.whereType<String>().toSet(),
+        );
+        final requested = HiddenLibrarySelection(
+          bookKeys: bookKeys.whereType<String>().toSet(),
+          categoryPaths: categoryPaths.whereType<String>().toSet(),
+        );
+        return HiddenLibraryUpdateQueue.instance.run(() async {
+          if (!mounted) return false;
+          const store = HiddenLibraryStore();
+          final before = store.load();
+          final desired = applyHiddenSelectionChange(before, base, requested);
+          final library = await DataRepository.instance.library;
+          if (!mounted) return false;
+          final revision = await store.beginVisibilityIndexUpdate();
+          final saved = await store.saveAndRead(desired);
+          final actual = saved.actual;
+          if (saved.error != null) {
+            debugPrint('[HiddenBooks] owner save failed: ${saved.error}');
+          }
+          void reportIndexResult(bool success) {
+            unawaited(
+              WindowBus.instance.request(fromSlot, {
+                'type': MultiWindowService.requestIndexVisibilityResult,
+                'operationId': operationId,
+                'success': success,
+              }),
+            );
+          }
+
+          final delta = hiddenIndexDelta(library, before, actual);
+          if (mounted) {
+            if (actual != before) {
+              context.read<LibraryBloc>().add(const HiddenBooksChanged());
+            }
+            indexing.add(
+              ApplyHiddenIndexDelta(
+                library,
+                newlyHidden: delta.newlyHidden,
+                newlyVisible: delta.newlyVisible,
+                visibilityRevision: revision,
+                onCompleted: reportIndexResult,
+              ),
+            );
+          } else {
+            reportIndexResult(false);
+          }
+          return {
+            'bookKeys': actual.bookKeys.toList(),
+            'categoryPaths': actual.categoryPaths.toList(),
+            'saved': saved.error == null && actual == desired,
+          };
+        });
       case MultiWindowService.indexOpClear:
         indexing.add(ClearIndex());
         return true;

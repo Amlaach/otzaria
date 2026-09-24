@@ -13,6 +13,9 @@ import 'package:otzaria/indexing/models/indexing_run_result.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
 import 'package:otzaria/indexing/utils/pdf_extraction_prefetcher.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/utils/file/document_conversion_exceptions.dart';
@@ -23,6 +26,129 @@ import 'package:otzaria_search_engine/otzaria_search_engine.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 void main() {
+  group('הסתרות ואינדקס מלא', () {
+    test('סטטוס כולל מהדורה גלויה מחוץ לעץ ומחריג קטגוריה מוסתרת', () async {
+      final library = Library(categories: []);
+      final hidden = TextBook(id: 1, title: 'מוסתר');
+      final version = TextBook(id: 2, title: 'גרסה', source: BookSource.user);
+      final category = Category(
+        title: 'סגור',
+        description: '',
+        shortDescription: '',
+        order: 0,
+        subCategories: [],
+        books: [hidden],
+        parent: library,
+      );
+      library.subCategories.add(category);
+      library.offTreeBooks = [version];
+      final provider = _RecordingTantivyDataProvider(_RecordingSearchEngine());
+      final repository = IndexingRepository(
+        provider,
+        hiddenStore: _FixedHiddenStore(
+          HiddenLibrarySelection(categoryPaths: {category.path}),
+        ),
+      );
+
+      expect(await repository.hasUnindexedBooks(library), isTrue);
+      provider.indexedFilePaths.add(
+        IndexingRepository.buildIndexedBookFilePath(version),
+      );
+      expect(await repository.hasUnindexedBooks(library), isFalse);
+    });
+
+    test('אינדוקס נקודתי ואינדוקס מחדש אינם כותבים קטגוריה מוסתרת', () async {
+      final library = Library(categories: []);
+      final hidden = TextBook(id: 1, title: 'מוסתר');
+      final visible = TextBook(id: 2, title: 'גלוי', source: BookSource.user);
+      final category = Category(
+        title: 'סגור',
+        description: '',
+        shortDescription: '',
+        order: 0,
+        subCategories: [],
+        books: [hidden],
+        parent: library,
+      );
+      library.subCategories.add(category);
+      library.books.add(visible);
+      final store = _FixedHiddenStore(
+        HiddenLibrarySelection(categoryPaths: {category.path}),
+      );
+      final engine = _CancellationRecordingEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      final repository = _FakeExtractionRepository(
+        provider,
+        hiddenStore: store,
+      );
+
+      await repository.indexBooks(
+        [hidden, visible],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(engine.committedCounts.keys, {
+        IndexingRepository.buildIndexedBookFilePath(visible),
+      });
+
+      final probe = _ReindexProbeRepository(provider, hiddenStore: store);
+      await probe.reindexChangedBooks(
+        [hidden, visible],
+        library,
+        onProgress: (_, _) {},
+      );
+      expect(probe.indexedBooks, [visible]);
+      expect(engine.removedFilePaths, [
+        IndexingRepository.buildIndexedBookFilePath(visible),
+      ]);
+    });
+
+    test('ניקוי מוסתרים נוגע רק ברשומות קיימות ושומר ספר אישי גלוי', () async {
+      final library = Library(categories: []);
+      final hidden = TextBook(id: 5, title: 'שבת');
+      final visible = TextBook(id: 5, title: 'שבת', source: BookSource.user);
+      library.books.addAll([hidden, visible]);
+      final engine = _RecordingSearchEngine();
+      final provider = _RecordingTantivyDataProvider(engine);
+      provider.indexedFilePaths.addAll([
+        IndexingRepository.buildIndexedBookFilePath(hidden),
+        IndexingRepository.buildIndexedBookFilePath(visible),
+      ]);
+      final store = _FixedHiddenStore(
+        HiddenLibrarySelection(
+          bookKeys: {PerBookSettings.bookKey(hidden)},
+        ),
+      );
+      final repository = IndexingRepository(provider, hiddenStore: store);
+
+      expect(await repository.dropHiddenIndexEntries(library), isTrue);
+      expect(engine.removedFilePaths, ['id:5']);
+      expect(provider.indexedFilePaths, {'uid:5'});
+      expect(await repository.dropHiddenIndexEntries(library), isTrue);
+      expect(engine.removedFilePaths, ['id:5']);
+    });
+
+    test('כשל מחיקת ספר מוסתר מוחזר ללא ניקוי המעקב', () async {
+      final book = TextBook(id: 5, title: 'שבת');
+      final library = Library(categories: [])..books.add(book);
+      final engine = _RecordingSearchEngine()..failCommit = true;
+      final provider = _RecordingTantivyDataProvider(engine);
+      provider.indexedFilePaths.add('id:5');
+      engine.committedFilePaths = ['id:5'];
+      final repository = IndexingRepository(
+        provider,
+        hiddenStore: _FixedHiddenStore(
+          HiddenLibrarySelection(
+            bookKeys: {PerBookSettings.bookKey(book)},
+          ),
+        ),
+      );
+
+      expect(await repository.dropHiddenIndexEntries(library), isFalse);
+      expect(provider.indexedFilePaths, {'id:5'});
+    });
+  });
+
   group('IndexingRepository.shouldCommitCancelledRun', () {
     test('ביטול רגיל — הספרים שכבר נכתבו נחתמים', () {
       // רגרסיה: בלי commit בביטול, כל ריצה שנקטעה התחילה מה-commit
@@ -2657,7 +2783,7 @@ class _DelayedTempFallbackProvider extends _RecordingTantivyDataProvider {
 /// עוקף את indexBooks כדי לבדוק את reindexChangedBooks בבידוד: הרחבת
 /// הכותרות והמחיקה אמיתיות, האינדוקס עצמו רק מוקלט.
 class _ReindexProbeRepository extends IndexingRepository {
-  _ReindexProbeRepository(super.provider);
+  _ReindexProbeRepository(super.provider, {super.hiddenStore});
 
   List<Book>? indexedBooks;
 
@@ -2675,6 +2801,15 @@ class _ReindexProbeRepository extends IndexingRepository {
       indexedBooks: books.length,
     );
   }
+}
+
+class _FixedHiddenStore extends HiddenLibraryStore {
+  const _FixedHiddenStore(this.selection);
+
+  final HiddenLibrarySelection selection;
+
+  @override
+  HiddenLibrarySelection load() => selection;
 }
 
 /// טעינת מקור הספר מתפרקת לשלבים עם yield (קריאת ה-DB במנות, עבודת ה-data
@@ -2699,7 +2834,7 @@ class _CancelDuringLoadRepository extends IndexingRepository {
 /// מחליף את חילוץ ה-PDF (pdfrx) בתוכן מזויף — לבדיקת צינור ה-prefetch
 /// והניקוז המוקדם בלי קבצים אמיתיים.
 class _FakeExtractionRepository extends IndexingRepository {
-  _FakeExtractionRepository(super.provider);
+  _FakeExtractionRepository(super.provider, {super.hiddenStore});
 
   final extractedTitles = <String>[];
 

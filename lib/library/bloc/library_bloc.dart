@@ -247,12 +247,10 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
       );
 
       // צלם את מפתחות הספרים לפני הרענון לצורך זיהוי ספרים חדשים
-      final keysBeforeRefresh =
-          state.library
-              ?.getAllBooks()
-              .map((b) => IndexingRepository.catalogueOrderKey(b))
-              .toSet() ??
-          <String>{};
+      final keysBeforeRefresh = (await _repository.library)
+          .getIndexableBooks()
+          .map((b) => IndexingRepository.catalogueOrderKey(b))
+          .toSet();
 
       final libraryPath = Settings.getValue<String>(
         SettingsRepository.keyLibraryPath,
@@ -264,7 +262,8 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
       // רענון הספרייה מהמערכת קבצים
       DataRepository.instance.library = FileSystemData.instance.getLibrary();
       DataRepository.instance.invalidateExternalBooksCache();
-      final library = await _visibleLibrary();
+      final fullLibrary = await _repository.library;
+      final library = filterHiddenFromLibrary(fullLibrary, hiddenStore.load());
 
       try {
         await TantivyDataProvider.instance.reopenIndex();
@@ -279,8 +278,8 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
       }
 
       // זיהוי ספרים חדשים שנוספו ברענון
-      final newBooksToIndex = library
-          .getAllBooks()
+      final newBooksToIndex = fullLibrary
+          .getIndexableBooks()
           .where(
             (b) => !keysBeforeRefresh.contains(
               IndexingRepository.catalogueOrderKey(b),
@@ -290,7 +289,7 @@ class LibraryBloc extends Bloc<LibraryEvent, LibraryState> {
 
       // מיפוי מפתחות הספרים שהשתנו (שדווחו ע"י הקורא) לספרים מהקטלוג הטרי
       final changedBooksToIndex = booksToReindex(
-        library.getAllBooks(),
+        fullLibrary.getIndexableBooks(),
         changedBookKeys: event.changedBookKeys,
         changedAttachedSlugs: event.changedAttachedSlugs,
       );

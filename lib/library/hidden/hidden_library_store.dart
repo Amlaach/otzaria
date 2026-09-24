@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 
@@ -16,8 +19,106 @@ class HiddenLibraryStore {
   static const String bookKeysSetting = SettingsRepository.keyHiddenBookKeys;
   static const String categoryPathsSetting =
       SettingsRepository.keyHiddenCategoryPaths;
+  static const String pendingIndexReconciliationSetting =
+      'pending-hidden-index-reconciliation';
+  static const String pendingVisibilityIndexSetting =
+      'pending-visibility-index-reconciliation';
+  static int _visibilityRevision = 0;
+  static bool _visibilityWorkFailed = false;
+  static final Set<int> _visibilityWorkInFlight = {};
+  static final Queue<Future<void> Function()> _markerWrites = Queue();
+  static bool _markerWriting = false;
 
   const HiddenLibraryStore();
+
+  bool get hasPendingIndexReconciliation {
+    try {
+      return Settings.getValue<bool>(pendingIndexReconciliationSetting) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> markIndexReconciliationPending() => Settings.setValue<bool>(
+    pendingIndexReconciliationSetting,
+    true,
+  );
+
+  Future<void> clearPendingIndexReconciliation() => Settings.setValue<bool>(
+    pendingIndexReconciliationSetting,
+    false,
+  );
+
+  bool get hasPendingVisibilityIndex {
+    try {
+      return Settings.getValue<bool>(pendingVisibilityIndexSetting) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  int get visibilityRevision => _visibilityRevision;
+
+  Future<T> _serializeMarkerWrite<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _markerWrites.add(() async {
+      try {
+        completer.complete(await action());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      } finally {
+        _runNextMarkerWrite();
+      }
+    });
+    if (!_markerWriting) _runNextMarkerWrite();
+    return completer.future;
+  }
+
+  static void _runNextMarkerWrite() {
+    if (_markerWrites.isEmpty) {
+      _markerWriting = false;
+      return;
+    }
+    _markerWriting = true;
+    unawaited(_markerWrites.removeFirst()());
+  }
+
+  Future<int> beginVisibilityIndexUpdate() => _serializeMarkerWrite(() async {
+    final revision = ++_visibilityRevision;
+    await Settings.setValue<bool>(pendingVisibilityIndexSetting, true);
+    _visibilityWorkInFlight.add(revision);
+    return revision;
+  });
+
+  Future<void> completeVisibilityIndexUpdate(int revision, bool success) =>
+      _serializeMarkerWrite(() async {
+        if (!_visibilityWorkInFlight.remove(revision)) return;
+        if (!success) _visibilityWorkFailed = true;
+        if (success &&
+            !_visibilityWorkFailed &&
+            _visibilityWorkInFlight.isEmpty &&
+            revision == _visibilityRevision) {
+          await Settings.setValue<bool>(pendingVisibilityIndexSetting, false);
+        }
+      });
+
+  Future<void> resetRuntimeStateForAppRestart() =>
+      _serializeMarkerWrite(() async {
+        ++_visibilityRevision;
+        _visibilityWorkInFlight.clear();
+        _visibilityWorkFailed = false;
+      });
+
+  Future<void> clearPendingVisibilityIndex(int revision) =>
+      _serializeMarkerWrite(() async {
+        if (revision != _visibilityRevision ||
+            _visibilityWorkInFlight.isNotEmpty) {
+          return;
+        }
+        await Settings.setValue<bool>(pendingVisibilityIndexSetting, false);
+        _visibilityWorkFailed = false;
+      });
 
   HiddenLibrarySelection load() => HiddenLibrarySelection(
     bookKeys: _readSet(bookKeysSetting),
@@ -34,6 +135,27 @@ class HiddenLibraryStore {
       jsonEncode(selection.categoryPaths.toList()..sort()),
     );
   }
+
+  /// מחזיר את המצב שנשמר בפועל גם כשכתיבת המפתח השני נכשלת.
+  Future<({HiddenLibrarySelection actual, Object? error})> saveAndRead(
+    HiddenLibrarySelection selection,
+  ) async {
+    Object? error;
+    try {
+      await save(selection);
+    } catch (caught) {
+      error = caught;
+    }
+    return (actual: load(), error: error);
+  }
+
+  Future<bool> applyFromOwner(HiddenLibrarySelection selection) =>
+      SettingsSync.instance.applyAuthoritativeValues({
+        bookKeysSetting: jsonEncode(selection.bookKeys.toList()..sort()),
+        categoryPathsSetting: jsonEncode(
+          selection.categoryPaths.toList()..sort(),
+        ),
+      });
 
   /// ערך פגום או הגדרות שטרם אותחלו אינם מפילים את מסך הספרייה — במקרה כזה
   /// אין הסתרות, וזו ברירת המחדל הבטוחה: ספר מוצג ולא נעלם בשקט.

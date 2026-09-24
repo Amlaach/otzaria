@@ -7,9 +7,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const store = HiddenLibraryStore();
+  late _MemoryCacheProvider cache;
 
   setUp(() async {
-    await Settings.init(cacheProvider: _MemoryCacheProvider());
+    cache = _MemoryCacheProvider();
+    await Settings.init(cacheProvider: cache);
   });
 
   test('שמירה וטעינה של הסתרות (issue #1448)', () async {
@@ -51,6 +53,40 @@ void main() {
 
     expect(store.load().categoryPaths, {'/תנ"ך'});
   });
+
+  test('כשל בכתיבה השנייה מחזיר את הבחירה שנשמרה בפועל', () async {
+    await Settings.init(cacheProvider: _FailingCategoryCacheProvider());
+    final result = await store.saveAndRead(
+      const HiddenLibrarySelection(
+        bookKeys: {'o__10__שמות'},
+        categoryPaths: {'/תורה'},
+      ),
+    );
+
+    expect(result.error, isA<StateError>());
+    expect(result.actual.bookKeys, {'o__10__שמות'});
+    expect(result.actual.categoryPaths, isEmpty);
+  });
+
+  test('סימון ממתין נשמר לפני הבחירה ושורד אתחול הגדרות', () async {
+    await store.beginVisibilityIndexUpdate();
+    await store.save(const HiddenLibrarySelection(bookKeys: {'book'}));
+    await Settings.init(cacheProvider: cache);
+
+    expect(store.load().bookKeys, {'book'});
+    expect(store.hasPendingVisibilityIndex, isTrue);
+    await store.clearPendingVisibilityIndex(store.visibilityRevision);
+  });
+}
+
+class _FailingCategoryCacheProvider extends _MemoryCacheProvider {
+  @override
+  Future<void> setObject<T>(String key, T? value) async {
+    if (key == HiddenLibraryStore.categoryPathsSetting) {
+      throw StateError('second write failed');
+    }
+    await super.setObject<T>(key, value);
+  }
 }
 
 class _MemoryCacheProvider extends CacheProvider {

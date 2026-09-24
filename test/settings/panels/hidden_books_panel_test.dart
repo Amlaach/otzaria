@@ -12,6 +12,11 @@ import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/settings/panels/hidden_books_panel.dart';
+import 'package:otzaria/core/messages/settings_messages.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
+import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 
@@ -57,16 +62,22 @@ void main() {
 
   late Directory tempDir;
   late _TestLibraryBloc libraryBloc;
+  late _MemoryCacheProvider cache;
   final droppedFromIndex = <String>[];
+  final addedToIndex = <String>[];
 
   setUp(() async {
-    await Settings.init(cacheProvider: _MemoryCacheProvider());
+    cache = _MemoryCacheProvider();
+    await Settings.init(cacheProvider: cache);
     tempDir = await Directory.systemTemp.createTemp('hidden_books_panel');
     droppedFromIndex.clear();
+    addedToIndex.clear();
     libraryBloc = _TestLibraryBloc();
   });
 
   tearDown(() async {
+    UiSnack.hide();
+    SettingsSync.instance.applyLocally = null;
     if (tempDir.existsSync()) await tempDir.delete(recursive: true);
   });
 
@@ -74,6 +85,12 @@ void main() {
     WidgetTester tester, {
     Future<String?> Function()? pickFile,
     Future<Library> Function()? libraryLoader,
+    Future<VisibilityChangeResult> Function(
+      HiddenLibrarySelection,
+      HiddenLibrarySelection,
+    )?
+    visibilityRequester,
+    bool showSnacks = false,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1000, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -81,6 +98,7 @@ void main() {
       BlocProvider<LibraryBloc>.value(
         value: libraryBloc,
         child: MaterialApp(
+          navigatorKey: showSnacks ? navigatorKey : null,
           home: Directionality(
             textDirection: TextDirection.rtl,
             child: Scaffold(
@@ -92,6 +110,10 @@ void main() {
                     droppedFromIndex.addAll(books.map((b) => b.title));
                     return true;
                   },
+                  indexAdder: (books, _) {
+                    addedToIndex.addAll(books.map((b) => b.title));
+                  },
+                  visibilityRequester: visibilityRequester,
                 ),
               ),
             ),
@@ -116,6 +138,41 @@ void main() {
 
     expect(const HiddenLibraryStore().load().bookKeys, {_key('בראשית')});
     expect(droppedFromIndex, ['בראשית']);
+  });
+
+  testWidgets('כשל IPC בחלון משני משאיר את הבחירה המקומית בלי שינוי', (
+    tester,
+  ) async {
+    WindowRole.isSecondary = true;
+    addTearDown(() => WindowRole.isSecondary = false);
+    await pump(tester);
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(droppedFromIndex, isEmpty);
+  });
+
+  testWidgets('פאנל פתוח קורא בחירה חדשה מהחנות לפני פעולת משתמש', (
+    tester,
+  ) async {
+    await pump(tester);
+    await const HiddenLibraryStore().save(
+      HiddenLibrarySelection(bookKeys: {_key('בראשית')}),
+    );
+
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<CheckboxListTile>(find.byType(CheckboxListTile).first)
+          .value,
+      isTrue,
+    );
   });
 
   testWidgets('הסתרה מרעננת את עץ הספרייה מיד (issue #1448)', (tester) async {
@@ -201,6 +258,126 @@ void main() {
     );
   });
 
+  testWidgets('כשל בכתיבת קטגוריות עדיין מנקה ספר שנשמר חלקית', (
+    tester,
+  ) async {
+    await const HiddenLibraryStore().save(
+      const HiddenLibrarySelection(categoryPaths: {'/לא קיימת'}),
+    );
+    cache.failCategoryWrites = true;
+    final file = File('${tempDir.path}/partial.csv')
+      ..writeAsStringSync('בראשית\n');
+    await pump(tester, pickFile: () async => file.path, showSnacks: true);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('בחר קובץ'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().bookKeys, {_key('בראשית')});
+    expect(const HiddenLibraryStore().load().categoryPaths, {'/לא קיימת'});
+    expect(droppedFromIndex, ['בראשית']);
+    expect(
+      libraryBloc.addedEvents.whereType<HiddenBooksChanged>(),
+      hasLength(1),
+    );
+    expect(
+      find.text(SettingsMessages.hiddenBooksSelectionSaveFailed),
+      findsOneWidget,
+    );
+    expect(find.text(SettingsMessages.hiddenBooksImported(1, 0)), findsNothing);
+    UiSnack.hide();
+  });
+
+  testWidgets('כשל בשמירת סמן האינדקס מונע שמירת בחירה', (tester) async {
+    cache.failMarkerWrites = true;
+    await pump(tester, showSnacks: true);
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(droppedFromIndex, isEmpty);
+    expect(
+      find.text(SettingsMessages.hiddenBooksSelectionSaveFailed),
+      findsOneWidget,
+    );
+    UiSnack.hide();
+  });
+
+  testWidgets('כשל החלה מקומית במשני משאיר UI תואם למצב החלקי', (
+    tester,
+  ) async {
+    WindowRole.isSecondary = true;
+    addTearDown(() => WindowRole.isSecondary = false);
+    SettingsSync.instance.applyLocally = (key, value) async {
+      if (key == HiddenLibraryStore.categoryPathsSetting) {
+        throw StateError('local category write failed');
+      }
+      await Settings.setValue<String>(key, value as String);
+    };
+    await pump(
+      tester,
+      showSnacks: true,
+      visibilityRequester: (_, _) async => (
+        selection: HiddenLibrarySelection(
+          bookKeys: {_key('בראשית')},
+          categoryPaths: const {'/תורה'},
+        ),
+        saved: true,
+        uncertain: false,
+      ),
+    );
+    await tester.tap(find.text('פתח רשימה'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('שמור'));
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().bookKeys, {_key('בראשית')});
+    expect(const HiddenLibraryStore().load().categoryPaths, isEmpty);
+    expect(find.text('בחירות הסתרה ישירות: 1'), findsOneWidget);
+    expect(
+      find.text(SettingsMessages.hiddenBooksSelectionSaveFailed),
+      findsOneWidget,
+    );
+    UiSnack.hide();
+  });
+
+  testWidgets('ייבוא אינו מציג הצלחה כשבקשת IPC נדחתה', (tester) async {
+    WindowRole.isSecondary = true;
+    addTearDown(() => WindowRole.isSecondary = false);
+    final file = File('${tempDir.path}/rejected.csv')
+      ..writeAsStringSync('בראשית\n');
+    await pump(
+      tester,
+      pickFile: () async => file.path,
+      showSnacks: true,
+      visibilityRequester: (_, _) async => (
+        selection: null,
+        saved: false,
+        uncertain: false,
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.tap(find.text('בחר קובץ'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+
+    expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(
+      find.text(SettingsMessages.hiddenBooksSelectionSaveFailed),
+      findsOneWidget,
+    );
+    expect(find.text(SettingsMessages.hiddenBooksImported(1, 0)), findsNothing);
+    UiSnack.hide();
+  });
+
   testWidgets('ביטול הסתרה מתוך החלון (issue #1448)', (tester) async {
     await const HiddenLibraryStore().save(
       HiddenLibrarySelection(bookKeys: {_key('שמות')}),
@@ -220,6 +397,7 @@ void main() {
 
     expect(const HiddenLibraryStore().load().isEmpty, isTrue);
     expect(find.text('אין בחירות הסתרה'), findsOneWidget);
+    expect(addedToIndex, ['שמות']);
   });
 
   testWidgets('קטגוריה מוסתרת מוצגת בחלון לפי הנתיב (issue #1448)', (
@@ -320,6 +498,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(const HiddenLibraryStore().load().isEmpty, isTrue);
+    expect(addedToIndex, ['בראשית', 'שמות', 'ויקרא']);
     expect(
       libraryBloc.addedEvents.whereType<HiddenBooksChanged>(),
       hasLength(2),
@@ -345,6 +524,8 @@ void main() {
 
 class _MemoryCacheProvider extends CacheProvider {
   final Map<String, Object?> _values = {};
+  bool failCategoryWrites = false;
+  bool failMarkerWrites = false;
 
   @override
   Future<void> init() async {}
@@ -407,6 +588,13 @@ class _MemoryCacheProvider extends CacheProvider {
 
   @override
   Future<void> setObject<T>(String key, T? value) async {
+    if (failCategoryWrites && key == HiddenLibraryStore.categoryPathsSetting) {
+      throw StateError('second write failed');
+    }
+    if (failMarkerWrites &&
+        key == HiddenLibraryStore.pendingVisibilityIndexSetting) {
+      throw StateError('marker write failed');
+    }
     _values[key] = value;
   }
 

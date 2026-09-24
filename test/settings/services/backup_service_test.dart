@@ -202,6 +202,14 @@ void main() {
     final restored = const HiddenLibraryStore().load();
     expect(restored.bookKeys, {'o__10__שמות'});
     expect(restored.categoryPaths, {'/תנ"ך/תורה'});
+    expect(const HiddenLibraryStore().hasPendingIndexReconciliation, isTrue);
+    expect(
+      BackupService.nonPortableSettingsKeys,
+      containsAll([
+        HiddenLibraryStore.pendingIndexReconciliationSetting,
+        HiddenLibraryStore.pendingVisibilityIndexSetting,
+      ]),
+    );
   });
 
   test('מפתחות ההסתרה מוצהרים ונכנסים גם במסלול הנסיגה (issue #1448)', () {

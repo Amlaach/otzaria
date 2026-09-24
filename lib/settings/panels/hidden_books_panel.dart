@@ -6,9 +6,14 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
+import 'package:otzaria/core/windowing/window_role.dart';
 import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
+import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
+import 'package:otzaria/indexing/bloc/indexing_event.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -29,7 +34,7 @@ import 'package:otzaria/widgets/widgets_exports.dart';
 
 /// מסך ניהול הספרים והקטגוריות שהוסתרו מהממשק (issue #1448).
 ///
-/// ההסתרה היא של הממשק בלבד: מסד הספרים אינו משתנה, וספר מוסתר עדיין נפתח
+/// מסד הספרים אינו משתנה; ספר מוסתר מוסר מאינדקס החיפוש אך עדיין נפתח
 /// מקישור, מהיסטוריה או מסימנייה.
 class HiddenBooksPanel extends StatefulWidget {
   /// חנות ההסתרות. ניתנת להחלפה בבדיקות.
@@ -44,12 +49,24 @@ class HiddenBooksPanel extends StatefulWidget {
   /// מסיר ספרים מאינדקס החיפוש. ניתן להחלפה בבדיקות.
   final Future<bool> Function(Iterable<Book> books)? indexDropper;
 
+  /// מתזמן אינדוקס של ספרים שחזרו להיות גלויים; ניתן להחלפה בבדיקות.
+  final void Function(List<Book> books, Library library)? indexAdder;
+
+  /// מחליף את בקשת המארח בבדיקות חלון משני.
+  final Future<VisibilityChangeResult> Function(
+    HiddenLibrarySelection base,
+    HiddenLibrarySelection requested,
+  )?
+  visibilityRequester;
+
   const HiddenBooksPanel({
     super.key,
     this.store = const HiddenLibraryStore(),
     this.pickFileOverride,
     this.libraryLoader,
     this.indexDropper,
+    this.indexAdder,
+    this.visibilityRequester,
   });
 
   /// פריטי חיפוש בהגדרות. נסרק על-ידי tool/generate_search_index.dart.
@@ -78,6 +95,7 @@ class HiddenBooksPanel extends StatefulWidget {
 
 class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
   late HiddenLibrarySelection _hidden = widget.store.load();
+  StreamSubscription<String>? _settingsChanges;
 
   /// מפתח ספר → כותרת להצגה. ספר שאינו בספרייה יוצג לפי המפתח הגולמי, כדי
   /// שהמשתמש יוכל להסיר גם הסתרה של ספר שנעלם.
@@ -86,7 +104,21 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
   @override
   void initState() {
     super.initState();
+    _settingsChanges = SettingsSync.instance.changes.listen((key) {
+      if (!mounted ||
+          (key != HiddenLibraryStore.bookKeysSetting &&
+              key != HiddenLibraryStore.categoryPathsSetting)) {
+        return;
+      }
+      setState(() => _hidden = widget.store.load());
+    });
     unawaited(_loadTitles());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_settingsChanges?.cancel());
+    super.dispose();
   }
 
   Future<void> _loadTitles() async {
@@ -108,47 +140,125 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
   Future<Library> _library() =>
       widget.libraryLoader?.call() ?? DataRepository.instance.library;
 
-  Future<void> _save(HiddenLibrarySelection next) async {
-    await widget.store.save(next);
-    if (!mounted) return;
-    setState(() => _hidden = next);
-    // בלי זה ההסתרה נכנסת לתוקף רק בהפעלה הבאה: LibraryBloc שומר את העץ
-    // ב-state והמסנן חל רק ברגע הטעינה (issue #1448).
-    context.read<LibraryBloc>().add(const HiddenBooksChanged());
+  HiddenLibrarySelection _currentSelection() {
+    final current = widget.store.load();
+    if (current != _hidden) setState(() => _hidden = current);
+    return current;
+  }
+
+  Future<bool> _save(
+    HiddenLibrarySelection next, {
+    required HiddenLibrarySelection base,
+    Library? library,
+  }) async {
+    if (next == base) return true;
+    if (!mounted) return false;
+    if (WindowRole.isSecondary) {
+      final response =
+          await (widget.visibilityRequester?.call(base, next) ??
+              const MultiWindowService().requestVisibilityChange(base, next));
+      final applied = response.selection;
+      if (applied == null) {
+        UiSnack.showError(
+          response.uncertain
+              ? SettingsMessages.hiddenBooksIndexUpdateUnconfirmed
+              : SettingsMessages.hiddenBooksSelectionSaveFailed,
+        );
+        return false;
+      }
+      final beforeLocal = widget.store.load();
+      final appliedLocally = await widget.store.applyFromOwner(applied);
+      final localActual = widget.store.load();
+      if (!mounted) return false;
+      setState(() => _hidden = localActual);
+      if (localActual != beforeLocal) {
+        context.read<LibraryBloc>().add(const HiddenBooksChanged());
+      }
+      if (!appliedLocally || !response.saved) {
+        UiSnack.showError(SettingsMessages.hiddenBooksSelectionSaveFailed);
+        return false;
+      }
+      return true;
+    }
+    final fullLibrary = library ?? await _library();
+    if (!mounted) return false;
+    final indexing = widget.indexDropper == null && widget.indexAdder == null
+        ? context.read<IndexingBloc>()
+        : null;
+    final saved = await HiddenLibraryUpdateQueue.instance.run(() async {
+      final before = widget.store.load();
+      final desired = applyHiddenSelectionChange(before, base, next);
+      final int revision;
+      try {
+        revision = await widget.store.beginVisibilityIndexUpdate();
+      } catch (error) {
+        debugPrint('[HiddenBooks] failed to mark index update: $error');
+        UiSnack.showError(SettingsMessages.hiddenBooksSelectionSaveFailed);
+        return false;
+      }
+      final result = await widget.store.saveAndRead(desired);
+      final actual = result.actual;
+      final delta = hiddenIndexDelta(fullLibrary, before, actual);
+      if (mounted) {
+        setState(() => _hidden = actual);
+        if (actual != before) {
+          context.read<LibraryBloc>().add(const HiddenBooksChanged());
+        }
+      }
+      if (indexing != null) {
+        indexing.add(
+          ApplyHiddenIndexDelta(
+            fullLibrary,
+            newlyHidden: delta.newlyHidden,
+            newlyVisible: delta.newlyVisible,
+            visibilityRevision: revision,
+            onCompleted: (success) {
+              if (!success) {
+                UiSnack.showError(
+                  SettingsMessages.hiddenBooksIndexUpdateFailed,
+                );
+              }
+            },
+          ),
+        );
+      } else {
+        final dropped = await _dropFromIndex(delta.newlyHidden);
+        if (dropped) widget.indexAdder?.call(delta.newlyVisible, fullLibrary);
+        await widget.store.completeVisibilityIndexUpdate(revision, dropped);
+      }
+      if (result.error != null) {
+        debugPrint('[HiddenBooks] failed to save selection: ${result.error}');
+        UiSnack.showError(SettingsMessages.hiddenBooksSelectionSaveFailed);
+      }
+      return result.error == null && actual == desired;
+    });
+    return saved;
   }
 
   Future<void> _showHiddenList() async {
+    final base = _currentSelection();
     final updated = await showHiddenBooksListDialog(
       context: context,
-      hidden: _hidden,
+      hidden: base,
       titles: _titles,
     );
     if (updated == null || !mounted) return;
-    await _save(updated);
+    await _save(updated, base: base);
   }
 
   Future<void> _pickBooks() async {
     final library = await _library();
     if (!mounted) return;
 
+    final base = _currentSelection();
     final picked = await showHiddenBooksPickerDialog(
       context: context,
       library: library,
-      hidden: _hidden,
+      hidden: base,
     );
     if (picked == null || !mounted) return;
 
-    final added = picked.bookKeys.difference(_hidden.bookKeys);
-    final addedCategories = picked.categoryPaths.difference(
-      _hidden.categoryPaths,
-    );
-    for (final category in library.getAllCategories()) {
-      if (addedCategories.contains(category.path)) {
-        added.addAll(category.getAllBooks().map(PerBookSettings.bookKey));
-      }
-    }
-    await _save(picked);
-    await _dropFromIndex(library, added);
+    await _save(picked, base: base, library: library);
     await _loadTitles();
   }
 
@@ -173,14 +283,15 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
       return;
     }
 
-    await _save(
-      _hidden.copyWith(
-        bookKeys: {..._hidden.bookKeys, ...result.matchedBookKeys},
+    final base = _currentSelection();
+    final saved = await _save(
+      base.copyWith(
+        bookKeys: {...base.bookKeys, ...result.matchedBookKeys},
       ),
+      base: base,
+      library: library,
     );
-    // ספר מוסתר יורד מאינדקס החיפוש מיד (issue #1448), ולא מסונן מהתוצאות:
-    // כך מונה התוצאות וספירות חלונית הסינון נשארים נכונים.
-    await _dropFromIndex(library, result.matchedBookKeys);
+    if (!saved) return;
     await _loadTitles();
     if (!mounted) return;
 
@@ -192,22 +303,21 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     );
   }
 
-  Future<void> _dropFromIndex(Library library, Set<String> keys) async {
-    if (keys.isEmpty) return;
-    final books = library
-        .getAllBooks()
-        .where((book) => keys.contains(PerBookSettings.bookKey(book)))
-        .toList();
-    if (books.isEmpty) return;
+  Future<bool> _dropFromIndex(List<Book> books) async {
+    if (books.isEmpty) return true;
     final drop =
         widget.indexDropper ??
         IndexingRepository(TantivyDataProvider.instance).dropBookIndexEntries;
     try {
-      await drop(books);
+      if (!await drop(books)) {
+        UiSnack.showError(SettingsMessages.hiddenBooksIndexDropFailed);
+        return false;
+      }
+      return true;
     } catch (error) {
-      // כשל בהסרה מהאינדקס אינו מבטל את ההסתרה — הספר כבר נעלם מהממשק,
-      // וריצת האינדוקס הבאה תדלג עליו ממילא.
       debugPrint('[HiddenBooks] index drop failed: $error');
+      UiSnack.showError(SettingsMessages.hiddenBooksIndexDropFailed);
+      return false;
     }
   }
 

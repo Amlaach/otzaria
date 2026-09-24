@@ -73,5 +73,27 @@ void main() {
 
       expect(decision, StartupIndexingDecision.checkIndexStatus);
     });
+
+    test('סימון הסתרה ממתין גובר על כיבוי העדכון האוטומטי', () {
+      final decision = decideStartupIndexing(
+        requiresManualReindex: false,
+        autoUpdateIndex: false,
+        hasUnindexedBooks: false,
+        hasPendingHiddenReconciliation: true,
+      );
+
+      expect(decision, StartupIndexingDecision.reconcileHiddenIndex);
+    });
+
+    test('דרישת איפוס ידני נשארת קודמת לסימון הסתרה ממתין', () {
+      final decision = decideStartupIndexing(
+        requiresManualReindex: true,
+        autoUpdateIndex: false,
+        hasUnindexedBooks: false,
+        hasPendingHiddenReconciliation: true,
+      );
+
+      expect(decision, StartupIndexingDecision.promptManualReindex);
+    });
   });
 }
