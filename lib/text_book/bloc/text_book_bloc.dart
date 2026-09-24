@@ -2394,8 +2394,8 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
   Future<void> close() async {
     _debounceTimer?.cancel();
     _highlightTimer?.cancel();
-    await _hiddenSelectionSubscription?.cancel();
-    await _settingsSyncSubscription?.cancel();
+    final hiddenSelectionCancellation = _hiddenSelectionSubscription?.cancel();
+    final settingsSyncCancellation = _settingsSyncSubscription?.cancel();
 
     if (_positionListenerCallback != null) {
       positionsListener.itemPositions.removeListener(
@@ -2403,7 +2403,12 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
       );
     }
 
-    await super.close();
+    final blocClosure = super.close();
+    await Future.wait<void>([
+      ?hiddenSelectionCancellation,
+      ?settingsSyncCancellation,
+      blocClosure,
+    ]);
   }
 
   // אורך הרשימה חייב להיות אורך הספר המלא (totalLines) ולא רק עד endLine,
