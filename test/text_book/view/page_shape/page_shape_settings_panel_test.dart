@@ -33,7 +33,10 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onSettingsChanged,
     String? currentWorkspaceId,
+    String? currentLeft,
     String? currentRight,
+    String? currentBottom,
+    String? currentBottomRight,
     String? heCategories,
     List<String> availableCommentators = const ['רש"י על בראשית'],
   }) async {
@@ -48,7 +51,10 @@ void main() {
                 bookTitle: 'בראשית',
                 heCategories: heCategories,
                 currentWorkspaceId: currentWorkspaceId,
+                currentLeft: currentLeft,
                 currentRight: currentRight,
+                currentBottom: currentBottom,
+                currentBottomRight: currentBottomRight,
                 onSettingsChanged: onSettingsChanged,
               ),
             ),
@@ -65,6 +71,84 @@ void main() {
     of: find.byWidgetPredicate((w) => w is Material && w.elevation == 8),
     matching: find.text(label),
   );
+
+  List<AppDropdownField<String>> commentatorFields(WidgetTester tester) => [
+    for (final label in [
+      'מפרש ימני',
+      'מפרש שמאלי',
+      'מפרש תחתון',
+      'מפרש תחתון נוסף',
+    ])
+      tester.widget<AppDropdownField<String>>(
+        find.descendant(
+          of: find
+              .ancestor(of: find.text(label), matching: find.byType(Row))
+              .first,
+          matching: find.byType(AppDropdownField<String>),
+        ),
+      ),
+  ];
+
+  testWidgets('פאנל פתוח מתעדכן בכל ארבע הבחירות ושומר ערכים גלויים בלבד', (
+    tester,
+  ) async {
+    const hidden = 'מפרש מוסתר';
+    const visible = 'מפרש גלוי';
+    await pumpPanel(
+      tester,
+      currentLeft: hidden,
+      currentRight: hidden,
+      currentBottom: hidden,
+      currentBottomRight: hidden,
+      availableCommentators: const [hidden, visible],
+    );
+    await tester.pumpAndSettle();
+    expect(
+      commentatorFields(tester).map((field) => field.value),
+      everyElement(hidden),
+    );
+
+    await pumpPanel(
+      tester,
+      availableCommentators: const [visible],
+    );
+    await tester.pumpAndSettle();
+    expect(
+      commentatorFields(tester).map((field) => field.value),
+      everyElement('__NONE__'),
+    );
+    expect(
+      commentatorFields(tester).first.entries.map((entry) => entry.value),
+      isNot(contains(hidden)),
+    );
+
+    final visibilityButton = find.byTooltip('הסתר טור').first;
+    await tester.ensureVisible(visibilityButton);
+    await tester.tap(visibilityButton);
+    await tester.pumpAndSettle();
+    expect(
+      PageShapeSettingsManager.loadConfiguration('בראשית'),
+      containsPair('left', null),
+    );
+    final saved = PageShapeSettingsManager.loadConfiguration('בראשית')!;
+    expect(saved['right'], isNull);
+    expect(saved['bottom'], isNull);
+    expect(saved['bottomRight'], isNull);
+
+    await pumpPanel(
+      tester,
+      currentLeft: visible,
+      currentRight: visible,
+      currentBottom: visible,
+      currentBottomRight: visible,
+      availableCommentators: const [visible],
+    );
+    await tester.pumpAndSettle();
+    expect(
+      commentatorFields(tester).map((field) => field.value),
+      everyElement(visible),
+    );
+  });
 
   testWidgets('תווית הגופן מסייגת שהוא למפרשים התחתונים בלבד', (tester) async {
     await pumpPanel(tester);

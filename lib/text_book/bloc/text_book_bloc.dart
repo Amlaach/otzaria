@@ -1,7 +1,7 @@
-import 'package:otzaria/data/repository/data_repository.dart';
-import 'package:otzaria/library/hidden/hidden_library_filter.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/hidden/hidden_titles.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
 import 'dart:async';
 import 'package:otzaria/core/error_log_file.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
@@ -141,6 +141,11 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
   /// true אחרי שסרקנו את כל ה-content (ApplyFullBookContent) — מאפשר לדלג
   /// על סריקות עתידיות גם אם 'הערות' לא נוסף ל-availableCommentators.
   bool _inlineNotesFullScanDone = false;
+  Set<String> _hiddenCommentatorTitlesCache = const {};
+  StreamSubscription<HiddenLibrarySelection>? _hiddenSelectionSubscription;
+  StreamSubscription<String>? _settingsSyncSubscription;
+  int _commentatorsLoadGeneration = 0;
+  int _visibilityRefreshGeneration = 0;
 
   /// מאפס את הדגלים הספציפיים-לספר. נקרא מ-_onLoadContent כשבלוק עובר
   /// לטעון ספר חדש (כיום בייצור bloc נוצר חדש לכל תא, אבל הקריאה כאן
@@ -213,9 +218,20 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
     on<UpdateLinks>(_onUpdateLinks, transformer: sequential());
     on<SetLinksLoading>(_onSetLinksLoading);
     on<UpdateAvailableCommentators>(_onUpdateAvailableCommentators);
+    on<RefreshCommentatorVisibility>(_onRefreshCommentatorVisibility);
     on<RefreshLinksForCurrentWindow>(_onRefreshLinksForCurrentWindow);
     on<LoadAllLinksForIndices>(_onLoadAllLinksForIndices);
     on<SetTabVisibility>(_onSetTabVisibility);
+    _hiddenSelectionSubscription = const HiddenLibraryStore().changes.listen(
+      (_) => add(const RefreshCommentatorVisibility()),
+    );
+    _settingsSyncSubscription = SettingsSync.instance.changes.listen((key) {
+      if (key.isEmpty ||
+          key == HiddenLibraryStore.bookKeysSetting ||
+          key == HiddenLibraryStore.categoryPathsSetting) {
+        add(const RefreshCommentatorVisibility());
+      }
+    });
   }
 
   void _onSetTabVisibility(
@@ -989,6 +1005,14 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
               explicitOpen: showLeftPane,
               hasSearchText: searchText.isNotEmpty,
             );
+      _hiddenCommentatorTitlesCache = await currentHiddenBookTitles();
+      commentators = _withoutHiddenCommentators(commentators);
+      existingAvailableCommentators = _withoutHiddenCommentators(
+        existingAvailableCommentators,
+      );
+      existingCommentatorGroups = _withoutHiddenGroups(
+        existingCommentatorGroups,
+      );
       TextBookLoaded loadedState = TextBookLoaded(
         book: book,
         content: contentLines,
@@ -1270,7 +1294,7 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
       if (event.displayOrderOnly) {
         emit(
           currentState.copyWith(
-            activeCommentators: event.commentators,
+            activeCommentators: _withoutHiddenCommentators(event.commentators),
             selectedIndex: currentState.selectedIndex,
           ),
         );
@@ -1295,14 +1319,14 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
           unawaited(
             _saveActiveCommentatorsPerBook(
               currentState.book,
-              event.commentators,
+              _withoutHiddenCommentators(event.commentators),
             ),
           );
         }
       }
 
       final updatedState = currentState.copyWith(
-        activeCommentators: event.commentators,
+        activeCommentators: _withoutHiddenCommentators(event.commentators),
         selectedIndex: currentState.selectedIndex,
       );
       emit(updatedState);
@@ -2367,9 +2391,11 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
   }
 
   @override
-  Future<void> close() {
+  Future<void> close() async {
     _debounceTimer?.cancel();
     _highlightTimer?.cancel();
+    await _hiddenSelectionSubscription?.cancel();
+    await _settingsSyncSubscription?.cancel();
 
     if (_positionListenerCallback != null) {
       positionsListener.itemPositions.removeListener(
@@ -2377,7 +2403,7 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
       );
     }
 
-    return super.close();
+    await super.close();
   }
 
   // אורך הרשימה חייב להיות אורך הספר המלא (totalLines) ולא רק עד endLine,
@@ -2972,9 +2998,18 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
 
       final updatedState = _withInlineNotesCommentator(
         currentState.copyWith(
-          availableCommentators: event.availableCommentators,
-          commentatorGroups: event.commentatorGroups.cast<CommentatorGroup>(),
-          rareCommentators: event.rareCommentators,
+          availableCommentators: _withoutHiddenCommentators(
+            event.availableCommentators,
+          ),
+          activeCommentators: _withoutHiddenCommentators(
+            currentState.activeCommentators,
+          ),
+          commentatorGroups: _withoutHiddenGroups(
+            event.commentatorGroups.cast<CommentatorGroup>(),
+          ),
+          rareCommentators: event.rareCommentators.difference(
+            _hiddenCommentatorTitlesCache,
+          ),
         ),
       );
       emit(updatedState);
@@ -2983,6 +3018,56 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         _loadLinksInBackground(updatedState.book, updatedState.visibleIndices);
       }
     }
+  }
+
+  List<String> _withoutHiddenCommentators(List<String> titles) =>
+      _hiddenCommentatorTitlesCache.isEmpty
+      ? titles
+      : titles
+            .where((title) => !_hiddenCommentatorTitlesCache.contains(title))
+            .toList();
+
+  List<CommentatorGroup> _withoutHiddenGroups(
+    List<CommentatorGroup> groups,
+  ) => _hiddenCommentatorTitlesCache.isEmpty
+      ? groups
+      : groups
+            .map(
+              (group) => group.copyWith(
+                commentators: _withoutHiddenCommentators(group.commentators),
+              ),
+            )
+            .where((group) => group.commentators.isNotEmpty)
+            .toList();
+
+  Future<void> _onRefreshCommentatorVisibility(
+    RefreshCommentatorVisibility event,
+    Emitter<TextBookState> emit,
+  ) async {
+    final current = state;
+    if (current is! TextBookLoaded) return;
+    final generation = ++_visibilityRefreshGeneration;
+    final hiddenTitles = await currentHiddenBookTitles();
+    if (isClosed || generation != _visibilityRefreshGeneration) return;
+    final latest = state;
+    if (latest is! TextBookLoaded || latest.book != current.book) return;
+    final previousHiddenTitles = _hiddenCommentatorTitlesCache;
+    if (setEquals(previousHiddenTitles, hiddenTitles)) return;
+    _hiddenCommentatorTitlesCache = hiddenTitles;
+    emit(
+      latest.copyWith(
+        activeCommentators: _withoutHiddenCommentators(
+          latest.activeCommentators,
+        ),
+        availableCommentators: _withoutHiddenCommentators(
+          latest.availableCommentators,
+        ),
+        commentatorGroups: _withoutHiddenGroups(latest.commentatorGroups),
+        rareCommentators: latest.rareCommentators.difference(hiddenTitles),
+      ),
+    );
+    if (previousHiddenTitles.difference(hiddenTitles).isEmpty) return;
+    _loadCommentatorsInBackground(latest.book, restoreSelection: false);
   }
 
   void _onRefreshLinksForCurrentWindow(
@@ -3016,30 +3101,25 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
     );
   }
 
-  /// כותרות המפרשים שהוסתרו מהממשק (issue #1448).
-  Future<Set<String>> _hiddenCommentatorTitles() async {
-    final hidden = const HiddenLibraryStore().load();
-    if (hidden.isEmpty) return const {};
-    final full = await DataRepository.instance.library;
-    return hiddenBookTitles(
-      full: full,
-      visible: filterHiddenFromLibrary(full, hidden),
-    );
-  }
-
-  Future<void> _loadCommentatorsInBackground(TextBook book) async {
+  Future<void> _loadCommentatorsInBackground(
+    TextBook book, {
+    bool restoreSelection = true,
+  }) async {
+    final generation = ++_commentatorsLoadGeneration;
     try {
       final commentatorsData = await repository.getCommentatorsWithRarity(book);
       // מפרש שהמשתמש הסתיר יורד מרשימות הבחירה ומהתצוגה (issue #1448).
       // הסינון כאן ולא ב-repository: גשר התוספים קורא לאותה שאילתה, וההסתרה
       // היא של הממשק בלבד.
-      final hiddenTitles = await _hiddenCommentatorTitles();
+      final hiddenTitles = await currentHiddenBookTitles();
+      if (isClosed || generation != _commentatorsLoadGeneration) return;
+      _hiddenCommentatorTitlesCache = hiddenTitles;
       final availableCommentators = hiddenTitles.isEmpty
           ? commentatorsData.all
           : commentatorsData.all
                 .where((title) => !hiddenTitles.contains(title))
                 .toList();
-      final rareCommentators = commentatorsData.rare;
+      final rareCommentators = commentatorsData.rare.difference(hiddenTitles);
       final baseCommentators = await DefaultCommentators.getBaseCommentators(
         book,
       );
@@ -3055,7 +3135,9 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         baseCommentators: baseCommentators,
       );
 
-      if (isClosed || state is! TextBookLoaded) {
+      if (isClosed ||
+          generation != _commentatorsLoadGeneration ||
+          state is! TextBookLoaded) {
         return;
       }
 
@@ -3075,15 +3157,17 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         ),
       );
 
+      if (!restoreSelection) return;
+
       // בחירה שמורה פר-ספר גוברת על ברירת המחדל: אם המשתמש בחר בעבר (כולל
       // בחירה ריקה) — משחזרים אותה; אחרת בוחרים את מפרשי ברירת המחדל.
       final saved = book.isUserBook
           ? null
           : await TextBookPerBookSettings.load(book);
-      if (isClosed) return;
+      if (isClosed || generation != _commentatorsLoadGeneration) return;
 
       if (saved?.activeCommentators != null) {
-        if (isClosed) return;
+        if (isClosed || generation != _commentatorsLoadGeneration) return;
         add(
           UpdateCommentators(
             saved!.activeCommentators!,
@@ -3101,7 +3185,8 @@ class TextBookBloc extends Bloc<TextBookEvent, TextBookState> {
         availableCommentators: availableCommentators,
         baseCommentators: baseCommentators,
       );
-      if (initialSelection.isNotEmpty && !isClosed) {
+      if (generation != _commentatorsLoadGeneration || isClosed) return;
+      if (initialSelection.isNotEmpty) {
         add(UpdateCommentators(initialSelection, isUserAction: false));
         return;
       }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/library/hidden/hidden_library_filter.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_titles.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
@@ -128,5 +129,45 @@ void main() {
 
     expect(identical(tanach.parent, filtered), isTrue);
     expect(identical(tanach.subCategories.single.parent, tanach), isTrue);
+  });
+
+  test('כותרות מפרשים נסרקות בלי לשכפל עץ וקטגוריית אב מסתירה צאצאים', () {
+    final library = _buildLibrary();
+    final originalCategory = library.subCategories.first;
+    final hidden = HiddenLibrarySelection(categoryPaths: {'/תנ"ך'});
+
+    expect(hiddenBookTitlesForSelection(library, hidden), {'בראשית', 'שמות'});
+    expect(identical(library.subCategories.first, originalCategory), isTrue);
+    expect(hiddenBookTitlesForSelection(library, hidden), {'בראשית', 'שמות'});
+  });
+
+  test('שם כפול נשאר גלוי אם לפחות אחד הספרים גלוי', () {
+    final library = _buildLibrary();
+    library.subCategories.last.books.add(
+      TextBook(title: 'בראשית', categoryId: 20),
+    );
+
+    expect(
+      hiddenBookTitlesForSelection(
+        library,
+        HiddenLibrarySelection(categoryPaths: {'/תנ"ך'}),
+      ),
+      {'שמות'},
+    );
+    expect(
+      hiddenBookTitlesForSelection(library, const HiddenLibrarySelection()),
+      isEmpty,
+    );
+  });
+
+  test('מפתח ספר מסתיר כותרת אחת בלבד, בלי קטגוריה', () {
+    final library = _buildLibrary();
+    final hidden = HiddenLibrarySelection(
+      bookKeys: {
+        PerBookSettings.bookKey(TextBook(title: 'שמות', categoryId: 10)),
+      },
+    );
+
+    expect(hiddenBookTitlesForSelection(library, hidden), {'שמות'});
   });
 }

@@ -508,6 +508,10 @@ class UpdateAvailableCommentators extends TextBookEvent {
   ];
 }
 
+class RefreshCommentatorVisibility extends TextBookEvent {
+  const RefreshCommentatorVisibility();
+}
+
 class RefreshLinksForCurrentWindow extends TextBookEvent {
   final String reason;
   final String? workspaceId;
