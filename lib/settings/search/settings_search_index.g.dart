@@ -6,6 +6,7 @@
 import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/panels/calendar_settings_panel.dart';
 import 'package:otzaria/settings/panels/gematria_settings_panel.dart';
+import 'package:otzaria/settings/panels/hidden_books_panel.dart';
 import 'package:otzaria/settings/panels/library_settings_panel.dart';
 import 'package:otzaria/settings/panels/tikkun_korim_settings_panel.dart';
 import 'package:otzaria/settings/panels/tools_management_panel.dart';
@@ -20,6 +21,7 @@ import 'package:otzaria/settings/tabs/text_settings_tab.dart';
 const List<SettingsSearchEntry> kGeneratedSettingsSearchEntries = [
   ...AboutSettingsTab.searchEntries,
   ...DesignSettingsTab.searchEntries,
+  ...HiddenBooksPanel.searchEntries,
   ...LibrarySettingsPanel.searchEntries,
   ...LibrarySettingsTab.searchEntries,
   ...ShortcutsSettingsTab.searchEntries,

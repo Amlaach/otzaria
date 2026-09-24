@@ -1,3 +1,5 @@
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -54,7 +56,40 @@ class _PdfExtractionFailure implements Exception {
 class IndexingRepository {
   final TantivyDataProvider _tantivyDataProvider;
 
-  IndexingRepository(this._tantivyDataProvider);
+  /// רשימת ההסתרות. ניתנת להחלפה בבדיקות.
+  final HiddenLibraryStore hiddenStore;
+
+  IndexingRepository(
+    this._tantivyDataProvider, {
+    this.hiddenStore = const HiddenLibraryStore(),
+  });
+
+  /// הספרים שייכנסו לאינדוקס מתוך [ordered].
+  ///
+  /// ספר מוסתר אינו מאונדקס כלל (issue #1448). הוצאה מהאינדקס, ולא סינון של
+  /// התוצאות, היא מה ששומר על מונה התוצאות ועל ספירות חלונית הסינון.
+  @visibleForTesting
+  static List<Book> booksForIndexing(
+    List<Book> ordered, {
+    required bool includePdfBooks,
+    required HiddenLibrarySelection hidden,
+    Library? library,
+  }) {
+    final categoryHiddenBooks = library == null
+        ? const <Book>{}
+        : hidden.booksHiddenByCategory(library);
+    return ordered
+        .where(
+          (book) =>
+              isIndexableBook(book) &&
+              (includePdfBooks || book is! PdfBook) &&
+              !hidden.excludesFromIndex(
+                book,
+                categoryHiddenBooks: categoryHiddenBooks,
+              ),
+        )
+        .toList();
+  }
 
   bool _paused = false;
   Completer<void>? _resumeGate;
@@ -266,11 +301,31 @@ class IndexingRepository {
   /// הרשימה שנקראה מהאינדקס עצמו - זולה מספיק לרוץ בכל עלייה.
   Future<bool> hasUnindexedBooks(Library library) async {
     await _tantivyDataProvider.engine;
+    final hidden = hiddenStore.load();
+    final categoryHiddenBooks = hidden.booksHiddenByCategory(library);
     return library
         .getIndexableBooks()
-        .where(isIndexableBook)
+        .where(
+          (book) =>
+              isIndexableBook(book) &&
+              !hidden.excludesFromIndex(
+                book,
+                categoryHiddenBooks: categoryHiddenBooks,
+              ),
+        )
         .any((book) => !isBookIndexed(book));
   }
+
+  int eligibleBookCount(
+    Library library, {
+    List<Book>? books,
+    bool includePdfBooks = true,
+  }) => booksForIndexing(
+    books ?? library.getIndexableBooks(),
+    includePdfBooks: includePdfBooks,
+    hidden: hiddenStore.load(),
+    library: library,
+  ).length;
 
   /// Indexes all books in the provided library.
   ///
@@ -301,12 +356,14 @@ class IndexingRepository {
       );
     }
 
-    final allBooks = orderBooksForIndexing(library.getIndexableBooks())
-        .where(
-          (book) =>
-              isIndexableBook(book) && (includePdfBooks || book is! PdfBook),
-        )
-        .toList();
+    // מקור הספרים מ-dev (getIndexableBooks), והסינון דרך booksForIndexing
+    // כדי שספר מוסתר לא ייכנס לאינדקס מלכתחילה (issue #1448).
+    final allBooks = IndexingRepository.booksForIndexing(
+      orderBooksForIndexing(library.getIndexableBooks()),
+      includePdfBooks: includePdfBooks,
+      hidden: hiddenStore.load(),
+      library: library,
+    );
     final totalBooks = allBooks.length;
 
     if (await requiresManualReindex(library)) {
@@ -1589,6 +1646,13 @@ class IndexingRepository {
     void Function()? onActualIndexingStarted,
     required void Function(int processed, int total) onProgress,
   }) async {
+    final hidden = hiddenStore.load();
+    books = booksForIndexing(
+      books,
+      includePdfBooks: true,
+      hidden: hidden,
+      library: library,
+    );
     if (WindowRole.isSecondary) {
       return IndexingRunResult.cancelled(
         processedBooks: 0,
@@ -1839,6 +1903,24 @@ class IndexingRepository {
     return _deleteIndexedFilePaths(keys);
   }
 
+  Future<bool> dropHiddenIndexEntries(Library library) async {
+    if (WindowRole.isSecondary) return false;
+    final hidden = hiddenStore.load();
+    if (hidden.isEmpty) return true;
+    await _tantivyDataProvider.engine;
+    final categoryHiddenBooks = hidden.booksHiddenByCategory(library);
+    return dropBookIndexEntries(
+      library.getIndexableBooks().where(
+        (book) =>
+            hidden.excludesFromIndex(
+              book,
+              categoryHiddenBooks: categoryHiddenBooks,
+            ) &&
+            isBookIndexed(book),
+      ),
+    );
+  }
+
   /// מוחק רשומות אינדקס לפי מפתחות ה-filePath שלהן ומעדכן את המעקב בזיכרון
   /// רק אחרי commit מאושר. בכשל delete/commit מבצע שחזור מנוע אמין
   /// ([_recoverEngineAfterWriteFailure]: rollback + reopen מאולץ) ומחזיר
@@ -2085,7 +2167,13 @@ class IndexingRepository {
 
     // המחיקה מדויקת לפי מפתח ה-filePath של כל ספר, ולכן אין צורך להרחיב
     // לספרים אחרים החולקים כותרת — מאנדקסים מחדש רק את מה שבאמת השתנה.
-    final booksToReindex = changedBooks.where(isIndexableBook).toList();
+    final hidden = hiddenStore.load();
+    final booksToReindex = booksForIndexing(
+      changedBooks,
+      includePdfBooks: true,
+      hidden: hidden,
+      library: library,
+    );
     if (booksToReindex.isEmpty) {
       return IndexingRunResult.completed(
         processedBooks: changedBooks.length,
@@ -2180,9 +2268,18 @@ class IndexingRepository {
           extraFacets: _bookExtraFacets(book),
         ));
 
+    final hidden = hiddenStore.load();
+    final categoryHiddenBooks = hidden.booksHiddenByCategory(library);
     final candidates = library
         .getIndexableBooks()
-        .where((b) => b is TextBook || b is ConvertibleDocumentBook)
+        .where(
+          (b) =>
+              (b is TextBook || b is ConvertibleDocumentBook) &&
+              !hidden.excludesFromIndex(
+                b,
+                categoryHiddenBooks: categoryHiddenBooks,
+              ),
+        )
         .toList();
     final total = candidates.length;
     final changed = <Book>[];

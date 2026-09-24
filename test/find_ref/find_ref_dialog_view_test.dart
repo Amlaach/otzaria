@@ -6,12 +6,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/core/focus_repository.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_bloc.dart';
 import 'package:otzaria/find_ref/find_ref_recent_store.dart';
 import 'package:otzaria/find_ref/repository/db_commentator_entry.dart';
 import 'package:otzaria/find_ref/repository/db_reference_result.dart';
 import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/find_ref/view/find_ref_dialog.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/models/books.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
 import 'package:otzaria/tour/tour_target_keys.dart';
 import 'package:otzaria/widgets/controls/action_buttons.dart';
 import 'package:provider/provider.dart';
@@ -20,10 +27,14 @@ import '../helpers/memory_settings_cache.dart';
 
 /// מחזיר תוצאות קבועות לכל שאילתה — הדיאלוג נבדק על הפריסה, לא על המנוע.
 class _FakeRepository implements FindRefRepository {
-  _FakeRepository(this.results, {this.error});
+  @override
+  bool get respectHiddenLibrary => false;
+
+  _FakeRepository(this.results, {this.error, this.commentators = const []});
 
   final List<DbReferenceResult> results;
   final Object? error;
+  final List<DbCommentatorEntry> commentators;
 
   @override
   void cancelPendingSearch() {}
@@ -40,7 +51,7 @@ class _FakeRepository implements FindRefRepository {
   @override
   Future<List<DbCommentatorEntry>> getCommentatorsForResult(
     DbReferenceResult ref,
-  ) async => const [];
+  ) async => commentators;
 
   @override
   Future<void> prewarmGlobalAltToc() async {}
@@ -55,6 +66,9 @@ class _FakeRepository implements FindRefRepository {
 /// מחזיר את התוצאות הראשונות מיד, ועוצר את החיפוש הבא עד שה-gate נפתח —
 /// כדי שאפשר יהיה לבדוק מה מוצג בזמן שהשאילתה החדשה עוד רצה.
 class _GatedRepository implements FindRefRepository {
+  @override
+  bool get respectHiddenLibrary => false;
+
   _GatedRepository({required this.first, required this.second});
 
   final List<DbReferenceResult> first;
@@ -394,6 +408,147 @@ void main() {
 
     expect(FocusRepository().findRefSearchController.text, isEmpty);
     expect(find.text('איתור מקור מדויק'), findsOneWidget);
+  });
+
+  testWidgets('שינוי הסתרה בחלון אחר מרוקן תוצאה ישנה ומריץ את השאילתה מחדש', (
+    tester,
+  ) async {
+    final repo = _GatedRepository(
+      first: [_ref('בראשית פרק קנ')],
+      second: [_ref('בראשית פרק קנא')],
+    );
+    addTearDown(() {
+      if (!repo.gate.isCompleted) repo.gate.complete();
+    });
+    final sync = SettingsSync.instance;
+    final previousApply = sync.applyLocally;
+    sync.applyLocally = (key, value) => Settings.setValue<String>(
+      key,
+      value as String,
+    );
+    addTearDown(() => sync.applyLocally = previousApply);
+    await _pumpDialog(tester, repository: repo);
+
+    await tester.enterText(find.byType(TextField), 'בראשית');
+    await tester.pump(_pastDebounce);
+    await tester.pump();
+    expect(find.text('בראשית פרק קנ'), findsOneWidget);
+
+    expect(
+      await sync.applyAuthoritativeValues({
+        HiddenLibraryStore.bookKeysSetting: '["o__11__בראשית"]',
+      }),
+      isTrue,
+    );
+    await tester.pump();
+    expect(find.text('בראשית פרק קנ'), findsNothing);
+
+    await tester.pump(_pastDebounce);
+    expect(repo.calls, 2);
+    repo.gate.complete();
+    await tester.pump();
+    expect(find.text('בראשית פרק קנא'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('שמירת הסתרה מקומית מרעננת דיאלוג פתוח פעם אחת', (tester) async {
+    final store = HiddenLibraryStore();
+    await store.save(const HiddenLibrarySelection());
+    addTearDown(() => store.save(const HiddenLibrarySelection()));
+    final repo = _GatedRepository(
+      first: [_ref('בראשית פרק קנ')],
+      second: [_ref('בראשית פרק קנא')],
+    );
+    addTearDown(() {
+      if (!repo.gate.isCompleted) repo.gate.complete();
+    });
+    await _pumpDialog(tester, repository: repo);
+
+    await tester.enterText(find.byType(TextField), 'בראשית');
+    await tester.pump(_pastDebounce);
+    await tester.pump();
+    expect(find.text('בראשית פרק קנ'), findsOneWidget);
+
+    await store.save(
+      const HiddenLibrarySelection(bookKeys: {'o__11__בראשית'}),
+    );
+    await tester.pump();
+    expect(find.text('בראשית פרק קנ'), findsNothing);
+    await tester.pump(_pastDebounce);
+    expect(repo.calls, 2);
+    repo.gate.complete();
+    await tester.pump();
+    expect(find.text('בראשית פרק קנא'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('בחירה בתפריט מפרשים פתוח אינה פותחת ספר שהוסתר בינתיים', (
+    tester,
+  ) async {
+    final store = HiddenLibraryStore();
+    await store.save(const HiddenLibrarySelection());
+    addTearDown(() => store.save(const HiddenLibrarySelection()));
+    final previousLibrary =
+        DataRepository.instance.cachedLibraryFutureForTesting;
+    final library = Library(categories: []);
+    final category = Category(
+      title: 'מפרשים',
+      description: '',
+      shortDescription: '',
+      order: 0,
+      subCategories: [],
+      books: [],
+      parent: library,
+    );
+    library.subCategories.add(category);
+    final commentator = TextBook(
+      id: 81,
+      title: 'רש"י על בראשית',
+      category: category,
+      categoryId: 42,
+    );
+    category.books.add(commentator);
+    DataRepository.instance.library = Future.value(library);
+    addTearDown(() {
+      if (previousLibrary == null) {
+        DataRepository.instance.invalidateLibraryCache();
+      } else {
+        DataRepository.instance.library = previousLibrary;
+      }
+    });
+    final repo = _FakeRepository(
+      [_ref('בראשית פרק א')],
+      commentators: const [
+        DbCommentatorEntry(
+          title: 'רש"י על בראשית',
+          bookId: 81,
+          targetSegment: 0,
+        ),
+      ],
+    );
+    await _pumpDialog(tester, repository: repo);
+    await tester.enterText(find.byType(TextField), 'בראשית');
+    await tester.pump(_pastDebounce);
+    await tester.pump();
+    await tester.pump();
+    final button = find.byTooltip('הצג מפרשים זמינים');
+    expect(button, findsOneWidget);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text(commentator.title), findsOneWidget);
+    final popupItem = find.byWidgetPredicate(
+      (widget) => widget is PopupMenuItem,
+    );
+
+    await store.save(
+      HiddenLibrarySelection(
+        bookKeys: {PerBookSettings.bookKey(commentator)},
+      ),
+    );
+    await tester.tap(popupItem);
+    await tester.pump();
+    expect(find.text('איתור מקורות'), findsOneWidget);
+    await tester.pump(_pastDebounce);
   });
 
   testWidgets('ללא תוצאות מוצג מצב ריק עם מעבר לחיפוש טקסט', (tester) async {

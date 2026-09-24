@@ -1,6 +1,8 @@
 import 'package:otzaria/attached_libraries/repository/attached_library_registry.dart';
 import 'package:otzaria/attached_libraries/repository/external_link_repository.dart';
 import 'package:otzaria/core/app_paths.dart';
+import 'package:otzaria/core/windowing/multi_window_service.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/core/user_state/user_state_database.dart';
 import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/cache/generation_cache.dart';
@@ -22,6 +24,8 @@ import 'package:otzaria/services/target_line_links_service.dart';
 
 /// מאפס מצב runtime מקומי כדי שהאפליקציה תוכל להיבנות מחדש בלי סגירת תהליך.
 Future<void> resetRuntimeStateForAppRestart() async {
+  MultiWindowService.clearVisibilityRequestsForRestart();
+  await const HiddenLibraryStore().resetRuntimeStateForAppRestart();
   await PluginRuntimeDispatcher.instance.prepareForAppRestart();
   await SqliteDataProvider.instance.dispose();
   await UserBooksDatabaseHolder.instance.close();
@@ -37,6 +41,7 @@ Future<void> resetRuntimeStateForAppRestart() async {
   FileSystemData.instance.clearBookCache();
 
   LibraryProviderManager.instance.resetRuntimeState();
+  DataRepository.instance.invalidateLibraryCache();
   DataRepository.instance.invalidateExternalBooksCache();
 
   // בלי זה סריקת התיקיות האישיות לא תרוץ שוב אחרי הבנייה מחדש, ותיקיות

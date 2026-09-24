@@ -164,6 +164,28 @@ abstract class SettingsMessages {
   static String oldLibraryCopyDeleteError(Object error) =>
       'שגיאה במחיקת העותק הישן: $error';
 
+  // ── ייבוא רשימת הסתרות (hidden_books_panel) ────────────────────────────
+
+  static String hiddenBooksFileReadError(Object error) =>
+      'לא ניתן לקרוא את הקובץ: $error';
+
+  static const String hiddenBooksFileEmpty = 'הקובץ ריק — לא הוסתר דבר';
+
+  static const String hiddenBooksIndexDropFailed =
+      'לא ניתן להסיר את הספרים המוסתרים מאינדקס החיפוש';
+  static const String hiddenBooksIndexUpdateFailed =
+      'עדכון אינדקס החיפוש לאחר שינוי ההסתרה לא הושלם';
+  static const String hiddenBooksIndexUpdateUnconfirmed =
+      'לא התקבל אישור על השלמת עדכון אינדקס החיפוש';
+  static const String hiddenBooksSelectionSaveFailed =
+      'שמירת בחירות ההסתרה לא הושלמה';
+
+  static String hiddenBooksImported(int matchedCount, int unmatchedCount) =>
+      unmatchedCount == 0
+      ? 'הוסתרו $matchedCount ספרים'
+      : 'הוסתרו $matchedCount ספרים; '
+            '$unmatchedCount שמות לא נמצאו בספרייה';
+
   // ── רשימת ספרים (books_list_dialog) ────────────────────────────────────
 
   static String booksListSaved(int rowCount) =>

@@ -46,6 +46,10 @@ import 'dart:isolate';
 import 'package:otzaria/core/messages/text_book_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/data/book_locator.dart';
+import 'package:otzaria/library/hidden/hidden_titles.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
 import 'package:otzaria/data/data_providers/book_database_resolver.dart';
 import 'package:otzaria/data/data_providers/sqlite_data_provider.dart';
 import 'package:otzaria/data/data_providers/library_provider_manager.dart';
@@ -84,6 +88,10 @@ double pageShapeAnchorRestorationOffset({
 }
 
 /// מסך תצוגת צורת הדף - מציג את הטקסט המרכזי עם מפרשים מסביב
+typedef PageShapeDefaultsLoader =
+    Future<({Map<String, String?> commentators, Map<String, bool> visibility})>
+    Function(TextBook book, List<String> availableCommentators);
+
 class PageShapeScreen extends StatefulWidget {
   final Function(OpenedTab) openBookCallback;
   final ValueNotifier<int?>? sidebarTabNotifier;
@@ -94,6 +102,8 @@ class PageShapeScreen extends StatefulWidget {
   final ValueChanged<String?>? onOpenSearch;
   final ScrollOffsetController? scrollOffsetController;
   final TextBookTab? tab;
+  @visibleForTesting
+  final PageShapeDefaultsLoader? defaultsLoader;
 
   const PageShapeScreen({
     super.key,
@@ -103,6 +113,7 @@ class PageShapeScreen extends StatefulWidget {
     this.onOpenSearch,
     this.scrollOffsetController,
     this.tab,
+    this.defaultsLoader,
   });
 
   @override
@@ -116,6 +127,8 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
   String? _bottomRightCommentator;
   bool _isLoadingConfig = true;
   int _loadConfigurationGeneration = 0;
+  StreamSubscription<HiddenLibrarySelection>? _hiddenSelectionSubscription;
+  StreamSubscription<String>? _settingsSyncSubscription;
   bool _applyTextMaxWidth = PageShapeSettingsManager.getApplyTextMaxWidth();
   bool _isLeftSidebarOpen = false;
   int _leftSidebarTabIndex = 0;
@@ -396,6 +409,7 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
     }
 
     final generation = ++_loadConfigurationGeneration;
+    final hiddenTitlesFuture = currentHiddenBookTitles();
 
     final config = PageShapeSettingsManager.loadConfiguration(
       state.book.title,
@@ -411,22 +425,37 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
 
     final Map<String, String?> commentators;
     if (config != null) {
+      final hiddenTitles = await hiddenTitlesFuture;
+      if (!mounted || generation != _loadConfigurationGeneration) return;
       // יש הגדרה שמורה - צריך להתאים שמות בסיסיים לשמות מלאים
       // (כי הגדרות קטגוריה שומרות רק שמות בסיסיים כמו "רמב"ן")
       commentators = _resolveCommentatorNames(
         config,
         state.availableCommentators,
         state.book.title,
+        hiddenTitles,
       );
     } else {
       // אין הגדרה שמורה בכלל - השתמש בברירות מחדל
-      final defaults = await DefaultCommentators.getPageShapeDefaults(
-        state.book,
-        availableCommentators: state.availableCommentators,
-      );
+      final defaultsFuture =
+          widget.defaultsLoader?.call(
+            state.book,
+            state.availableCommentators,
+          ) ??
+          DefaultCommentators.getPageShapeDefaults(
+            state.book,
+            availableCommentators: state.availableCommentators,
+          );
+      final hiddenTitles = await hiddenTitlesFuture;
+      final defaults = await defaultsFuture;
       // טעינה חדשה יותר (למשל אחרי העשרת heCategories) כבר רצה — לא לדרוס.
       if (generation != _loadConfigurationGeneration) return;
-      commentators = defaults.commentators;
+      commentators = _resolveCommentatorNames(
+        defaults.commentators,
+        state.availableCommentators,
+        state.book.title,
+        hiddenTitles,
+      );
       for (final entry in defaults.visibility.entries) {
         if (!entry.value) _columnVisibility[entry.key] = false;
       }
@@ -451,7 +480,9 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
     Map<String, String?> config,
     List<String> availableCommentators,
     String bookTitle,
+    Set<String> hiddenTitles,
   ) {
+    final hiddenList = hiddenTitles.toList();
     return Map.fromEntries(
       config.entries.map((entry) {
         final resolved = resolvePageShapeCommentatorSelection(
@@ -459,6 +490,16 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
           availableCommentators: availableCommentators,
           commentedBookTitle: bookTitle,
         );
+        if (resolved != null &&
+            !availableCommentators.contains(resolved) &&
+            findMatchingPageShapeCommentator(
+                  entry.value ?? resolved,
+                  hiddenList,
+                  commentedBookTitle: bookTitle,
+                ) !=
+                null) {
+          return MapEntry(entry.key, null);
+        }
         return MapEntry(entry.key, resolved);
       }),
     );
@@ -991,6 +1032,16 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
   @override
   void initState() {
     super.initState();
+    _hiddenSelectionSubscription = const HiddenLibraryStore().changes.listen(
+      (_) => unawaited(_loadConfiguration()),
+    );
+    _settingsSyncSubscription = SettingsSync.instance.changes.listen((key) {
+      if (key.isEmpty ||
+          key == HiddenLibraryStore.bookKeysSetting ||
+          key == HiddenLibraryStore.categoryPathsSetting) {
+        unawaited(_loadConfiguration());
+      }
+    });
     widget.sidebarTabNotifier?.addListener(_handleSidebarTabRequest);
     widget.openSettingsNotifier?.addListener(_handleOpenSettingsRequest);
     widget.tab?.toggleCommentatorsPaneNotifier.addListener(
@@ -1026,6 +1077,8 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
 
   @override
   void dispose() {
+    unawaited(_hiddenSelectionSubscription?.cancel() ?? Future.value());
+    unawaited(_settingsSyncSubscription?.cancel() ?? Future.value());
     widget.sidebarTabNotifier?.removeListener(_handleSidebarTabRequest);
     widget.openSettingsNotifier?.removeListener(_handleOpenSettingsRequest);
     widget.tab?.toggleCommentatorsPaneNotifier.removeListener(
@@ -1053,15 +1106,16 @@ class _PageShapeScreenState extends State<PageShapeScreen> {
             if (previous is TextBookLoaded && current is TextBookLoaded) {
               // heCategories מועשר ברקע אחרי הטעינה; בלעדיו הגדרות הקטגוריה
               // לא נמצאות וברירות המחדל נשארות על המסך (issue #770).
-              return previous.availableCommentators.length !=
-                      current.availableCommentators.length ||
+              return !listEquals(
+                    previous.availableCommentators,
+                    current.availableCommentators,
+                  ) ||
                   previous.book.heCategories != current.book.heCategories;
             }
             return previous is! TextBookLoaded && current is TextBookLoaded;
           },
           listener: (context, state) {
-            if (state is TextBookLoaded &&
-                state.availableCommentators.isNotEmpty) {
+            if (state is TextBookLoaded) {
               _loadConfiguration();
             }
           },

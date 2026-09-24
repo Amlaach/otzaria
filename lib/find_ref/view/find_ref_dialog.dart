@@ -20,7 +20,11 @@ import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/bloc/history_event.dart';
 import 'package:otzaria/core/focus_repository.dart';
 import 'package:otzaria/core/external_uri_router.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/find_ref/repository/find_ref_visibility.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
@@ -66,11 +70,13 @@ class FindRefDialog extends StatefulWidget {
 /// `targetLineIndex`); במקרה כזה הקליק נופל לתחילת ספר המפרש (segment 0).
 class _CommentatorEntry {
   final String title;
+  final int? bookId;
   final int? targetSegment;
   final Book book;
 
   const _CommentatorEntry({
     required this.title,
+    required this.bookId,
     required this.targetSegment,
     required this.book,
   });
@@ -85,17 +91,20 @@ class _CommentatorEntry {
 /// מזהה או כותרת נבחר אותו ספר שהסריקות היו בוחרות.
 @visibleForTesting
 class LibraryBookIndex {
-  LibraryBookIndex(this.library) {
+  LibraryBookIndex(this.library, {FindRefVisibility? visibility})
+    : visibility = visibility ?? FindRefVisibility.empty() {
     _collect(library);
   }
 
   final Category library;
+  final FindRefVisibility visibility;
   final Map<int, TextBook> _officialTextBookById = {};
   final Map<String, TextBook> _textBookByTitle = {};
   final Map<String, Book> _bookByTitle = {};
 
   void _collect(Category category) {
     for (final book in category.books) {
+      if (!visibility.allowsBook(book)) continue;
       final id = book.id;
       if (book is TextBook) {
         if (book.source.isOfficial && id != null) {
@@ -156,6 +165,7 @@ Book? _findBookInLibraryByTitle(
   Category category,
   String title, {
   bool preferTextBook = false,
+  required FindRefVisibility visibility,
 }) {
   // עוברים פעמיים אם preferTextBook: ראשונה — רק TextBook; שנייה — כל סוג.
   for (final passOnlyText in preferTextBook ? [true, false] : [false]) {
@@ -163,6 +173,7 @@ Book? _findBookInLibraryByTitle(
       category,
       title,
       onlyTextBook: passOnlyText,
+      visibility: visibility,
     );
     if (result != null) return result;
   }
@@ -173,10 +184,12 @@ Book? _findBookInLibraryByTitlePass(
   Category category,
   String title, {
   required bool onlyTextBook,
+  required FindRefVisibility visibility,
 }) {
   for (final b in category.books) {
     if (b.title != title) continue;
     if (onlyTextBook && b is! TextBook) continue;
+    if (!b.source.isOfficial || !visibility.allowsBook(b)) continue;
     return b;
   }
   for (final subCat in category.subCategories) {
@@ -184,10 +197,35 @@ Book? _findBookInLibraryByTitlePass(
       subCat,
       title,
       onlyTextBook: onlyTextBook,
+      visibility: visibility,
     );
     if (found != null) return found;
   }
   return null;
+}
+
+@visibleForTesting
+Book? resolveFindRefBookInLibrary(
+  Category category,
+  String title, {
+  required int? bookId,
+  required BookSource source,
+  required FindRefVisibility visibility,
+  bool preferTextBook = false,
+}) {
+  if (bookId != null) {
+    final byId = source.isOfficial
+        ? findOfficialTextBookById(category, bookId)
+        : findBookBySourceAndId(category, bookId, source);
+    if (byId != null) return visibility.allowsBook(byId) ? byId : null;
+    if (!source.isOfficial) return null;
+  }
+  return _findBookInLibraryByTitle(
+    category,
+    title,
+    preferTextBook: preferTextBook,
+    visibility: visibility,
+  );
 }
 
 class _FindRefDialogState extends State<FindRefDialog> {
@@ -216,6 +254,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
   /// התוצאות שמוצגות כרגע. נשמרות כדי שהקלדה של אות נוספת לא תרוקן את
   /// הרשימה ותחזיר אותה — הרשימה הקודמת נשארת עד שהחדשה מגיעה.
   List<DbReferenceResult> _shownRefs = const <DbReferenceResult>[];
+  FindRefState? _supersededVisibilityState;
   bool _includePersonalBooks =
       Settings.getValue<bool>(
         FindRefDialog._keyIncludePersonalBooks,
@@ -233,6 +272,10 @@ class _FindRefDialogState extends State<FindRefDialog> {
 
   /// תקף כל עוד רענון ספרייה יוצר מופע `Category` חדש (`DataRepository.library`).
   LibraryBookIndex? _bookIndex;
+  StreamSubscription<String>? _visibilityChanges;
+  StreamSubscription<HiddenLibrarySelection>? _localVisibilityChanges;
+  late HiddenLibrarySelection _lastVisibilitySelection;
+  int _visibilityRevision = 0;
   final ScrollController _resultsScrollController = ScrollController();
   // `true` כשיש תוצאות מתחת לאזור הנראה. מעודכן משני מקורות:
   //   1. listener על ה-ScrollController — מטפל בגלילה ע"י המשתמש.
@@ -246,6 +289,20 @@ class _FindRefDialogState extends State<FindRefDialog> {
   @override
   void initState() {
     super.initState();
+    final hiddenStore = const HiddenLibraryStore();
+    _lastVisibilitySelection = hiddenStore.load();
+    _localVisibilityChanges = hiddenStore.changes.listen(
+      (_) => _refreshVisibilityIfChanged(),
+    );
+
+    _visibilityChanges = SettingsSync.instance.changes.listen((key) {
+      if (key.isNotEmpty &&
+          key != HiddenLibraryStore.bookKeysSetting &&
+          key != HiddenLibraryStore.categoryPathsSetting) {
+        return;
+      }
+      _refreshVisibilityIfChanged();
+    });
 
     final recent = FindRefRecentStore.load();
     _suggestionsAreRecent = recent.isNotEmpty;
@@ -288,12 +345,41 @@ class _FindRefDialogState extends State<FindRefDialog> {
 
   @override
   void dispose() {
+    _visibilityChanges?.cancel();
+    _localVisibilityChanges?.cancel();
     _resultsScrollController.removeListener(_updateHasMoreBelow);
     _resultsScrollController.dispose();
     _hasMoreBelow.dispose();
     final restorer = _focusRestorer;
     if (restorer != null) FocusRepository().unregisterActiveRestorer(restorer);
     super.dispose();
+  }
+
+  void _refreshVisibilityIfChanged() {
+    if (!mounted) return;
+    final selection = const HiddenLibraryStore().load();
+    if (selection == _lastVisibilitySelection) return;
+    _lastVisibilitySelection = selection;
+    final query = FocusRepository().findRefSearchController.text;
+    _visibilityRevision++;
+    final bloc = context.read<FindRefBloc>();
+    _supersededVisibilityState = bloc.state is FindRefSuccess
+        ? bloc.state
+        : null;
+    setState(() {
+      _bookIndex = null;
+      _commentatorsByRef.clear();
+      _shownRefs = const [];
+    });
+    bloc.add(ClearSearchRequested());
+    if (query.isNotEmpty) {
+      bloc.add(
+        SearchRefRequested(
+          query,
+          includePersonalBooks: _includePersonalBooks,
+        ),
+      );
+    }
   }
 
   /// מעדכן את [_hasMoreBelow] לפי המצב הנוכחי של ה-ScrollController.
@@ -338,30 +424,30 @@ class _FindRefDialogState extends State<FindRefDialog> {
     final key = _commentatorsKey(ref);
     if (_commentatorsByRef.containsKey(key)) return; // נטען / בתהליך טעינה
     _commentatorsByRef[key] = null; // sentinel: בתהליך
+    final visibilityRevision = _visibilityRevision;
     final repository = context.read<FindRefBloc>().findRefRepository;
     () async {
       try {
         final dbEntries = await repository.getCommentatorsForResult(ref);
-        if (!mounted) return;
+        if (!mounted || visibilityRevision != _visibilityRevision) return;
         if (dbEntries.isEmpty) {
           setState(() {
             _commentatorsByRef[key] = const [];
           });
           return;
         }
-        // pre-resolve של ה-Book עבור כל מפרש כדי שהקליק יהיה סינכרוני.
-        // `library` מוחזק בקאש ב-DataRepository.
         final library = await DataRepository.instance.library;
-        if (!mounted) return;
+        if (!mounted || visibilityRevision != _visibilityRevision) return;
         final index = _indexFor(library);
         final entries = <_CommentatorEntry>[
           for (final e in dbEntries)
             _CommentatorEntry(
               title: e.title,
+              bookId: e.bookId,
               targetSegment: e.targetSegment,
               book:
                   index.resolveCommentatorBook(e.title, bookId: e.bookId) ??
-                  TextBook(title: e.title),
+                  TextBook(title: e.title, id: e.bookId),
             ),
         ];
         setState(() {
@@ -370,10 +456,12 @@ class _FindRefDialogState extends State<FindRefDialog> {
       } on FindRefQueryCancelled {
         // הקלדה חדשה זרקה את הטעינה מהתור. מסירים את ה-sentinel כדי שהשורה
         // תנסה שוב — אחרת האייקון לא היה מופיע יותר לתוצאה הזו.
-        _commentatorsByRef.remove(key);
+        if (visibilityRevision == _visibilityRevision) {
+          _commentatorsByRef.remove(key);
+        }
       } catch (e) {
         debugPrint('[FindRef] commentators load failed: $e');
-        if (!mounted) return;
+        if (!mounted || visibilityRevision != _visibilityRevision) return;
         setState(() {
           _commentatorsByRef[key] = const [];
         });
@@ -381,12 +469,18 @@ class _FindRefDialogState extends State<FindRefDialog> {
     }();
   }
 
-  LibraryBookIndex _indexFor(Category library) {
+  LibraryBookIndex _indexFor(Library library) {
+    final selection = const HiddenLibraryStore().load();
     final existing = _bookIndex;
-    if (existing != null && identical(existing.library, library)) {
+    if (existing != null &&
+        identical(existing.library, library) &&
+        existing.visibility.selection == selection) {
       return existing;
     }
-    return _bookIndex = LibraryBookIndex(library);
+    return _bookIndex = LibraryBookIndex(
+      library,
+      visibility: FindRefVisibility(selection, library),
+    );
   }
 
   void _scrollToSelected() {
@@ -465,6 +559,21 @@ class _FindRefDialogState extends State<FindRefDialog> {
         debugPrint('Error loading library: $e');
       }
 
+      final visibility = library == null
+          ? null
+          : const HiddenLibraryStore().load().isEmpty
+          ? FindRefVisibility.empty()
+          : _indexFor(library).visibility;
+      if (visibility != null &&
+          !visibility.allowsCandidate(
+            ref.source,
+            ref.bookId,
+            ref.filePath,
+            fileType: ref.isPdf ? 'pdf' : 'txt',
+          )) {
+        return;
+      }
+
       // הגדרת "פורמט פתיחת תלמוד בבלי": תוצאת טקסט של מסכת בבלי נפתחת
       // מיידית כטאב טעינה שממופה ל-PDF בתוכו. מזהים את ספר המקור בעץ לפי
       // bookId (זהות יציבה); בלי זיהוי ודאי לא ממירים ל-PDF, אחרת בחירה
@@ -526,12 +635,13 @@ class _FindRefDialogState extends State<FindRefDialog> {
         // ספרים אישיים: ה-`bookId` שלהם שייך ל-user_books.db ואין לו תאומים
         // ב-library object, לכן ניפול ל-title; ספר רשמי עם `bookId > 0`
         // נפתח דרך ה-id כדי שלא יחליף שני ספרים בעלי אותה כותרת.
-        book = _findBookInLibraryByIdThenTitle(
+        book = resolveFindRefBookInLibrary(
           library,
           ref.title,
           bookId: ref.bookId > 0 ? ref.bookId : null,
           source: ref.source,
           preferTextBook: needsTextBook,
+          visibility: visibility!,
         );
         // ספרי בבלי מופיעים בעץ הספרייה כ-PdfBook גם כשה-DB מכיר אותם
         // כ-txt; ה-segment הוא אינדקס טקסט, לכן נפתחת מהדורת הטקסט.
@@ -566,6 +676,7 @@ class _FindRefDialogState extends State<FindRefDialog> {
     List<_CommentatorEntry> commentators,
   ) async {
     if (commentators.isEmpty) return;
+    final visibilityRevision = _visibilityRevision;
 
     final buttonContext = buttonKey.currentContext;
     if (buttonContext == null || !buttonContext.mounted) return;
@@ -608,7 +719,19 @@ class _FindRefDialogState extends State<FindRefDialog> {
       ],
     );
 
-    if (selected == null || !mounted) return;
+    if (selected == null ||
+        !mounted ||
+        visibilityRevision != _visibilityRevision) {
+      return;
+    }
+    if (const HiddenLibraryStore().load() != _lastVisibilitySelection ||
+        !(_bookIndex?.visibility.allowsCommentator(
+              selected.title,
+              selected.bookId,
+            ) ??
+            false)) {
+      return;
+    }
     _openCommentator(selected);
   }
 
@@ -622,30 +745,6 @@ class _FindRefDialogState extends State<FindRefDialog> {
     final segment = entry.targetSegment ?? 0;
     Navigator.of(context).pop();
     openBook(context, entry.book, segment, '');
-  }
-
-  /// מחפש ספר ב-[category] לפי [bookId] כשנמסר, ונופל ל-[title] אם לא נמצא.
-  /// פתרון לפי id מונע התנגשות בין שני ספרים בעלי כותרת זהה בעץ.
-  Book? _findBookInLibraryByIdThenTitle(
-    Category category,
-    String title, {
-    required int? bookId,
-    BookSource source = BookSource.official,
-    bool preferTextBook = false,
-  }) {
-    if (bookId != null) {
-      final byId = source.isOfficial
-          ? findOfficialTextBookById(category, bookId)
-          : findBookBySourceAndId(category, bookId, source);
-      if (byId != null) return byId;
-      // id של מסד משני אינו חד-ערכי מול הכותרת — נפילה לכותרת הייתה פותחת ספר רשמי.
-      if (!source.isOfficial) return null;
-    }
-    return _findBookInLibraryByTitle(
-      category,
-      title,
-      preferTextBook: preferTextBook,
-    );
   }
 
   /// בודק אם מחרוזת היא קישור otzaria:// או zayit:// תקין וניתן לפענוח.
@@ -825,7 +924,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
   Widget _buildQueryCard(FindRefState state, bool isShort) {
     final colorScheme = Theme.of(context).colorScheme;
     final isLoading = state is FindRefLoading;
-    final refs = state is FindRefSuccess
+    final refs = identical(state, _supersededVisibilityState)
+        ? const <DbReferenceResult>[]
+        : state is FindRefSuccess
         ? state.refs
         : (isLoading ? _shownRefs : const <DbReferenceResult>[]);
     return Container(
@@ -1060,6 +1161,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
       // בלי ListView אין מי שישלח notification, ולכן בלי איפוס יזום החץ היה
       // נשאר דלוק מהחיפוש הקודם מעל spinner או מצב ריק.
       listener: (context, state) {
+        if (!identical(state, _supersededVisibilityState)) {
+          _supersededVisibilityState = null;
+        }
         if (state is FindRefSuccess) {
           _shownRefs = state.refs;
         } else if (state is! FindRefLoading) {
@@ -1070,6 +1174,9 @@ class _FindRefDialogState extends State<FindRefDialog> {
         }
       },
       builder: (context, state) {
+        if (identical(state, _supersededVisibilityState)) {
+          return const _DelayedLoader();
+        }
         if (state is FindRefLoading) {
           if (_shownRefs.isNotEmpty) {
             return _buildResultsList(

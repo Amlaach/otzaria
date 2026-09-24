@@ -17,6 +17,7 @@ import 'package:otzaria/bookmarks/repository/bookmark_repository.dart';
 import 'package:otzaria/bookmarks/models/bookmark.dart';
 import 'package:otzaria/data/data_providers/hive_data_provider.dart';
 import 'package:otzaria/history/history_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/settings/engine/settings_engine_exports.dart';
 import 'package:otzaria/tabs/tabs_repository.dart';
 import 'package:otzaria/workspaces/workspace_repository.dart';
@@ -280,6 +281,8 @@ class BackupService {
     // אסימון גישה חי ליומן Google — אין להטמיע אותו בקובץ גיבוי נייד.
     // ההתחברות נדרשת מחדש ביעד, ושאר הגדרות היומן משוחזרות.
     SettingsRepository.keyGoogleCalendarCredentialsJson,
+    HiddenLibraryStore.pendingIndexReconciliationSetting,
+    HiddenLibraryStore.pendingVisibilityIndexSetting,
     // דגל פנימי שמסמן שברירות המחדל נכתבו לדיסק.
     'settings_initialized',
   };
@@ -742,6 +745,10 @@ class BackupService {
       // והתיקיות המותאמות מתארים את המכשיר שממנו הגיע הקובץ, לא את זה.
       if (!isMerge) {
         await _restoreSettings(settings);
+        if (settings.containsKey(HiddenLibraryStore.bookKeysSetting) ||
+            settings.containsKey(HiddenLibraryStore.categoryPathsSetting)) {
+          await const HiddenLibraryStore().markIndexReconciliationPending();
+        }
         await _refreshAttachedLibrariesAfterRestore(
           forgetPins: settings.containsKey(
             SettingsRepository.keyAttachedLibraries,

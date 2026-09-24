@@ -9,6 +9,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/personal_notes/bloc/personal_notes_bloc.dart';
 import 'package:otzaria/personal_notes/bloc/personal_notes_event.dart';
 import 'package:otzaria/personal_notes/bloc/personal_notes_state.dart';
@@ -24,6 +28,7 @@ import 'package:otzaria/text_book/view/page_shape/page_shape_settings_panel.dart
 import 'package:otzaria/text_book/view/page_shape/utils/page_shape_settings_manager.dart';
 import 'package:otzaria/widgets/layout/context_overlay_panel.dart';
 import 'package:otzaria/widgets/layout/floating_panel.dart';
+import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../test_helpers/memory_cache_provider.dart';
@@ -42,14 +47,16 @@ void main() {
 
   Future<void> pumpScreen(
     WidgetTester tester,
-    ValueNotifier<int> openSettingsNotifier,
-  ) async {
+    ValueNotifier<int> openSettingsNotifier, {
+    TextBookLoaded? loadedState,
+    PageShapeDefaultsLoader? defaultsLoader,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: MultiBlocProvider(
           providers: [
             BlocProvider<TextBookBloc>.value(
-              value: _TestTextBookBloc(_loadedState()),
+              value: _TestTextBookBloc(loadedState ?? _loadedState()),
             ),
             BlocProvider<PersonalNotesBloc>.value(
               value: _TestPersonalNotesBloc(
@@ -71,6 +78,7 @@ void main() {
           child: PageShapeScreen(
             openBookCallback: (_) {},
             openSettingsNotifier: openSettingsNotifier,
+            defaultsLoader: defaultsLoader,
           ),
         ),
       ),
@@ -351,6 +359,142 @@ void main() {
       find.byType(PageShapeSettingsPanel),
     );
     expect(panel.currentLeft, 'מלאכת שלמה על משנה מקואות');
+  });
+
+  testWidgets('מפרש מוסתר אינו מוצג בטור שמור, וההגדרה נשמרת', (tester) async {
+    const store = HiddenLibraryStore();
+    final category = Category(
+      title: 'מוסתרת',
+      description: '',
+      shortDescription: '',
+      order: 0,
+      subCategories: [],
+      books: [TextBook(title: 'מפרש מוסתר', categoryId: 7)],
+      parent: null,
+    );
+    final library = Library(categories: [category]);
+    category.parent = library;
+    DataRepository.instance.library = Future.value(library);
+    await store.save(
+      const HiddenLibrarySelection(categoryPaths: {'/מוסתרת'}),
+    );
+    addTearDown(() async {
+      DataRepository.instance.invalidateLibraryCache();
+      await store.save(const HiddenLibrarySelection());
+    });
+    await PageShapeSettingsManager.saveConfiguration(
+      'ספר בדיקה',
+      const {
+        'left': 'מפרש מוסתר',
+        'right': null,
+        'bottom': null,
+        'bottomRight': null,
+      },
+    );
+
+    final notifier = ValueNotifier<int>(0);
+    addTearDown(notifier.dispose);
+    await pumpScreen(
+      tester,
+      notifier,
+      loadedState: _loadedState(availableCommentators: const ['מפרש גלוי']),
+    );
+    notifier.value++;
+    await tester.pump();
+    await tester.pump();
+
+    final panel = tester.widget<PageShapeSettingsPanel>(
+      find.byType(PageShapeSettingsPanel),
+    );
+    expect(panel.currentLeft, isNull);
+    final field = tester.widget<AppDropdownField<String>>(
+      find
+          .descendant(
+            of: find.byType(PageShapeSettingsPanel),
+            matching: find.byType(AppDropdownField<String>),
+          )
+          .first,
+    );
+    expect(field.value, '__NONE__');
+    expect(
+      PageShapeSettingsManager.loadConfiguration('ספר בדיקה')?['left'],
+      'מפרש מוסתר',
+    );
+  });
+
+  testWidgets('ברירת מחדל מוסתרת נעלמת גם כשאין מפרשים זמינים ומתעדכנת חי', (
+    tester,
+  ) async {
+    const store = HiddenLibraryStore();
+    final category = Category(
+      title: 'מוסתרת',
+      description: '',
+      shortDescription: '',
+      order: 0,
+      subCategories: [],
+      books: [TextBook(title: 'מפרש מוסתר', categoryId: 7)],
+      parent: null,
+    );
+    final library = Library(categories: [category]);
+    category.parent = library;
+    DataRepository.instance.library = Future.value(library);
+    addTearDown(() async {
+      DataRepository.instance.invalidateLibraryCache();
+      await store.save(const HiddenLibrarySelection());
+    });
+
+    final notifier = ValueNotifier<int>(0);
+    addTearDown(notifier.dispose);
+    await pumpScreen(
+      tester,
+      notifier,
+      loadedState: _loadedState(availableCommentators: const []),
+      defaultsLoader: (book, available) async => (
+        commentators: <String, String?>{
+          'left': 'מפרש מוסתר',
+          'right': null,
+          'bottom': null,
+          'bottomRight': null,
+        },
+        visibility: <String, bool>{
+          'left': true,
+          'right': true,
+          'bottom': true,
+          'bottomRight': true,
+        },
+      ),
+    );
+    notifier.value++;
+    await tester.pump();
+    await tester.pump();
+    PageShapeSettingsPanel panel() => tester.widget<PageShapeSettingsPanel>(
+      find.byType(PageShapeSettingsPanel),
+    );
+    AppDropdownField<String> leftField() =>
+        tester.widget<AppDropdownField<String>>(
+          find
+              .descendant(
+                of: find.byType(PageShapeSettingsPanel),
+                matching: find.byType(AppDropdownField<String>),
+              )
+              .first,
+        );
+    expect(panel().currentLeft, 'מפרש מוסתר');
+    expect(leftField().value, 'מפרש מוסתר');
+
+    await store.save(
+      const HiddenLibrarySelection(categoryPaths: {'/מוסתרת'}),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(panel().currentLeft, isNull);
+    expect(leftField().value, '__NONE__');
+
+    await store.save(const HiddenLibrarySelection());
+    await tester.pump();
+    await tester.pump();
+    expect(panel().currentLeft, 'מפרש מוסתר');
+    expect(leftField().value, 'מפרש מוסתר');
   });
 
   testWidgets('הגדרת קטגוריה נטענת גם כש-heCategories מגיע מההעשרה ברקע', (
