@@ -58,6 +58,7 @@ class ReferenceBooksCache {
   // PDF books from file system (not in DB) — stored as (normalizedTitle, hit)
   final List<(String, ReferenceBookHit)> _fsPdfBooks =
       <(String, ReferenceBookHit)>[];
+  final Set<String> _dbPdfTitles = <String>{};
 
   // Lazy PDF outline cache: filePath → Future of outline entries
   // Populated on demand (and optionally pre-warmed in background after warmUp).
@@ -139,7 +140,7 @@ class ReferenceBooksCache {
         }
       }
 
-      // Collect DB PDF titles to avoid duplicates with file-system PDFs
+      // Duplicate FS PDFs stay in the cache so one can surface if its DB twin is hidden.
       final dbPdfTitles = BooksCache.instance.books
           .where((b) => b.fileType == 'pdf')
           .map((b) => b.title)
@@ -156,7 +157,7 @@ class ReferenceBooksCache {
         }
       }
 
-      // Load PDF books from file system that are not in the DB.
+      // Load file-system PDFs, including titles also present in the DB.
       // PDF outline parsing is NOT done here — it happens lazily via getPdfOutlineEntries().
       final localFsPdfBooks = <(String, ReferenceBookHit)>[];
       if (FileSystemLibraryProvider.instance.isInitialized) {
@@ -166,8 +167,6 @@ class ReferenceBooksCache {
         for (final entry in keyToPath.entries) {
           final key = BookCompositeKey.tryParse(entry.key);
           if (key == null || key.fileType != 'pdf') continue;
-          if (dbPdfTitles.contains(key.title)) continue;
-
           final normalizedTitle = _normalizeForMatch(key.title);
           if (normalizedTitle.isEmpty) continue;
 
@@ -203,6 +202,9 @@ class ReferenceBooksCache {
       _fsPdfBooks
         ..clear()
         ..addAll(localFsPdfBooks);
+      _dbPdfTitles
+        ..clear()
+        ..addAll(dbPdfTitles);
       _categoryPaths.clear();
 
       if (!await _prewarmFuzzyVocabulary(localNormalizedTitles, myGen)) return;
@@ -282,6 +284,7 @@ class ReferenceBooksCache {
     _fuzzyVocabularyBooks.clear();
     _fuzzyWordCandidates.clear();
     _fsPdfBooks.clear();
+    _dbPdfTitles.clear();
     _pdfOutlineCache.clear();
     _categoryPaths.clear();
     _isLoaded = false;
@@ -551,6 +554,13 @@ class ReferenceBooksCache {
     _normalizedTitles
       ..clear()
       ..addAll(normalizedTitles);
+    _dbPdfTitles
+      ..clear()
+      ..addAll(
+        BooksCache.instance.books
+            .where((book) => book.fileType == 'pdf')
+            .map((book) => book.title),
+      );
     _categoryPaths
       ..clear()
       ..addAll(categoryPaths);
@@ -570,7 +580,11 @@ class ReferenceBooksCache {
   ///
   /// Input must already be normalized similarly to [_normalizeForMatch], but we
   /// normalize again defensively.
-  List<ReferenceBookHit> search(String query, {int limit = 50}) {
+  List<ReferenceBookHit> search(
+    String query, {
+    int limit = 50,
+    bool Function(int bookId, String filePath, String fileType)? allowsBook,
+  }) {
     if (limit <= 0) return const <ReferenceBookHit>[];
 
     final q = _normalizeForMatch(query);
@@ -578,6 +592,7 @@ class ReferenceBooksCache {
 
     final starts = <ReferenceBookHit>[];
     final contains = <ReferenceBookHit>[];
+    final visibleDbPdfTitles = allowsBook == null ? null : <String>{};
 
     // מסננת הביגרמים חוסכת את המעבר על כינויי כל הספרים בכל הקלדה — היא
     // קבוצת-על, ולכן הלולאה שמתחתיה נשארת הפוסקת היחידה על הדירוג.
@@ -589,8 +604,13 @@ class ReferenceBooksCache {
     final fuzzyCandidates = _fuzzyCandidateBooks(queryWords);
 
     for (final book in BooksCache.instance.books) {
+      if (allowsBook != null &&
+          !allowsBook(book.id, book.filePath ?? '', book.fileType)) {
+        continue;
+      }
       final t = _normalizedTitles[book.id] ?? '';
       if (t.isEmpty) continue;
+      if (book.fileType == 'pdf') visibleDbPdfTitles?.add(book.title);
 
       int? matchRank;
       String? matchedTerm;
@@ -672,6 +692,13 @@ class ReferenceBooksCache {
 
     // Search file-system PDF books
     for (final (t, baseHit) in _fsPdfBooks) {
+      if ((visibleDbPdfTitles ?? _dbPdfTitles).contains(baseHit.title)) {
+        continue;
+      }
+      if (allowsBook != null &&
+          !allowsBook(baseHit.bookId, baseHit.filePath, baseHit.fileType)) {
+        continue;
+      }
       int? matchRank;
       if (t == q) {
         matchRank = 0;
@@ -739,11 +766,16 @@ class ReferenceBooksCache {
     CommentaryEra era,
     List<String> topicTokens, {
     int limit = 200,
+    bool Function(int bookId, String filePath, String fileType)? allowsBook,
   }) {
     if (topicTokens.isEmpty) return const <ReferenceBookHit>[];
 
     final hits = <ReferenceBookHit>[];
     for (final book in BooksCache.instance.books) {
+      if (allowsBook != null &&
+          !allowsBook(book.id, book.filePath ?? '', book.fileType)) {
+        continue;
+      }
       final path = _categoryPaths[book.id];
       if (path == null || path.isEmpty) continue;
       if (eraFromCategoryPath(path) != era) continue;

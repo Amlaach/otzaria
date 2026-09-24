@@ -14,7 +14,11 @@ import 'package:otzaria/find_ref/repository/attached_find_ref_worker.dart';
 import 'package:otzaria/find_ref/repository/db_commentator_entry.dart';
 import 'package:otzaria/find_ref/repository/db_reference_result.dart';
 import 'package:otzaria/find_ref/repository/find_ref_db_isolate.dart';
+import 'package:otzaria/find_ref/repository/find_ref_visibility.dart';
 import 'package:otzaria/find_ref/repository/reference_books_cache.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/search/utils/foundational_book_classifier.dart';
@@ -55,6 +59,44 @@ final Object _searchGenerationZoneKey = Object();
 class FindRefRepository {
   int _searchGeneration = 0;
   bool _disposed = false;
+  final bool respectHiddenLibrary;
+  HiddenLibrarySelection? _visibilitySelection;
+  Library? _visibilityLibrary;
+  FindRefVisibility? _visibility;
+
+  Future<FindRefVisibility> _currentVisibility() async {
+    if (!respectHiddenLibrary) return FindRefVisibility.empty();
+    var selection = const HiddenLibraryStore().load();
+    if (selection.isEmpty) {
+      if (_visibilitySelection == selection && _visibility != null) {
+        return _visibility!;
+      }
+      if (_visibilitySelection != selection) _commentatorsCache.clear();
+      _visibilitySelection = selection;
+      _visibilityLibrary = null;
+      _visibility = FindRefVisibility.empty();
+      return _visibility!;
+    }
+    final library = await _awaitCurrent(
+      (dataRepository ?? DataRepository.instance).library,
+    );
+    selection = const HiddenLibraryStore().load();
+    if (selection.isEmpty) {
+      if (_visibilitySelection != selection) _commentatorsCache.clear();
+      _visibilitySelection = selection;
+      _visibilityLibrary = null;
+      return _visibility = FindRefVisibility.empty();
+    }
+    if (selection == _visibilitySelection &&
+        identical(library, _visibilityLibrary) &&
+        _visibility != null) {
+      return _visibility!;
+    }
+    _commentatorsCache.clear();
+    _visibilitySelection = selection;
+    _visibilityLibrary = library;
+    return _visibility = FindRefVisibility(selection, library);
+  }
 
   /// Invalidates an in-flight search before the debounce starts. Worker work
   /// already running may finish, but its continuation must not submit more.
@@ -289,6 +331,7 @@ class FindRefRepository {
 
   FindRefRepository({
     this.dataRepository,
+    this.respectHiddenLibrary = false,
     this.warmUpReferenceBooksCache,
     this.isReferenceBooksCacheLoaded,
     this.libraryDatabaseExists,
@@ -360,6 +403,9 @@ class FindRefRepository {
     _altBookIdsCache = null;
     _userBooksCache = null;
     _attachedBooksCache.clear();
+    _visibility = null;
+    _visibilityLibrary = null;
+    _visibilitySelection = null;
   }
 
   /// חימום מוקדם (best-effort) של קאש ה-AltToc הגלובלי, כדי שהחיפוש הראשון
@@ -505,6 +551,7 @@ class FindRefRepository {
     List<DbReferenceResult> results,
     List<String> queryTokens, {
     int? maxRefTokens,
+    FindRefVisibility? visibility,
   }) async {
     try {
       // מסלול הייצור: הסינון רץ בתוך ה-worker isolate ומחזיר רק התאמות —
@@ -513,6 +560,14 @@ class FindRefRepository {
       if (searchFn != null) {
         final rows = await searchFn(queryTokens, maxRefTokens: maxRefTokens);
         for (final r in rows) {
+          if (visibility != null &&
+              !visibility.allowsCandidate(
+                BookSource.official,
+                r['bookId'] as int,
+                '',
+              )) {
+            continue;
+          }
           final bookTitle = r['bookTitle'] as String;
           results.add(
             DbReferenceResult(
@@ -535,6 +590,14 @@ class FindRefRepository {
 
       final flat = await _getAltTocFlatCache();
       for (final entry in flat) {
+        if (visibility != null &&
+            !visibility.allowsCandidate(
+              BookSource.official,
+              entry.bookId,
+              '',
+            )) {
+          continue;
+        }
         // Require that ALL query tokens appear in the matched reference.
         // Prevents partial matches from unrelated books (e.g., "הפטרת נח"
         // matching only "נח" when the query is "נח עליה ב").
@@ -590,6 +653,7 @@ class FindRefRepository {
     if (ref.isPdf || ref.bookId <= 0 || !ref.source.isOfficial) return const [];
 
     final cacheKey = _cacheKeyFor(ref);
+    await _currentVisibility();
     final cached = _commentatorsCache[cacheKey];
     if (cached != null) return cached;
 
@@ -611,6 +675,7 @@ class FindRefRepository {
     if (fetchFn == null) return const [];
 
     final rows = await fetchFn(ref);
+    final currentVisibility = await _currentVisibility();
 
     // dedupe על `(title, bookId)` ולא רק `title`: שני מפרשים שונים יכולים
     // לחלוק אותה כותרת ולהיבדל ב-`targetBookId` (למשל "רש"י" שיש לו
@@ -625,6 +690,7 @@ class FindRefRepository {
       final title = row['targetBookTitle'] as String?;
       if (title == null || title.isEmpty) continue;
       final int? bookId = row['targetBookId'] as int?;
+      if (!currentVisibility.allowsCommentator(title, bookId)) continue;
       if (!seen.add((title, bookId))) continue;
 
       // `targetLineIndex` — המיקום המקביל הראשון בספר המפרש על פני הקטע.
@@ -657,6 +723,10 @@ class FindRefRepository {
         ),
     ];
 
+    if (respectHiddenLibrary &&
+        currentVisibility.selection != const HiddenLibraryStore().load()) {
+      return const [];
+    }
     _commentatorsCache[cacheKey] = sorted;
     return sorted;
   }
@@ -753,19 +823,48 @@ class FindRefRepository {
       if (!cacheLoaded()) throw const ReferenceLibraryNotReadyException();
     }
 
+    final visibility = await _currentVisibility();
+
     // מצב "דור + נושא": "ראשונים סנהדרין" / "סנהדרין ראשונים" → כל הראשונים על
     // סנהדרין. מזוהה בכל מיקום בשאילתה. אם הוא לא מחזיר תוצאות — נופלים למסלול
     // הרגיל כדי שהשאילתה תמיד תעשה משהו סביר.
     final eraQuery = _detectEraQuery(queryTokens);
     if (eraQuery != null) {
       final eraResults = await _awaitCurrent(
-        _findByEra(eraQuery.era, eraQuery.topicTokens),
+        _findByEra(eraQuery.era, eraQuery.topicTokens, visibility),
       );
       if (eraResults.isNotEmpty) return eraResults;
     }
 
-    final searchBooks =
-        searchReferenceBooks ?? ReferenceBooksCache.instance.search;
+    List<ReferenceBookHit> searchBooks(String query, {int limit = 50}) {
+      final injected = searchReferenceBooks;
+      if (injected != null) {
+        final hits = injected(query, limit: limit);
+        if (visibility.selection.isEmpty) return hits;
+        return hits
+            .where(
+              (hit) => visibility.allowsCandidate(
+                BookSource.official,
+                hit.bookId,
+                hit.filePath,
+                fileType: hit.fileType,
+              ),
+            )
+            .toList();
+      }
+      return ReferenceBooksCache.instance.search(
+        query,
+        limit: limit,
+        allowsBook: visibility.selection.isEmpty
+            ? null
+            : (id, path, type) => visibility.allowsCandidate(
+                BookSource.official,
+                id,
+                path,
+                fileType: type,
+              ),
+      );
+    }
 
     // Prefer matching the longest leading phrase (up to 3 tokens) as the book key.
     // This supports multi-word acronyms like "שוע אוח".
@@ -946,15 +1045,24 @@ class FindRefRepository {
       if (queryTokens.first.length >= 2) {
         final start = results.length;
         await _awaitCurrent(
-          _addGlobalAltTocMatches(results, queryTokens, maxRefTokens: 2),
+          _addGlobalAltTocMatches(
+            results,
+            queryTokens,
+            maxRefTokens: 2,
+            visibility: visibility.selection.isEmpty ? null : visibility,
+          ),
         );
         directMatches.addAll(results.skip(start));
       }
 
       if (includePersonalBooks) {
-        results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
         results.addAll(
-          await _awaitCurrent(_searchAttachedLibraries(queryTokens)),
+          await _awaitCurrent(_searchPersonalBooks(queryTokens, visibility)),
+        );
+        results.addAll(
+          await _awaitCurrent(
+            _searchAttachedLibraries(queryTokens, visibility),
+          ),
         );
       }
 
@@ -1272,14 +1380,22 @@ class FindRefRepository {
     );
     if (!perBookHasSpecificMatch && queryTokens.length >= 2) {
       final start = results.length;
-      await _awaitCurrent(_addGlobalAltTocMatches(results, queryTokens));
+      await _awaitCurrent(
+        _addGlobalAltTocMatches(
+          results,
+          queryTokens,
+          visibility: visibility.selection.isEmpty ? null : visibility,
+        ),
+      );
       directMatches.addAll(results.skip(start));
     }
 
     if (includePersonalBooks) {
-      results.addAll(await _awaitCurrent(_searchPersonalBooks(queryTokens)));
       results.addAll(
-        await _awaitCurrent(_searchAttachedLibraries(queryTokens)),
+        await _awaitCurrent(_searchPersonalBooks(queryTokens, visibility)),
+      );
+      results.addAll(
+        await _awaitCurrent(_searchAttachedLibraries(queryTokens, visibility)),
       );
     }
 
@@ -1355,10 +1471,39 @@ class FindRefRepository {
   Future<List<DbReferenceResult>> _findByEra(
     CommentaryEra era,
     List<String> topicTokens,
+    FindRefVisibility visibility,
   ) async {
-    final searchFn =
-        searchByEraAndTopic ?? ReferenceBooksCache.instance.searchByEraAndTopic;
-    final hits = searchFn(era, topicTokens, limit: _maxResultCap);
+    final injected = searchByEraAndTopic;
+    final List<ReferenceBookHit> hits;
+    if (injected != null) {
+      final candidates = injected(era, topicTokens, limit: _maxResultCap);
+      hits = visibility.selection.isEmpty
+          ? candidates
+          : candidates
+                .where(
+                  (hit) => visibility.allowsCandidate(
+                    BookSource.official,
+                    hit.bookId,
+                    hit.filePath,
+                    fileType: hit.fileType,
+                  ),
+                )
+                .toList();
+    } else {
+      hits = ReferenceBooksCache.instance.searchByEraAndTopic(
+        era,
+        topicTokens,
+        limit: _maxResultCap,
+        allowsBook: visibility.selection.isEmpty
+            ? null
+            : (id, path, type) => visibility.allowsCandidate(
+                BookSource.official,
+                id,
+                path,
+                fileType: type,
+              ),
+      );
+    }
     if (hits.isEmpty) return const [];
 
     final results = [
@@ -1423,6 +1568,7 @@ class FindRefRepository {
 
   Future<List<DbReferenceResult>> _searchPersonalBooks(
     List<String> queryTokens,
+    FindRefVisibility visibility,
   ) async {
     try {
       // רשימת הספרים האישיים נטענת מקאש בזיכרון (ראה [_loadUserBooks]) — כך
@@ -1433,6 +1579,7 @@ class FindRefRepository {
       return await _searchSecondaryBooks(
         queryTokens,
         books: allBooks,
+        visibility: visibility,
         source: BookSource.user,
         rootPath: 'ספרים אישיים',
         fetchToc: (bookId, bookTitle, qt) async {
@@ -1462,6 +1609,7 @@ class FindRefRepository {
   /// נחקר דרך המאגר המוקשח שלו: כותרת, כינויים, תוכן עניינים ו-`line_ref`.
   Future<List<DbReferenceResult>> _searchAttachedLibraries(
     List<String> queryTokens,
+    FindRefVisibility visibility,
   ) async {
     final out = <DbReferenceResult>[];
     final registry = AttachedLibraryRegistry.instance;
@@ -1495,6 +1643,7 @@ class FindRefRepository {
             _searchSecondaryBooks(
               queryTokens,
               books: books,
+              visibility: visibility,
               source: source,
               rootPath: library.displayName,
               maxTocBooks: maxAttachedTocBooks,
@@ -1615,6 +1764,7 @@ class FindRefRepository {
   Future<List<DbReferenceResult>> _searchSecondaryBooks(
     List<String> queryTokens, {
     required List<_UserBookRecord> books,
+    required FindRefVisibility visibility,
     required BookSource source,
     required String rootPath,
     required Future<List<Map<String, dynamic>>> Function(
@@ -1648,7 +1798,17 @@ class FindRefRepository {
     }
 
     final matches = <(_UserBookRecord, List<String>)>[];
+    final restrict = !visibility.selection.isEmpty;
     for (final book in books) {
+      if (restrict &&
+          !visibility.allowsCandidate(
+            source,
+            book.id,
+            book.filePath ?? '',
+            fileType: book.fileType,
+          )) {
+        continue;
+      }
       final titleTokens = _tokenize(_normalizeForMatch(book.title));
 
       var nameTokens = titleTokens;

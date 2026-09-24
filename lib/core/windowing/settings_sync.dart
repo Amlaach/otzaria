@@ -25,7 +25,7 @@ import 'package:otzaria/core/windowing/window_bus.dart';
 ///
 /// ⚠️ אין כאן פתרון להתנגשויות, ובמכוון: הגדרה היא ערך יחיד שהמשתמש שינה
 /// בחלון אחד, ואין "מיזוג" של שתי בחירות. האחרון קובע, וזה גם מה שהמשתמש
-/// מצפה שיקרה.
+/// מצפה שיקרה. בחירות ההסתרה מאוחדות בנפרד אצל חלון המארח.
 class SettingsSync {
   SettingsSync._();
 
@@ -62,6 +62,30 @@ class SettingsSync {
   /// מפתחות שהשתנו **בחלון אחר**. מי שמאזין צריך לטעון מחדש את ה-state
   /// שנגזר מהם.
   Stream<String> get changes => _changes.stream;
+
+  /// מחיל בחירה שאושרה במארח כיחידה אחת, בלי לשדר אותה אליו שוב.
+  Future<bool> applyAuthoritativeValues(Map<String, Object?> values) async {
+    final apply = applyLocally;
+    if (apply == null) return false;
+    final appliedKeys = <String>[];
+    var succeeded = true;
+    _applyingRemote = true;
+    try {
+      for (final entry in values.entries) {
+        await apply(entry.key, entry.value);
+        appliedKeys.add(entry.key);
+      }
+    } catch (error) {
+      debugPrint('SettingsSync: failed to apply authoritative values: $error');
+      succeeded = false;
+    } finally {
+      _applyingRemote = false;
+    }
+    for (final key in appliedKeys) {
+      _changes.add(key);
+    }
+    return succeeded;
+  }
 
   /// ⚠️ מונע לופ. החלת שינוי מרוחק כותבת ל-box, והכתיבה הזו עוברת דרך
   /// אותם setters — בלי הדגל היא הייתה משודרת בחזרה, לנצח.

@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/models/link_types.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/pdf_book/utils/pdf_commentary_visibility.dart';
 import 'package:otzaria/shortcuts/shortcut_helper.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/bookmarks/bloc/bookmark_bloc.dart';
@@ -108,6 +113,14 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
 
   /// קבוצות המפרשים ללשונית הבחירה (נטענות מתוך links של ה-sourceTab)
   List<CommentatorGroup> _commentatorGroups = [];
+  PdfCommentaryVisibility? _visibility =
+      const HiddenLibraryStore().load().isEmpty
+      ? PdfCommentaryVisibility.empty()
+      : null;
+  StreamSubscription<dynamic>? _hiddenSelectionSubscription;
+  StreamSubscription<String>? _settingsSyncSubscription;
+  int _visibilityLoadGeneration = 0;
+  final _visibleLinksCache = PdfCommentaryVisibleLinksCache();
 
   /// משקף את מצב "הכל מורחב" מתוך PdfCommentaryPanel (לכפתור כיווץ/הרחבה בסרגל).
   final _allExpandedInChild = ValueNotifier<bool>(true);
@@ -179,6 +192,16 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
     _ensureDataLoaded();
     _loadTextContent();
     _loadCommentatorGroups();
+    _hiddenSelectionSubscription = const HiddenLibraryStore().changes.listen(
+      (_) => _refreshVisibility(),
+    );
+    _settingsSyncSubscription = SettingsSync.instance.changes.listen((key) {
+      if (key.isEmpty ||
+          key == HiddenLibraryStore.bookKeysSetting ||
+          key == HiddenLibraryStore.categoryPathsSetting) {
+        _refreshVisibility();
+      }
+    });
 
     // ממקד את חלונית המפרשים כשהטאב הופך פעיל (מעבר טאב) כדי שגלילה עם
     // החיצים תעבוד מיד בלי לחיצה.
@@ -477,27 +500,44 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
 
   /// טוען את קבוצות המפרשים (לפי תקופות) מתוך links של ה-sourceTab — זהה
   /// לחישוב שב-[PdfCommentaryPanel], לצורך לשונית "מפרשים".
+  void _refreshVisibility() {
+    if (!mounted) return;
+    setState(() {
+      _visibility = null;
+      _commentatorGroups = [];
+    });
+    _loadCommentatorGroups();
+  }
+
   Future<void> _loadCommentatorGroups() async {
+    final generation = ++_visibilityLoadGeneration;
+    final visibility = await PdfCommentaryVisibility.current();
+    if (!mounted || generation != _visibilityLoadGeneration) return;
     final commentatorsSet = <String>{};
     for (final link in widget.tab.sourceTab.links) {
-      if (LinkTypes.isDependentTextLink(link.connectionType)) {
+      if (visibility.allowsLink(link) &&
+          LinkTypes.isDependentTextLink(link.connectionType)) {
         final title = utils.getTitleFromPath(link.path2);
         commentatorsSet.add(title);
       }
     }
     final available = commentatorsSet.toList();
     await _applyDefaultCommentatorsIfNeeded(available);
+    if (!mounted || generation != _visibilityLoadGeneration) return;
     final eras = await utils.splitByEra(
       available,
       source: widget.tab.sourceTab.book.source,
       sourceByTitle: {
-        for (final link in widget.tab.sourceTab.links)
+        for (final link in widget.tab.sourceTab.links.where(
+          visibility.allowsLink,
+        ))
           utils.getTitleFromPath(link.path2): link.targetSource,
       },
     );
     final groups = buildCommentatorGroups(eras, available);
-    if (!mounted) return;
+    if (!mounted || generation != _visibilityLoadGeneration) return;
     setState(() {
+      _visibility = visibility;
       _commentatorGroups = groups;
     });
   }
@@ -525,6 +565,8 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
 
   @override
   void dispose() {
+    _hiddenSelectionSubscription?.cancel();
+    _settingsSyncSubscription?.cancel();
     FocusRepository().unregisterTabContentFocusRequester(widget.tab);
     widget.tab.sourceTab.currentTitle.removeListener(_syncWithSourceTab);
     _navTabController.removeListener(_handleTabChanged);
@@ -1071,7 +1113,8 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
 
   /// לשונית "מפרשים" — בחירת המפרשים להצגה (זהה לכרטיסיית הטקסט).
   Widget _buildCommentatorsSelectionTab() {
-    if (_commentatorGroups.isEmpty) {
+    final visibility = _visibility;
+    if (_commentatorGroups.isEmpty || visibility == null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1084,12 +1127,21 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
     }
     // מכל הקישורים הטעונים ולא מהקטע הנבחר: צ׳יפ שנגזר מהקטע נעלם בניווט
     // לקטע שאין בו אותו סוג. זהות הרשימה יציבה, ולכן ה-Expando של המימוש פוגע.
-    final allLinks = widget.tab.sourceTab.links;
+    final allLinks = _visibleLinksCache.forSource(
+      widget.tab.sourceTab.links,
+      visibility,
+    );
+    final availableTitles = allLinks
+        .where((link) => LinkTypes.isDependentTextLink(link.connectionType))
+        .map((link) => utils.getTitleFromPath(link.path2))
+        .toSet();
     final selected = widget.tab.sourceTab.activeCommentators.isEmpty
         ? allLinks
               .map((link) => utils.getTitleFromPath(link.path2))
               .toList(growable: false)
-        : widget.tab.sourceTab.activeCommentators.toList(growable: false);
+        : widget.tab.sourceTab.activeCommentators
+              .where(availableTitles.contains)
+              .toList(growable: false);
     final chipKeys = CommentaryTypeFilter.chipKeysForCommentators(
       links: allLinks,
       selectedCommentators: selected,
@@ -1104,6 +1156,7 @@ class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
         return CommentatorsSelectionPanel(
           groups: _commentatorGroups,
           selectedCommentators: widget.tab.sourceTab.activeCommentators
+              .where(availableTitles.contains)
               .toList(),
           bookTitle: widget.tab.sourceTab.book.title,
           typeChipKeys: CommentaryTypeFilter.visibleChipKeys(

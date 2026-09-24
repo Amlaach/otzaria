@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/find_ref/repository/find_ref_visibility.dart';
 import 'package:otzaria/find_ref/view/find_ref_dialog.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
 
 Category _category(String title, {Category? parent}) {
   final category = Category(
@@ -19,6 +22,31 @@ Category _category(String title, {Category? parent}) {
 }
 
 void main() {
+  test('נפילה לכותרת אינה פותחת PDF מוסתר כשמזהה התוצאה חסר בעץ', () {
+    final category = _category('תלמוד בבלי');
+    final hiddenPdf = PdfBook(id: 7, title: 'ברכות', path: '/hidden.pdf');
+    final visibleText = TextBook(id: 8, title: 'ברכות');
+    category.books.addAll([hiddenPdf, visibleText]);
+    final library = Library(categories: [category]);
+    final visibility = FindRefVisibility(
+      HiddenLibrarySelection(
+        bookKeys: {PerBookSettings.bookKey(hiddenPdf)},
+      ),
+      library,
+    );
+
+    expect(
+      resolveFindRefBookInLibrary(
+        library,
+        'ברכות',
+        bookId: 99,
+        source: BookSource.official,
+        visibility: visibility,
+      ),
+      same(visibleText),
+    );
+  });
+
   // מזהי seforim.db אינם ייחודיים מול user_books.db ומול ייצוגי PDF בעץ —
   // התאמת-id מקרית אסור שתסתיר את ספר הטקסט הרשמי או תוחזר במקומו.
   group('findOfficialTextBookById', () {

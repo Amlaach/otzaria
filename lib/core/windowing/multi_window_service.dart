@@ -10,6 +10,8 @@ import 'package:otzaria/core/messages/window_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/core/windowing/drag_preview_colors.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
 import 'package:otzaria/tabs/models/tab.dart';
 
@@ -29,6 +31,12 @@ typedef SystemDragOutcome = ({
   int? slot,
   bool isSelf,
   bool isShellTray,
+});
+
+typedef VisibilityChangeResult = ({
+  HiddenLibrarySelection? selection,
+  bool saved,
+  bool uncertain,
 });
 
 /// פותח חלונות אוצריא נוספים.
@@ -619,6 +627,96 @@ class MultiWindowService {
 
   /// פעולת אינדוקס בבקשת [requestIndex] — מחיקת האינדקס.
   static const String indexOpClear = 'clearIndex';
+
+  static const String indexOpVisibility = 'indexVisibility';
+  static const String requestIndexVisibilityResult = 'indexVisibilityResult';
+  static int _nextVisibilityRequest = 0;
+  static final Map<String, Timer> _pendingVisibilityRequests = {};
+
+  @visibleForTesting
+  static Duration visibilityRequestTimeout = const Duration(seconds: 8);
+
+  @visibleForTesting
+  static int get pendingVisibilityRequestCountForTesting =>
+      _pendingVisibilityRequests.length;
+
+  @visibleForTesting
+  static void trackVisibilityRequestForTesting(String id) {
+    _pendingVisibilityRequests[id] = Timer(const Duration(hours: 1), () {
+      _pendingVisibilityRequests.remove(id);
+    });
+  }
+
+  static void clearVisibilityRequestsForRestart() {
+    for (final timer in _pendingVisibilityRequests.values) {
+      timer.cancel();
+    }
+    _pendingVisibilityRequests.clear();
+  }
+
+  static bool completeVisibilityRequest(String id, bool success) {
+    final timer = _pendingVisibilityRequests.remove(id);
+    if (timer == null) return false;
+    timer.cancel();
+    if (!success) {
+      UiSnack.showError(SettingsMessages.hiddenBooksIndexUpdateFailed);
+    }
+    return true;
+  }
+
+  /// השינוי נשלח לפני שמירה מקומית; תשובת המארח היא הבחירה הסמכותית.
+  /// תוצאת האינדוקס מגיעה בהודעה נפרדת אחרי סיום פעולת ה-writer.
+  Future<VisibilityChangeResult> requestVisibilityChange(
+    HiddenLibrarySelection base,
+    HiddenLibrarySelection requested,
+  ) async {
+    final bus = WindowBus.instance;
+    final owner = bus.ownerPort;
+    final slot = bus.slot;
+    if (owner == null || slot == null) {
+      return (selection: null, saved: false, uncertain: false);
+    }
+    final id =
+        '$slot:${DateTime.now().microsecondsSinceEpoch}:${++_nextVisibilityRequest}';
+    trackVisibilityRequestForTesting(id);
+    final response = await bus.requestPortDetailed(
+      owner,
+      {
+        'type': requestIndex,
+        'op': indexOpVisibility,
+        'fromSlot': slot,
+        'operationId': id,
+        'bookKeys': requested.bookKeys.toList(),
+        'categoryPaths': requested.categoryPaths.toList(),
+        'previousBookKeys': base.bookKeys.toList(),
+        'previousCategoryPaths': base.categoryPaths.toList(),
+      },
+      timeout: visibilityRequestTimeout,
+      label: 'owner visibility',
+    );
+    final result = response.result;
+    if (response.failure != null) {
+      _pendingVisibilityRequests.remove(id)?.cancel();
+      return (selection: null, saved: false, uncertain: true);
+    }
+    if (result is! Map ||
+        result['bookKeys'] is! List ||
+        result['categoryPaths'] is! List ||
+        result['saved'] is! bool) {
+      _pendingVisibilityRequests.remove(id)?.cancel();
+      return (selection: null, saved: false, uncertain: false);
+    }
+    return (
+      selection: HiddenLibrarySelection(
+        bookKeys: (result['bookKeys'] as List).whereType<String>().toSet(),
+        categoryPaths: (result['categoryPaths'] as List)
+            .whereType<String>()
+            .toSet(),
+      ),
+      saved: result['saved'] as bool,
+      uncertain: false,
+    );
+  }
 
   /// מבקש מהמארח לבצע פעולת אינדוקס. מחזיר true רק אם הוא אישר קבלה.
   ///

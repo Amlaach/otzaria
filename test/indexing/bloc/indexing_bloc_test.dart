@@ -4,19 +4,26 @@ import 'dart:ui';
 
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/attached_libraries/models/attached_library.dart';
 import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
+import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
 import 'package:otzaria/indexing/bloc/indexing_event.dart';
 import 'package:otzaria/indexing/bloc/indexing_state.dart';
 import 'package:otzaria/indexing/models/indexing_run_result.dart';
 import 'package:otzaria/indexing/repository/indexing_repository.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/settings/services/custom_folders/custom_folder.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
+
+import '../../test_helpers/memory_cache_provider.dart';
 
 /// ⚠️ קידומת ייחודית לסוויטה: [IsolateNameServer] גלובלי לתהליך, ושתי
 /// סוויטות שרצות יחד היו תופסות את אותו כינוי בעלים.
@@ -24,6 +31,9 @@ const String _busNamespace = 'otzaria.test.indexingbloc';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    await Settings.init(cacheProvider: MemoryCacheProvider());
+  });
 
   const failure = IndexingFailure(
     bookTitle: 'מוגן',
@@ -171,6 +181,262 @@ void main() {
     );
   });
 
+  group('שחזור הגדרות הסתרה', () {
+    final startupMessages = <String>[];
+    blocTest<IndexingBloc, IndexingState>(
+      'כשל ניקוי הסתרות בעלייה מדווח כשהחיפוש עלול לחשוף ספר',
+      setUp: () async {
+        startupMessages.clear();
+        await const HiddenLibraryStore().save(
+          HiddenLibrarySelection(
+            bookKeys: {
+              PerBookSettings.bookKey(TextBook(id: 1, title: 'ספר 0')),
+            },
+          ),
+        );
+      },
+      build: () => IndexingBloc(
+        _FakeIndexingRepository()..dropHiddenSucceeded = false,
+        showHiddenReconciliationError: startupMessages.add,
+      ),
+      act: (bloc) => bloc.add(ReconcileHiddenIndex(libraryWithBooks())),
+      expect: () => [isA<IndexingError>()],
+      verify: (_) => expect(startupMessages, [
+        SettingsMessages.hiddenBooksIndexUpdateFailed,
+      ]),
+      tearDown: () =>
+          const HiddenLibraryStore().save(const HiddenLibrarySelection()),
+    );
+
+    blocTest<IndexingBloc, IndexingState>(
+      'כשל תחזוקה ללא הסתרות אינו מציג הודעה מיותרת',
+      setUp: () async {
+        startupMessages.clear();
+        await const HiddenLibraryStore().clearPendingIndexReconciliation();
+        await const HiddenLibraryStore().save(const HiddenLibrarySelection());
+      },
+      build: () => IndexingBloc(
+        _FakeIndexingRepository()..dropHiddenSucceeded = false,
+        showHiddenReconciliationError: startupMessages.add,
+      ),
+      act: (bloc) => bloc.add(ReconcileHiddenIndex(libraryWithBooks())),
+      expect: () => [isA<IndexingError>()],
+      verify: (_) => expect(startupMessages, isEmpty),
+    );
+
+    blocTest<IndexingBloc, IndexingState>(
+      'marker מתנקה גם כאשר כל הספרים הוסתרו',
+      setUp: () async {
+        await const HiddenLibraryStore().markIndexReconciliationPending();
+        await const HiddenLibraryStore().save(
+          HiddenLibrarySelection(
+            bookKeys: {
+              PerBookSettings.bookKey(TextBook(id: 1, title: 'ספר 0')),
+            },
+          ),
+        );
+      },
+      build: _FakeIndexingBloc.new,
+      act: (bloc) => bloc.add(
+        ReconcileHiddenIndex(
+          libraryWithBooks(),
+          indexVisible: true,
+          clearRestoreMarker: true,
+        ),
+      ),
+      verify: (bloc) {
+        expect(repositoryOf(bloc).dropHiddenCalls, 1);
+        expect(repositoryOf(bloc).indexAllCalls, 0);
+        expect(
+          const HiddenLibraryStore().hasPendingIndexReconciliation,
+          isFalse,
+        );
+      },
+      tearDown: () =>
+          const HiddenLibraryStore().save(const HiddenLibrarySelection()),
+    );
+
+    blocTest<IndexingBloc, IndexingState>(
+      'marker מתנקה אחרי ניקוי והשלמת אינדוקס',
+      setUp: () => const HiddenLibraryStore().markIndexReconciliationPending(),
+      build: _FakeIndexingBloc.new,
+      act: (bloc) => bloc.add(
+        ReconcileHiddenIndex(
+          libraryWithBooks(),
+          indexVisible: true,
+          clearRestoreMarker: true,
+        ),
+      ),
+      verify: (bloc) {
+        expect(repositoryOf(bloc).dropHiddenCalls, 1);
+        expect(repositoryOf(bloc).indexAllCalls, 1);
+        expect(
+          const HiddenLibraryStore().hasPendingIndexReconciliation,
+          isFalse,
+        );
+      },
+    );
+
+    blocTest<IndexingBloc, IndexingState>(
+      'marker נשאר אחרי כשל במחיקת ספרים מוסתרים',
+      setUp: () => const HiddenLibraryStore().markIndexReconciliationPending(),
+      build: () => _FakeIndexingBloc(
+        _FakeIndexingRepository()..dropHiddenSucceeded = false,
+      ),
+      act: (bloc) => bloc.add(
+        ReconcileHiddenIndex(
+          libraryWithBooks(),
+          indexVisible: true,
+          clearRestoreMarker: true,
+        ),
+      ),
+      verify: (bloc) {
+        expect(repositoryOf(bloc).indexAllCalls, 0);
+        expect(
+          const HiddenLibraryStore().hasPendingIndexReconciliation,
+          isTrue,
+        );
+      },
+    );
+
+    for (final scenario in ['throw', 'cancel', 'unclean']) {
+      final messages = <String>[];
+      blocTest<IndexingBloc, IndexingState>(
+        'כשל אינדוקס $scenario משאיר marker בלי הודעה כפולה',
+        setUp: () async {
+          messages.clear();
+          await const HiddenLibraryStore().markIndexReconciliationPending();
+        },
+        build: () {
+          final repository = _FakeIndexingRepository();
+          if (scenario == 'throw') {
+            repository.error = StateError('index failed');
+          } else if (scenario == 'cancel') {
+            repository.result = const IndexingRunResult.cancelled(
+              processedBooks: 0,
+              totalBooks: 1,
+              indexedBooks: 0,
+            );
+          } else {
+            repository.result = const IndexingRunResult.completed(
+              processedBooks: 1,
+              totalBooks: 1,
+              indexedBooks: 0,
+              failures: [failure],
+            );
+          }
+          return IndexingBloc(
+            repository,
+            showHiddenReconciliationError: messages.add,
+            reportFailures: (_, _) {},
+          );
+        },
+        act: (bloc) => bloc.add(
+          ReconcileHiddenIndex(
+            libraryWithBooks(),
+            indexVisible: true,
+            clearRestoreMarker: true,
+          ),
+        ),
+        verify: (bloc) {
+          expect(
+            const HiddenLibraryStore().hasPendingIndexReconciliation,
+            isTrue,
+          );
+          if (scenario == 'unclean') {
+            expect(bloc.state, const IndexingComplete(failures: [failure]));
+            expect(messages, isEmpty);
+          } else {
+            expect(messages, [SettingsMessages.hiddenBooksIndexUpdateFailed]);
+          }
+        },
+      );
+    }
+  });
+
+  group('סימון שינויי הסתרה', () {
+    const store = HiddenLibraryStore();
+
+    setUp(() async {
+      await store.resetRuntimeStateForAppRestart();
+      await store.clearPendingVisibilityIndex(store.visibilityRevision);
+      await store.clearPendingIndexReconciliation();
+    });
+
+    test('שתי פעולות ברצף מנקות marker רק בסיום האחרונה', () async {
+      final first = await store.beginVisibilityIndexUpdate();
+      final second = await store.beginVisibilityIndexUpdate();
+      await store.completeVisibilityIndexUpdate(first, true);
+      expect(store.hasPendingVisibilityIndex, isTrue);
+      await store.completeVisibilityIndexUpdate(second, true);
+      expect(store.hasPendingVisibilityIndex, isFalse);
+    });
+
+    test('התאמת startup אינה מנקה marker של שמירה שעדיין בתהליך', () async {
+      final revision = await store.beginVisibilityIndexUpdate();
+      await store.clearPendingVisibilityIndex(revision);
+      expect(store.hasPendingVisibilityIndex, isTrue);
+      await store.completeVisibilityIndexUpdate(revision, true);
+      expect(store.hasPendingVisibilityIndex, isFalse);
+    });
+
+    test('כשל מוקדם משאיר marker גם אחרי פעולה מאוחרת מוצלחת', () async {
+      final first = await store.beginVisibilityIndexUpdate();
+      final second = await store.beginVisibilityIndexUpdate();
+      await store.completeVisibilityIndexUpdate(first, false);
+      await store.completeVisibilityIndexUpdate(second, true);
+      expect(store.hasPendingVisibilityIndex, isTrue);
+      await store.clearPendingVisibilityIndex(store.visibilityRevision);
+    });
+
+    test('השלמת delta אינה מנקה marker של שחזור גיבוי', () async {
+      await store.markIndexReconciliationPending();
+      final revision = await store.beginVisibilityIndexUpdate();
+      await store.completeVisibilityIndexUpdate(revision, true);
+      expect(store.hasPendingVisibilityIndex, isFalse);
+      expect(store.hasPendingIndexReconciliation, isTrue);
+      await store.clearPendingIndexReconciliation();
+    });
+
+    blocTest<IndexingBloc, IndexingState>(
+      'התאמה בעלייה מנקה visibility marker רק אחרי אינדוקס נקי',
+      setUp: () async {
+        await store.beginVisibilityIndexUpdate();
+        await store.resetRuntimeStateForAppRestart();
+      },
+      build: _FakeIndexingBloc.new,
+      act: (bloc) => bloc.add(
+        ReconcileHiddenIndex(
+          libraryWithBooks(),
+          indexVisible: true,
+          clearVisibilityMarker: true,
+          visibilityRevision: store.visibilityRevision,
+        ),
+      ),
+      verify: (_) => expect(store.hasPendingVisibilityIndex, isFalse),
+    );
+
+    blocTest<IndexingBloc, IndexingState>(
+      'התאמה שנכשלה משאירה visibility marker לפתיחה הבאה',
+      setUp: () async {
+        await store.beginVisibilityIndexUpdate();
+        await store.resetRuntimeStateForAppRestart();
+      },
+      build: () => _FakeIndexingBloc(
+        _FakeIndexingRepository()..error = StateError('index failed'),
+      ),
+      act: (bloc) => bloc.add(
+        ReconcileHiddenIndex(
+          libraryWithBooks(),
+          indexVisible: true,
+          clearVisibilityMarker: true,
+          visibilityRevision: store.visibilityRevision,
+        ),
+      ),
+      verify: (_) => expect(store.hasPendingVisibilityIndex, isTrue),
+    );
+  });
+
   group('חלון משני', () {
     late _FakeOwnerWindow owner;
 
@@ -308,6 +574,40 @@ void main() {
   });
 
   group('עבודות אינדוקס נוספות', () {
+    for (final throwsError in [false, true]) {
+      final completions = <bool>[];
+      blocTest<IndexingBloc, IndexingState>(
+        'תוצאת הסרת ספר מוסתר מדווחת אחרי כשל ${throwsError ? 'throw' : 'false'}',
+        setUp: () => const HiddenLibraryStore().clearPendingVisibilityIndex(
+          const HiddenLibraryStore().visibilityRevision,
+        ),
+        build: () => _FakeIndexingBloc(
+          _FakeIndexingRepository()
+            ..dropBookSucceeded = false
+            ..dropBookThrows = throwsError,
+        ),
+        act: (bloc) {
+          final library = libraryWithBooks();
+          bloc.add(
+            ApplyHiddenIndexDelta(
+              library,
+              newlyHidden: library.books,
+              newlyVisible: const [],
+              onCompleted: completions.add,
+            ),
+          );
+        },
+        expect: () => [isA<IndexingError>()],
+        verify: (_) {
+          expect(completions, [false]);
+          expect(
+            const HiddenLibraryStore().hasPendingVisibilityIndex,
+            isTrue,
+          );
+        },
+      );
+    }
+
     blocTest<IndexingBloc, IndexingState>(
       'IndexSpecificBooks מפיץ כשל מפורט',
       build: () {
@@ -674,6 +974,10 @@ class _FakeIndexingRepository extends IndexingRepository {
   int reindexCalls = 0;
   int reconcileCalls = 0;
   int dropOrphanedCalls = 0;
+  int dropHiddenCalls = 0;
+  bool dropHiddenSucceeded = true;
+  bool dropBookSucceeded = true;
+  bool dropBookThrows = false;
   int cancelCalls = 0;
   int pauseCalls = 0;
   int resumeCalls = 0;
@@ -766,6 +1070,18 @@ class _FakeIndexingRepository extends IndexingRepository {
   }
 
   @override
+  Future<bool> dropHiddenIndexEntries(Library library) async {
+    dropHiddenCalls++;
+    return dropHiddenSucceeded;
+  }
+
+  @override
+  Future<bool> dropBookIndexEntries(Iterable<Book> books) async {
+    if (dropBookThrows) throw StateError('drop failed');
+    return dropBookSucceeded;
+  }
+
+  @override
   Future<void> awaitReady() async {
     awaitReadyCalls++;
   }
@@ -775,6 +1091,10 @@ class _FakeIndexingRepository extends IndexingRepository {
 
   @override
   bool isBookIndexed(Book book) => allBooksIndexed;
+
+  @override
+  Future<bool> hasUnindexedBooks(Library library) async =>
+      library.getIndexableBooks().isNotEmpty && !allBooksIndexed;
 
   @override
   bool isIndexing() => true;

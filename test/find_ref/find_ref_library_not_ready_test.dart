@@ -10,6 +10,9 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/find_ref/repository/reference_books_cache.dart';
 
 class _FakeRepository implements FindRefRepository {
+  @override
+  bool get respectHiddenLibrary => false;
+
   _FakeRepository(this._error);
 
   final Object _error;

@@ -32,8 +32,13 @@ class DataRepository {
   static Duration attachedAcronymsWait = const Duration(milliseconds: 300);
 
   Future<Library>? _libraryFuture;
+  @visibleForTesting
+  Future<Library>? get cachedLibraryFutureForTesting => _libraryFuture;
   Future<Library> get library => _libraryFuture ??= _getLibrary();
   set library(Future<Library> value) => _libraryFuture = value;
+
+  /// לאחר החלפת נתיב ספרייה, הקריאה הבאה חייבת לבנות את העץ מהנתיב החדש.
+  void invalidateLibraryCache() => _libraryFuture = null;
 
   // Lazy-loaded: only fetched when user actually searches for external books.
   // Previously these ran getAllBooksWithRelations() eagerly at startup,

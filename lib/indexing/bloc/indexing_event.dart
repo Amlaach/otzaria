@@ -65,6 +65,51 @@ class DropOrphanedIndexEntries extends IndexingWorkEvent {
   List<Object?> get props => [library];
 }
 
+/// מסנכרן רשומות מוסתרות באינדקס; לפי בקשה מאנדקס גם ספרים שחזרו להיות גלויים.
+class ReconcileHiddenIndex extends IndexingWorkEvent {
+  final Library library;
+  final bool indexVisible;
+  final bool clearRestoreMarker;
+  final bool clearVisibilityMarker;
+  final int? visibilityRevision;
+
+  const ReconcileHiddenIndex(
+    this.library, {
+    this.indexVisible = false,
+    this.clearRestoreMarker = false,
+    this.clearVisibilityMarker = false,
+    this.visibilityRevision,
+  });
+
+  @override
+  List<Object?> get props => [
+    library,
+    indexVisible,
+    clearRestoreMarker,
+    clearVisibilityMarker,
+    visibilityRevision,
+  ];
+}
+
+class ApplyHiddenIndexDelta extends IndexingWorkEvent {
+  final Library library;
+  final List<Book> newlyHidden;
+  final List<Book> newlyVisible;
+  final void Function(bool success)? onCompleted;
+  final int? visibilityRevision;
+
+  const ApplyHiddenIndexDelta(
+    this.library, {
+    required this.newlyHidden,
+    required this.newlyVisible,
+    this.onCompleted,
+    this.visibilityRevision,
+  });
+
+  @override
+  List<Object?> get props => [library, newlyHidden, newlyVisible];
+}
+
 class CheckIndexStatus extends IndexingEvent {
   final Library library;
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/theme/app_tokens.dart';
@@ -80,6 +81,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
   bool _applyTextMaxWidth = PageShapeSettingsManager.getApplyTextMaxWidth();
   List<CommentatorGroup> _groups = [];
   bool _isLoadingGroups = true;
+  int _groupsLoadGeneration = 0;
   bool _highlightRelatedCommentators = false;
   Map<String, bool> _columnVisibility = {
     'left': true,
@@ -101,6 +103,42 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
     super.initState();
     _loadCurrentSettings();
     _loadCommentatorGroups();
+  }
+
+  @override
+  void didUpdateWidget(covariant PageShapeSettingsPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentLeft != widget.currentLeft) {
+      _leftCommentator = widget.currentLeft;
+    }
+    if (oldWidget.currentRight != widget.currentRight) {
+      _rightCommentatorSelection = widget.currentRight;
+    }
+    if (oldWidget.currentBottom != widget.currentBottom) {
+      _bottomCommentator = widget.currentBottom;
+    }
+    if (oldWidget.currentBottomRight != widget.currentBottomRight) {
+      _bottomRightCommentator = widget.currentBottomRight;
+    }
+
+    final availableChanged =
+        !listEquals(
+          oldWidget.availableCommentators,
+          widget.availableCommentators,
+        ) ||
+        oldWidget.bookSource != widget.bookSource;
+    if (oldWidget.currentRight != widget.currentRight || availableChanged) {
+      _rightSingleCommentator = resolvePageShapeSingleCommentatorSelection(
+        selection: _rightCommentatorSelection,
+        availableCommentators: widget.availableCommentators,
+        commentedBookTitle: widget.bookTitle,
+      );
+    }
+    if (availableChanged) {
+      _isLoadingGroups = true;
+      _groups = [];
+      _loadCommentatorGroups();
+    }
   }
 
   void _loadCurrentSettings() {
@@ -171,13 +209,15 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
   }
 
   Future<void> _loadCommentatorGroups() async {
+    final generation = ++_groupsLoadGeneration;
+    final available = widget.availableCommentators;
     final eras = await utils.splitByEra(
-      widget.availableCommentators,
+      available,
       source: widget.bookSource,
     );
-    final groups = buildCommentatorGroups(eras, widget.availableCommentators);
+    final groups = buildCommentatorGroups(eras, available);
 
-    if (mounted) {
+    if (mounted && generation == _groupsLoadGeneration) {
       setState(() {
         _groups = groups;
         _isLoadingGroups = false;
@@ -249,6 +289,7 @@ class _PageShapeSettingsPanelState extends State<PageShapeSettingsPanel> {
     void Function(String?) setter, {
     String? visibilityKey,
   }) {
+    if (value != null && !widget.availableCommentators.contains(value)) return;
     setState(() {
       setter(value);
       // אם בחרו מפרש והטור מוסתר - הצג אותו אוטומטית

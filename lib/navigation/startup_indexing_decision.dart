@@ -11,6 +11,9 @@ enum StartupIndexingDecision {
   /// להתחיל אינדוקס רגיל.
   startIndexing,
 
+  /// שינויי הסתרה שלא הושלמו מחייבים התאמת אינדקס גם כשהעדכון האוטומטי כבוי.
+  reconcileHiddenIndex,
+
   /// רק לבדוק את סטטוס האינדקס - כשהעדכון האוטומטי כבוי, או שכל
   /// הספרים כבר מאונדקסים ואין עבודה אמיתית להריץ.
   checkIndexStatus,
@@ -25,11 +28,15 @@ StartupIndexingDecision decideStartupIndexing({
   required bool requiresManualReindex,
   required bool autoUpdateIndex,
   required bool hasUnindexedBooks,
+  bool hasPendingHiddenReconciliation = false,
 }) {
   if (requiresManualReindex) {
     return autoUpdateIndex
         ? StartupIndexingDecision.autoReindexThenStart
         : StartupIndexingDecision.promptManualReindex;
+  }
+  if (hasPendingHiddenReconciliation) {
+    return StartupIndexingDecision.reconcileHiddenIndex;
   }
   return autoUpdateIndex && hasUnindexedBooks
       ? StartupIndexingDecision.startIndexing

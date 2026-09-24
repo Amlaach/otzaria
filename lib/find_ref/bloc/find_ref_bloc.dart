@@ -5,6 +5,8 @@ import 'package:otzaria/find_ref/repository/find_ref_db_isolate.dart';
 import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_state.dart';
 import 'package:otzaria/find_ref/repository/db_reference_result.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart';
 
@@ -22,6 +24,7 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
   /// ולא מהבהבת ספינר על אותן תוצאות בדיוק.
   String? _shownNormalizedQuery;
   bool? _shownIncludePersonalBooks;
+  HiddenLibrarySelection? _shownVisibility;
   int _requestGeneration = 0;
 
   /// השאילתה שכבר קיבלה ניסיון חוזר אחרי ביטול זר. מונעת לולאת ניסיונות
@@ -49,10 +52,14 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
     Emitter<FindRefState> emit,
   ) async {
     final normalized = normalizeForFindRefMatch(event.refText);
+    final visibility = findRefRepository.respectHiddenLibrary
+        ? const HiddenLibraryStore().load()
+        : const HiddenLibrarySelection();
     if (event.refText.length >= 2 &&
         state is FindRefSuccess &&
         normalized == _shownNormalizedQuery &&
-        event.includePersonalBooks == _shownIncludePersonalBooks) {
+        event.includePersonalBooks == _shownIncludePersonalBooks &&
+        visibility == _shownVisibility) {
       return;
     }
 
@@ -61,6 +68,7 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
     if (event.refText.length < 2) {
       _shownNormalizedQuery = null;
       _shownIncludePersonalBooks = null;
+      _shownVisibility = null;
       _retriedQuery = null;
       emit(const FindRefSuccess([]));
       return;
@@ -84,6 +92,7 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
       if (emit.isDone || requestGeneration != _requestGeneration) return;
       _shownNormalizedQuery = normalized;
       _shownIncludePersonalBooks = event.includePersonalBooks;
+      _shownVisibility = visibility;
       _retriedQuery = null;
       emit(FindRefSuccess(refs, query: event.refText));
     } on ReferenceLibraryNotReadyException {
@@ -123,6 +132,7 @@ class FindRefBloc extends Bloc<FindRefEvent, FindRefState> {
     findRefRepository.cancelPendingSearch();
     _shownNormalizedQuery = null;
     _shownIncludePersonalBooks = null;
+    _shownVisibility = null;
     _retriedQuery = null;
     emit(FindRefInitial());
   }

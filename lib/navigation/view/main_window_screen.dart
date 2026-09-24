@@ -40,6 +40,7 @@ import 'package:otzaria/find_ref/view/find_ref_dialog.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_event.dart';
 import 'package:otzaria/find_ref/bloc/find_ref_state.dart';
 import 'package:otzaria/library/models/library.dart' as library_model;
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/search/models/search_configuration.dart';
 import 'package:otzaria/search/search_defaults.dart';
 import 'package:otzaria/search/view/search_dialog.dart';
@@ -1044,13 +1045,20 @@ class MainWindowScreenState extends State<MainWindowScreen>
       return;
     }
 
+    final pendingReconciliation = _pendingHiddenReconciliation(library);
     final decision = decideStartupIndexing(
       requiresManualReindex: requiresManualReindex,
       autoUpdateIndex: autoUpdateIndex,
       hasUnindexedBooks: hasUnindexedBooks,
+      hasPendingHiddenReconciliation: pendingReconciliation != null,
     );
 
     switch (decision) {
+      case StartupIndexingDecision.reconcileHiddenIndex:
+        _startupWorkGate.markIndexingDecisionResolved(expectIndexing: true);
+        _tryStartDeferredStartupWork();
+        context.read<IndexingBloc>().add(pendingReconciliation!);
+        return;
       case StartupIndexingDecision.autoReindexThenStart:
         if (!await _indexingRepository.clearIndex()) {
           return;
@@ -1060,7 +1068,9 @@ class MainWindowScreenState extends State<MainWindowScreen>
         }
         _startupWorkGate.markIndexingDecisionResolved(expectIndexing: true);
         _tryStartDeferredStartupWork();
-        context.read<IndexingBloc>().add(StartIndexing(library));
+        context.read<IndexingBloc>().add(
+          pendingReconciliation ?? StartIndexing(library),
+        );
         return;
       case StartupIndexingDecision.promptManualReindex:
         _startupWorkGate.markIndexingDecisionResolved(expectIndexing: false);
@@ -1078,6 +1088,22 @@ class MainWindowScreenState extends State<MainWindowScreen>
         context.read<IndexingBloc>().add(CheckIndexStatus(library));
         return;
     }
+  }
+
+  ReconcileHiddenIndex? _pendingHiddenReconciliation(
+    library_model.Library library,
+  ) {
+    const store = HiddenLibraryStore();
+    final restore = store.hasPendingIndexReconciliation;
+    final visibility = store.hasPendingVisibilityIndex;
+    if (!restore && !visibility) return null;
+    return ReconcileHiddenIndex(
+      library,
+      indexVisible: true,
+      clearRestoreMarker: restore,
+      clearVisibilityMarker: visibility,
+      visibilityRevision: visibility ? store.visibilityRevision : null,
+    );
   }
 
   Future<void> _showStartupManualReindexDialog(
@@ -1111,7 +1137,9 @@ class MainWindowScreenState extends State<MainWindowScreen>
       }
 
       _startupWorkGate.markIndexingDecisionResolved(expectIndexing: true);
-      indexingBloc.add(StartIndexing(library));
+      indexingBloc.add(
+        _pendingHiddenReconciliation(library) ?? StartIndexing(library),
+      );
     } finally {
       _isShowingStartupManualReindexDialog = false;
     }
@@ -2672,12 +2700,18 @@ class MainWindowScreenState extends State<MainWindowScreen>
               // החלטת האינדוקס צורכת את הקטלוג שזה עתה נטען — כך אין קריאה
               // עצמאית ל-getLibrary שתתחרה בטעינת הספר הפעיל בעלייה.
               if (state.library != null) {
-                _checkAndStartIndexing(context, state.library!);
-                // ניקוי רשומות אינדקס של ספרים שכבר אינם בספרייה (ספר אישי
-                // שנמחק, תיקייה שהוסרה). רץ על כל טעינת/רענון ספרייה, בתור
-                // העבודה הסדרתי — אחרי מסלולי האינדוקס של אותו רענון.
-                context.read<IndexingBloc>().add(
-                  DropOrphanedIndexEntries(state.library!),
+                unawaited(
+                  DataRepository.instance.library.then((library) {
+                    if (!mounted || !context.mounted) return;
+                    context.read<IndexingBloc>().add(
+                      ReconcileHiddenIndex(library),
+                    );
+                    _checkAndStartIndexing(context, library);
+                    // ניקוי יתומים חייב לקבל את העץ המלא, כולל מהדורות מחוץ לעץ.
+                    context.read<IndexingBloc>().add(
+                      DropOrphanedIndexEntries(library),
+                    );
+                  }),
                 );
               }
               final navigationState = context.read<NavigationBloc>().state;
@@ -2698,9 +2732,10 @@ class MainWindowScreenState extends State<MainWindowScreen>
                 (current.completedRefreshRequestIds?.isNotEmpty ?? false) ||
                 (current.newBooksToIndex?.isNotEmpty ?? false) ||
                 (current.changedBooksToIndex?.isNotEmpty ?? false),
-            listener: (context, state) {
-              final library = state.library;
-              if (library == null) return;
+            listener: (context, state) async {
+              if (state.library == null) return;
+              final library = await DataRepository.instance.library;
+              if (!mounted || !context.mounted) return;
               final resolved = resolveCompletedIndexRequests(
                 pendingRequests: _pendingIndexRequests,
                 completedRequestIds: state.completedRefreshRequestIds,

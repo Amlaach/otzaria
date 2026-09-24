@@ -4,6 +4,7 @@ import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/core/messages/window_messages.dart';
+import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/window_role.dart';
@@ -15,12 +16,14 @@ import 'package:otzaria/indexing/services/indexing_failure_reporter.dart';
 import 'package:otzaria/indexing/services/indexing_wakelock.dart';
 import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/library/models/library.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
 import 'package:otzaria/models/books.dart';
 
 class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
   final IndexingRepository _repository;
   final void Function(IndexingRunResult result, Duration elapsed)
   _reportFailures;
+  final void Function(String message) _showHiddenReconciliationError;
   int _nextWorkId = 0;
   int? _activeWorkId;
   bool _isPaused = false;
@@ -30,7 +33,10 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
   IndexingBloc(
     this._repository, {
     void Function(IndexingRunResult result, Duration elapsed)? reportFailures,
+    void Function(String message)? showHiddenReconciliationError,
   }) : _reportFailures = reportFailures ?? IndexingFailureReporter.write,
+       _showHiddenReconciliationError =
+           showHiddenReconciliationError ?? UiSnack.showError,
        super(IndexingInitial()) {
     on<IndexingWorkEvent>(_onIndexingWork, transformer: sequential());
     on<CheckIndexStatus>(_onCheckIndexStatus);
@@ -110,6 +116,88 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
       return;
     }
 
+    if (event is ReconcileHiddenIndex) {
+      var success = false;
+      try {
+        if (!await _repository.dropHiddenIndexEntries(event.library)) {
+          throw StateError('מחיקת ספרים מוסתרים מהאינדקס נכשלה');
+        }
+        if (event.indexVisible) {
+          if (_repository.eligibleBookCount(event.library) == 0) {
+            emit(const IndexingComplete());
+          } else {
+            await _onStartIndexing(StartIndexing(event.library), emit);
+          }
+        }
+        success =
+            !event.indexVisible ||
+            (state is IndexingComplete && (state as IndexingComplete).isClean);
+        if (success) {
+          if (event.clearRestoreMarker) {
+            await const HiddenLibraryStore().clearPendingIndexReconciliation();
+          }
+          if (event.clearVisibilityMarker && event.visibilityRevision != null) {
+            await const HiddenLibraryStore().clearPendingVisibilityIndex(
+              event.visibilityRevision!,
+            );
+          }
+        }
+      } catch (error) {
+        success = false;
+        emit(IndexingError(error.toString()));
+      }
+      if (!success &&
+          state is! IndexingComplete &&
+          (event.indexVisible ||
+              !const HiddenLibraryStore().load().isEmpty ||
+              const HiddenLibraryStore().hasPendingIndexReconciliation ||
+              const HiddenLibraryStore().hasPendingVisibilityIndex)) {
+        _showHiddenReconciliationError(
+          SettingsMessages.hiddenBooksIndexUpdateFailed,
+        );
+      }
+      return;
+    }
+
+    if (event is ApplyHiddenIndexDelta) {
+      var success = false;
+      try {
+        if (event.newlyHidden.isNotEmpty &&
+            !await _repository.dropBookIndexEntries(event.newlyHidden)) {
+          throw StateError('מחיקת ספרים מוסתרים מהאינדקס נכשלה');
+        }
+        if (event.newlyVisible.isNotEmpty) {
+          await _onBooksWork(
+            event.newlyVisible,
+            event.library,
+            emit,
+            reindex: false,
+          );
+          success =
+              state is IndexingComplete && (state as IndexingComplete).isClean;
+        } else {
+          success = true;
+        }
+      } catch (error) {
+        emit(IndexingError(error.toString()));
+      }
+      try {
+        if (event.visibilityRevision != null) {
+          await const HiddenLibraryStore().completeVisibilityIndexUpdate(
+            event.visibilityRevision!,
+            success,
+          );
+        } else if (!success) {
+          await const HiddenLibraryStore().beginVisibilityIndexUpdate();
+        }
+      } catch (error) {
+        success = false;
+        debugPrint('Failed to update visibility index marker: $error');
+      }
+      event.onCompleted?.call(success);
+      return;
+    }
+
     if (event is DropOrphanedIndexEntries) {
       // עבודת רקע שקטה — בלי מצבי התקדמות; כשל אינו קריטי (ינוקה ברענון הבא).
       try {
@@ -130,10 +218,10 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
     final runClock = Stopwatch()..start();
     _activeWorkId = workId;
 
-    final totalCandidates = event.library
-        .getIndexableBooks()
-        .where((b) => IndexingRepository.isIndexableBook(b))
-        .length;
+    final totalCandidates = _repository.eligibleBookCount(
+      event.library,
+      includePdfBooks: false,
+    );
     if (totalCandidates == 0) {
       _activeWorkId = null;
       return;
@@ -213,8 +301,7 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
 
     // Set initial state
     // מחשב מראש את totalBooks כדי לשדר אותו מיד
-    final allBooks = event.library.getIndexableBooks();
-    final totalBooks = allBooks.length;
+    final totalBooks = _repository.eligibleBookCount(event.library);
     if (totalBooks == 0) {
       emit(IndexingInitial());
       return;
@@ -319,7 +406,7 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
       return;
     }
 
-    final totalBooks = books.length;
+    final totalBooks = _repository.eligibleBookCount(library, books: books);
     emit(_inProgress(booksProcessed: 0, totalBooks: totalBooks));
 
     try {
@@ -391,18 +478,10 @@ class IndexingBloc extends Bloc<IndexingEvent, IndexingState> {
       return;
     }
 
-    final indexableBooks = event.library
-        .getIndexableBooks()
-        .where(IndexingRepository.isIndexableBook)
-        .toList();
-
-    if (indexableBooks.isEmpty) {
-      emit(const IndexingComplete());
-      return;
-    }
-
-    final allIndexed = indexableBooks.every(_repository.isBookIndexed);
-    emit(allIndexed ? const IndexingComplete() : IndexingInitial());
+    final hasUnindexedBooks = await _repository.hasUnindexedBooks(
+      event.library,
+    );
+    emit(hasUnindexedBooks ? IndexingInitial() : const IndexingComplete());
   }
 
   /// Handles the CancelIndexing event

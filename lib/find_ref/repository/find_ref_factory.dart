@@ -5,7 +5,7 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 /// בונה [FindRefRepository] מחווט ל-[FindRefDbIsolate] לכל שאילתות `seforim.db`
 /// הכבדות (TOC/AltToc/מפרשים/דור), כך שלא יקפיאו את ה-UI.
 /// משותף בין דיאלוג "איתור מקורות" לבין פתיחת ספר במיקום מתוך תוספים.
-FindRefRepository buildFindRefRepository() {
+FindRefRepository buildFindRefRepository({bool respectHiddenLibrary = true}) {
   final scope = FindRefDbIsolate.allocateSearchScope();
   late final FindRefRepository repository;
 
@@ -17,6 +17,7 @@ FindRefRepository buildFindRefRepository() {
 
   repository = FindRefRepository(
     dataRepository: DataRepository.instance,
+    respectHiddenLibrary: respectHiddenLibrary,
     getTocEntriesForReference: (bookId, bookTitle, {queryTokens}) async {
       final request = await searchWorker();
       repository.throwIfSearchGenerationCancelled(request.epoch);

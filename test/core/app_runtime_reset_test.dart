@@ -6,6 +6,7 @@ import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
 import 'package:otzaria/data/data_providers/file_system_library_provider.dart';
 import 'package:otzaria/data/data_providers/library_provider.dart';
 import 'package:otzaria/data/data_providers/library_provider_manager.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
 import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/models/books.dart';
@@ -153,5 +154,23 @@ void main() {
     await resetRuntimeStateAfterSettingsReset();
 
     expect(FileSystemData.instance.libraryPath, isNot(oldLibraryPath));
+  });
+
+  test('restart מבטל עץ ספרייה ישן לאחר שינוי נתיב בגיבוי', () async {
+    final oldTree = Future.value(Library(categories: []));
+    DataRepository.instance.library = oldTree;
+    expect(
+      DataRepository.instance.cachedLibraryFutureForTesting,
+      same(oldTree),
+    );
+
+    await Settings.setValue<String>(
+      SettingsRepository.keyLibraryPath,
+      'C:/restored-library',
+    );
+    await resetRuntimeStateForAppRestart();
+
+    expect(FileSystemData.instance.libraryPath, 'C:/restored-library');
+    expect(DataRepository.instance.cachedLibraryFutureForTesting, isNull);
   });
 }

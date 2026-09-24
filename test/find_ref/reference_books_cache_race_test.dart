@@ -9,6 +9,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/data/cache/acronyms_cache.dart';
 import 'package:otzaria/data/cache/books_cache.dart';
+import 'package:otzaria/data/data_providers/book_composite_key.dart';
+import 'package:otzaria/data/data_providers/file_system_library_provider.dart';
 import 'package:otzaria/find_ref/repository/reference_books_cache.dart';
 import 'package:otzaria/migration/database/daos/database.dart';
 import 'package:otzaria/migration/database/repository/seforim_repository.dart';
@@ -30,6 +32,7 @@ void main() {
 
     // ניקוי שלושת הקאשים לסטטוס ידוע — singletons שמשותפים בין טסטים.
     ReferenceBooksCache.instance.clear();
+    FileSystemLibraryProvider.instance.resetForTesting();
     BooksCache.instance.clear();
     AcronymsCache.instance.clear();
     // warmUp לא מסמן loaded על קאש ריק (ראה קבוצת "קאש ריק" למטה), ולכן
@@ -51,11 +54,56 @@ void main() {
   });
 
   tearDown(() {
+    FileSystemLibraryProvider.instance.resetForTesting();
     ReferenceBooksCache.instance.categoriesProviderOverride = null;
     ReferenceBooksCache.instance.pdfOutlineCacheRepositoryOverride = null;
     ReferenceBooksCache.instance.pdfFileMetadataProviderOverride = null;
     ReferenceBooksCache.instance.nowProviderOverride = null;
     cacheDb.close();
+  });
+
+  test('PDF ממערכת הקבצים נשמר כמועמד כשמקבילו במסד מוסתר', () async {
+    const title = 'PDF משותף';
+    const dbPath = '/library/database.pdf';
+    const fsPath = '/library/filesystem.pdf';
+    BooksCache.instance.setBooksForTesting(const [
+      BookCacheEntry(
+        id: 81,
+        title: title,
+        filePath: dbPath,
+        fileType: 'pdf',
+        categoryId: 2,
+        orderIndex: 0,
+      ),
+    ]);
+    FileSystemLibraryProvider.instance.seedKeyToPathForTesting(
+      keyToPath: {
+        BookCompositeKey.create(
+          title: title,
+          categoryId: 2,
+          fileType: 'pdf',
+        ).toStorageKey(): fsPath,
+      },
+    );
+    final cache = ReferenceBooksCache.instance;
+    final originalParser = cache.pdfOutlineParser;
+    addTearDown(() => cache.pdfOutlineParser = originalParser);
+    cache.categoriesProviderOverride = () async => const [];
+    cache.pdfOutlineParser = (_) async => const [];
+    cache.pdfFileMetadataProviderOverride = (_) async => null;
+
+    await cache.warmUp();
+    expect(cache.isLoaded, isTrue);
+    expect(cache.search(title).map((hit) => hit.filePath), [dbPath]);
+    expect(
+      cache
+          .search(
+            title,
+            allowsBook: (id, path, type) => path != dbPath,
+          )
+          .map((hit) => hit.filePath),
+      [fsPath],
+    );
   });
 
   group('ReferenceBooksCache — race condition מול clear()', () {
