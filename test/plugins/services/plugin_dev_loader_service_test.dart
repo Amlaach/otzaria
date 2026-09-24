@@ -68,6 +68,8 @@ class FakePluginRegistryRepository extends Mock
   Future<void> updatePinState(String id, bool pinned) async {}
 }
 
+class _RealHttpOverrides extends HttpOverrides {}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   PackageInfo.setMockInitialValues(
@@ -470,6 +472,30 @@ void main() {
             'new dev plugin should be appended after the manual '
             'block — not inserted before it',
       );
+    });
+
+    // issue #1481: ה-URL הגיע לסריקת קבצים, ו-Directory.existsSync זרק ב-Windows.
+    test('fetchLocalhostManifest does not treat the URL as a folder', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) {
+        request.response
+          ..headers.contentType = ContentType.json
+          ..write(
+            File(p.join(tempDir.path, 'manifest.json')).readAsStringSync(),
+          )
+          ..close();
+      });
+
+      // TestWidgetsFlutterBinding מחליף את HttpClient בכזה שמחזיר תמיד 400.
+      final manifest = await HttpOverrides.runWithHttpOverrides(
+        () => devLoader.fetchLocalhostManifest(
+          'http://localhost:${server.port}',
+        ),
+        _RealHttpOverrides(),
+      );
+
+      expect(manifest.id, 'test.dev.repo.plugin');
     });
   });
 }
