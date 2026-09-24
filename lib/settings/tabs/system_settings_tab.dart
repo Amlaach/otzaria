@@ -26,6 +26,8 @@ import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
 import 'package:otzaria/settings/dialogs/settings_dialogs_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/safer_process_guard.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/settings/services/offline_send_target.dart';
 import 'package:otzaria/settings/panels/app_reports_panel.dart';
 import 'package:otzaria/app_report/services/crash_report_decision.dart';
@@ -2154,13 +2156,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
               return;
             }
             final dir = file.parent;
-            if (Platform.isWindows) {
-              await Process.run('explorer', [dir.path]);
-            } else if (Platform.isMacOS) {
-              await Process.run('open', [dir.path]);
-            } else if (Platform.isLinux) {
-              await Process.run('xdg-open', [dir.path]);
-            }
+            await SaferProcessGuard.openInFileManager(context, dir.path);
           },
           icon: FluentIcons.checkmark_circle_24_regular,
         );
@@ -2744,13 +2740,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
                 onOpenFolder: () {
                   final path = _resolvedBackupPath;
                   if (path.isEmpty) return;
-                  if (Platform.isWindows) {
-                    unawaited(Process.run('explorer', [path]));
-                  } else if (Platform.isMacOS) {
-                    unawaited(Process.run('open', [path]));
-                  } else if (Platform.isLinux) {
-                    unawaited(Process.run('xdg-open', [path]));
-                  }
+                  unawaited(SaferProcessGuard.openInFileManager(context, path));
                 },
                 onClearPath: () {
                   Settings.setValue<String>(
@@ -3019,7 +3009,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
               child: MarkdownBody(
                 data: changelog,
                 onTapLink: (text, href, title) {
-                  if (href != null) launchUrl(Uri.parse(href));
+                  if (href != null) saferLaunchUrl(ctx, Uri.parse(href));
                 },
               ),
             ),

@@ -8,6 +8,7 @@ import 'package:otzaria/services/book_details_service.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/misc/app_selection_area.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 // ביטוי רגולרי להסרת תווים מפרידים (מקפים, קווים תחתונים, רווחים)
 final _sourceNormalizationRegex = RegExp(r'[-_\s]');
@@ -312,10 +313,10 @@ class _SourceCredit extends StatelessWidget {
 
   final ({String text, String url, String logo}) info;
 
-  Future<void> _openSource() async {
+  Future<void> _openSource(BuildContext context) async {
     final uri = Uri.parse(info.url);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+      await saferLaunchUrl(context, uri);
     }
   }
 
@@ -351,7 +352,7 @@ class _SourceCredit extends StatelessWidget {
           );
 
     if (!hasUrl) return content;
-    return InkWell(onTap: _openSource, child: content);
+    return InkWell(onTap: () => _openSource(context), child: content);
   }
 }
 
@@ -395,7 +396,8 @@ class _TashmaCopyrightNoticeState extends State<_TashmaCopyrightNotice> {
       ..onTap = () async {
         final uri = Uri.parse(_tashmaUrl);
         if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
+          if (!mounted) return;
+          await saferLaunchUrl(context, uri);
         }
       };
   }

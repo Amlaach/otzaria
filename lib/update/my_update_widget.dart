@@ -38,6 +38,7 @@ import 'tree_swap.dart';
 import 'windows_installer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 
 export 'differential/swap_recovery.dart' show differentialWorkDirectory;
 
@@ -77,7 +78,9 @@ bool managesUpdatesInThisWindow({
   required bool isSecondaryWindow,
   required bool isWeb,
   required String operatingSystem,
+  bool isKiosk = false,
 }) {
+  if (isKiosk) return false;
   if (isDebug) return false;
   // בדיקה, הורדה והתקנה הן פר-תהליך: חלון נוסף היה בודק, מוריד לאותו נתיב
   // ומתקין במקביל לראשון.
@@ -630,6 +633,7 @@ class MyUpdatWidget extends StatelessWidget {
       isSecondaryWindow: WindowRole.isSecondary,
       isWeb: kIsWeb,
       operatingSystem: Platform.operatingSystem,
+      isKiosk: isKioskMode,
     )) {
       return child;
     }
@@ -1363,6 +1367,13 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   }
 
   Future<void> _launchInstallerDirect({required bool relaunchApp}) async {
+    if (isKioskMode) {
+      UiSnack.show('עדכון תוכנה חסום במצב קיוסק');
+      return;
+    }
+    if (context.mounted && !await verifySaferModePassword(context)) {
+      return;
+    }
     final installer = _installerFile;
     if (installer == null) return;
 

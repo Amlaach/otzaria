@@ -8,6 +8,7 @@ import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
@@ -647,6 +648,12 @@ class _CalendarSettingsTabState extends State<CalendarSettingsTab> {
   }
 
   Future<void> _importIcsFile(BuildContext context) async {
+    if (isKioskMode) {
+      UiSnack.show('ייבוא קבצים חסום במצב קיוסק');
+      return;
+    }
+    if (!await verifySaferModePassword(context)) return;
+    if (!context.mounted) return;
     final cubit = context.read<CalendarCubit>();
     final result = await FilePicker.pickFile(
       type: FileType.custom,

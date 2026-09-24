@@ -41,6 +41,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/plugins/bridge/plugin_save_target.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/misc/middle_click_autoscroll.dart';
 import 'package:otzaria/plugins/view/plugin_dev_error_view.dart';
@@ -198,6 +199,7 @@ bool shouldHandleCreationFailure({
 
 InAppWebViewSettings buildPluginTabWebViewSettings({
   required bool isDevelopment,
+  bool disableContextMenu = false,
 }) {
   return InAppWebViewSettings(
     allowFileAccessFromFileURLs: false,
@@ -213,7 +215,8 @@ InAppWebViewSettings buildPluginTabWebViewSettings({
     supportZoom: false,
     pinchZoomEnabled: false,
     cacheEnabled: !isDevelopment,
-    isInspectable: isDevelopment || kDebugMode,
+    isInspectable: (isDevelopment || kDebugMode) && !isKioskMode,
+    disableContextMenu: disableContextMenu || isKioskMode,
     resourceCustomSchemes: pluginAssetSchemeEnabled
         ? const [pluginAssetScheme]
         : const [],
@@ -405,7 +408,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
         );
       },
       pickFolder: ({String? title}) async {
-        if (!mounted) return null;
+        if (!mounted || isKioskMode) return null;
         if (!await verifySaferModePassword(context)) return null;
         if (!mounted) return null;
         return FilePicker.getDirectoryPath(
@@ -415,7 +418,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
         );
       },
       pickFile: ({List<String>? allowedExtensions, String? title}) async {
-        if (!mounted) return null;
+        if (!mounted || isKioskMode) return null;
         if (!await verifySaferModePassword(context)) return null;
         if (!mounted) return null;
         final hasExtensions =
@@ -435,7 +438,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
             List<String>? allowedExtensions,
             String? title,
           }) async {
-            if (!mounted) return null;
+            if (!mounted || isKioskMode) return null;
             if (!await verifySaferModePassword(context)) return null;
             if (!mounted) return null;
             final folder = await FilePicker.getDirectoryPath(
@@ -880,6 +883,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
       ),
       initialSettings: buildPluginTabWebViewSettings(
         isDevelopment: widget.plugin.isDevelopment,
+        disableContextMenu: shouldRequireSaferModePassword(context),
       ),
       // Stub SDK — injected BEFORE any page JS runs
       initialUserScripts: UnmodifiableListView<UserScript>([
@@ -890,8 +894,12 @@ class _PluginTabPageState extends State<PluginTabPage> {
         buildPluginDropGuardScript(),
         buildPluginLinkifyScript(auto: widget.plugin.manifest.autoLinkify),
       ]),
+      onCreateWindow: (controller, createWindowAction) async => false,
       onShowFileChooser: (controller, showFileChooserRequest) async {
-        if (!mounted) {
+        if (!mounted || isKioskMode) {
+          if (isKioskMode) {
+            UiSnack.show('בחירת קבצים חסומה במצב קיוסק');
+          }
           return ShowFileChooserResponse(
             handledByClient: true,
             filePaths: null,

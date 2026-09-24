@@ -8,6 +8,7 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/core/messages/notes_messages.dart';
 import 'package:otzaria/navigation/view/main_window_screen.dart';
@@ -641,7 +642,8 @@ class PersonalNotesSidebarState extends State<PersonalNotesSidebar>
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     if (uri.scheme == 'http' || uri.scheme == 'https') {
-      final launched = await launchUrl(
+      final launched = await saferLaunchUrl(
+        context,
         uri,
         mode: LaunchMode.externalApplication,
       );

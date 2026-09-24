@@ -64,6 +64,7 @@ import 'package:otzaria/update/my_update_widget.dart';
 import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
 import 'package:otzaria/widgets/dialogs/ad_popup_dialog.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/safer_process_guard.dart';
 import 'package:otzaria/main.dart'
     show appWindowListener, presentMainWindow, startupRecoveryVerified;
 import 'package:otzaria/core/splash_screen.dart' show SplashIcon;
@@ -1383,6 +1384,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
       case OpenPdfBookAction():
         return await _openPdfBookByExternalId(action);
       case InstallPluginAction(:final request):
+        if (!await verifySaferModePassword(context)) return true;
         context.read<PluginSystemBloc>().add(
           InstallRemotePluginRequested(
             request.downloadUri.toString(),
@@ -1392,6 +1394,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
         return true;
       case InstallLocalPluginAction(:final archivePath):
+        if (!await verifySaferModePassword(context)) return true;
         context.read<PluginSystemBloc>().add(
           InstallPluginRequested(archivePath),
         );
@@ -3700,16 +3703,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
   }
 
   Future<void> _openErrorLogFile() async {
-    if (!await verifySaferModePassword(context)) return;
-    ErrorLogFile.ensureExists();
-    final path = ErrorLogFile.resolvePath();
-    if (Platform.isWindows) {
-      unawaited(Process.run('explorer', [path]));
-    } else if (Platform.isMacOS) {
-      unawaited(Process.run('open', [path]));
-    } else if (Platform.isLinux) {
-      unawaited(Process.run('xdg-open', [path]));
-    }
+    await SaferProcessGuard.openErrorLog(context);
   }
 
   int? _pageIndexForScreen(Screen screen) {

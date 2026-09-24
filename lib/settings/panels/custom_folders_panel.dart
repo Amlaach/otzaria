@@ -20,7 +20,7 @@ import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/widgets/dialogs/zip_extraction_progress_dialog.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
-import 'package:otzaria/utils/file/document_format.dart';
+import 'package:otzaria/settings/services/safer_process_guard.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 
 /// סיווג הרכב הקבצים בתיקייה מותאמת אישית — קובע אילו אפשרויות אחסון
@@ -226,16 +226,9 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
     bloc.add(ToggleAddToDatabase(folder, toDatabase));
   }
 
-  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה.
+  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה באופן מאובטח.
   void _openInFileManager(String path) {
-    if (path.isEmpty) return;
-    if (Platform.isWindows) {
-      unawaited(Process.run('explorer', [path]));
-    } else if (Platform.isMacOS) {
-      unawaited(Process.run('open', [path]));
-    } else if (Platform.isLinux) {
-      unawaited(Process.run('xdg-open', [path]));
-    }
+    unawaited(SaferProcessGuard.openInFileManager(context, path));
   }
 
   /// קובע אם התיקייה תמוזג לעץ הספרייה. `null` = לפי ההגדרה הגלובלית.

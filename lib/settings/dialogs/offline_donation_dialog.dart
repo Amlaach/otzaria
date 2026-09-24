@@ -7,6 +7,7 @@ import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/widgets/misc/app_selection_area.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 /// כתובת דף התרומה של אוצריא בנדרים+.
 const String kNedarimDonationUrl = 'https://nedar.im/ezOd';
@@ -16,9 +17,10 @@ const String _fundNumber = '7001976';
 const String _fundCategory = 'אוצריא - מאגר תורני חינמי (146)';
 
 /// בלי canLaunchUrl — באנדרואיד 11+ הוא מחזיר false ל-https ומשתיק את הפתיחה.
-Future<void> _launchDonationPage() async {
+Future<void> _launchDonationPage(BuildContext? context) async {
   try {
-    await launchUrl(
+    await saferLaunchUrl(
+      context,
       Uri.parse(kNedarimDonationUrl),
       mode: LaunchMode.externalApplication,
     );
@@ -111,7 +113,7 @@ class _DonationInstructions extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               InkWell(
-                onTap: _launchDonationPage,
+                onTap: () => _launchDonationPage(context),
                 child: Text(
                   kNedarimDonationUrl,
                   textDirection: TextDirection.ltr,

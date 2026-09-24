@@ -7,6 +7,7 @@ import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/widgets/layout/adaptive_row.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:otzaria/settings/dialogs/offline_donation_dialog.dart';
@@ -20,9 +21,9 @@ import 'package:otzaria/utils/ui/image_decode_size.dart';
 
 /// פותח כתובת URL בדפדפן החיצוני.
 /// בלי canLaunchUrl — באנדרואיד 11+ הוא מחזיר false ל-https ומשתיק את הפתיחה.
-Future<void> _launchUrl(String url) async {
+Future<void> _launchUrl(BuildContext context, String url) async {
   try {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    await saferLaunchUrl(context, Uri.parse(url), mode: LaunchMode.externalApplication);
   } catch (e) {
     debugPrint('Could not launch $url: $e');
   }
@@ -222,7 +223,7 @@ class AboutSettingsTab extends StatelessWidget {
                     ),
                     ActionButton.recommended(
                       text: context.settingsText('כניסה לפורום'),
-                      onPressed: () => _openUrl('https://otzaria.org/forum'),
+                      onPressed: () => _openUrl(context, 'https://otzaria.org/forum'),
                     ),
                   ],
                 ),
@@ -283,7 +284,7 @@ class AboutSettingsTab extends StatelessWidget {
                     ActionButton.recommended(
                       text: context.settingsText('הצטרף לעריכה'),
                       onPressed: () =>
-                          _openUrl('https://www.otzaria.org/library'),
+                          _openUrl(context, 'https://www.otzaria.org/library'),
                     ),
                   ],
                 ),
@@ -375,8 +376,7 @@ class AboutSettingsTab extends StatelessWidget {
   /// עוטף widget ב-padding אחיד של 16, החוזר בכל מקטעי הכרטיסים.
   Widget _padded(Widget child) =>
       Padding(padding: const EdgeInsets.all(16), child: child);
-
-  Future<void> _openUrl(String url) => _launchUrl(url);
+  Future<void> _openUrl(BuildContext context, String url) => _launchUrl(context, url);
 
   void _openAdPopup(BuildContext context) {
     showDialog(
@@ -535,7 +535,7 @@ class _InfoChip extends StatelessWidget {
 
     if (!hasUrl) return content;
     return InkWell(
-      onTap: () => _launchUrl(url),
+      onTap: () => _launchUrl(context, url),
       borderRadius: AppTokens.borderRadiusAll,
       child: content,
     );
@@ -686,7 +686,7 @@ class _ZayitCreditState extends State<_ZayitCredit> {
   @override
   void initState() {
     super.initState();
-    _recognizer.onTap = () => _launchUrl(_url);
+    _recognizer.onTap = () => _launchUrl(context, _url);
   }
 
   @override
@@ -854,7 +854,7 @@ class _DonationButtonState extends State<_DonationButton> {
     if (!mounted) return;
     setState(() => _checkingConnection = false);
     if (connectivity.isOnline) {
-      await _launchUrl(kNedarimDonationUrl);
+      await _launchUrl(context, kNedarimDonationUrl);
     } else {
       await showOfflineDonationDialog(context);
     }

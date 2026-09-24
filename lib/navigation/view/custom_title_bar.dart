@@ -40,6 +40,7 @@ import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:otzaria/bookmarks/view/bookmark_screen.dart';
 import 'package:otzaria/workspaces/view/workspace_switcher_dialog.dart';
 import 'package:otzaria/utils/ui/fullscreen_helper.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/bloc/history_event.dart';
 import 'package:otzaria/library/bloc/library_bloc.dart';
@@ -323,7 +324,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                   context,
                                   settingsState,
                                 ),
-                                if (settingsState.isFullscreen)
+                                if (settingsState.isFullscreen && !isKioskMode)
                                   _CaptionActionButton(
                                     brightness: Theme.of(context).brightness,
                                     tooltip: 'מזער',
@@ -353,14 +354,26 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                         ).close(),
                                   ),
                                 if (!settingsState.isFullscreen)
-                                  SizedBox(
-                                    width: _kWindowCaptionButtonsWidth,
-                                    height: 50,
-                                    child: WindowCaption(
-                                      brightness: Theme.of(context).brightness,
-                                      backgroundColor: Colors.transparent,
-                                    ),
-                                  ),
+                                  isKioskMode
+                                      ? _CaptionActionButton(
+                                          brightness:
+                                              Theme.of(context).brightness,
+                                          tooltip: 'סגור',
+                                          icon: FluentIcons.dismiss_24_regular,
+                                          onPressed: () =>
+                                              AppWindowScope.controllerOf(
+                                                context,
+                                              ).close(),
+                                        )
+                                      : SizedBox(
+                                          width: _kWindowCaptionButtonsWidth,
+                                          height: 50,
+                                          child: WindowCaption(
+                                            brightness:
+                                                Theme.of(context).brightness,
+                                            backgroundColor: Colors.transparent,
+                                          ),
+                                        ),
                               ],
                             ),
                           ),

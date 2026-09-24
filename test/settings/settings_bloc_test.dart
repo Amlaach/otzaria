@@ -699,5 +699,27 @@ void main() {
         );
       });
     });
+
+    group('מצב סייפר ודגל קיוסק', () {
+      blocTest<SettingsBloc, SettingsState>(
+        'ForceKioskModeEnabled מעביר את protectedModeEnabled ל-true ושומר ברפוזיטורי',
+        build: () {
+          when(mockRepository.updateProtectedModeEnabled(true))
+              .thenAnswer((_) async {});
+          return SettingsBloc(repository: mockRepository);
+        },
+        act: (bloc) => bloc.add(const ForceKioskModeEnabled()),
+        expect: () => [
+          isA<SettingsState>().having(
+            (s) => s.protectedModeEnabled,
+            'protectedModeEnabled',
+            isTrue,
+          ),
+        ],
+        verify: (_) {
+          verify(mockRepository.updateProtectedModeEnabled(true)).called(1);
+        },
+      );
+    });
   });
 }

@@ -109,6 +109,7 @@ import 'package:otzaria/core/windowing/window_manager_app_window_controller.dart
 import 'package:otzaria/tools/shamor_zachor/providers/shamor_zachor_data_provider.dart';
 import 'package:otzaria/tools/shamor_zachor/providers/shamor_zachor_progress_provider.dart';
 import 'package:otzaria/settings/services/backup_service.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/core/http_client_registry.dart';
 import 'package:otzaria/plugins/services/plugin_report_service.dart';
 import 'package:otzaria/services/direct_error_report_service.dart';
@@ -298,15 +299,9 @@ bool _isIgnorableHardwareKeyboardAssertion(String errorString) {
       );
 }
 
-/// Application entry point that initializes necessary components and launches the app.
-///
-/// This function performs the following initialization steps:
-/// 1. Sets up custom error handlers
-/// 2. Initializes Sentry for error tracking
-/// 3. Ensures Flutter bindings are initialized
-/// 4. Calls [initialize] to set up required services and configurations
-/// 5. Launches the main application widget
 void main(List<String> args) async {
+  isKioskMode = args.contains('--kiosk') || args.contains('--safer');
+
   // לינוקס: ה-runner מסמן חלון משני בארגומנטים, כי ל-`FlDartProject` אין
   // נקודת כניסה שאינה `main`.
   if (args.isNotEmpty && args.first == MultiWindowService.secondaryWindowArg) {
@@ -1472,13 +1467,19 @@ class _AppBootstrapState extends State<AppBootstrap> {
       child: MultiBlocProvider(
         providers: [
           BlocProvider<SettingsBloc>(
-            create: (_) => StartupTimeline.instance.phaseSync(
-              'settingsBloc',
-              () => SettingsBloc(
-                repository: settingsRepository,
-                initialSettings: settingsRepository.readSettings(),
-              )..add(LoadSettings()),
-            ),
+            create: (_) {
+              final bloc = StartupTimeline.instance.phaseSync(
+                'settingsBloc',
+                () => SettingsBloc(
+                  repository: settingsRepository,
+                  initialSettings: settingsRepository.readSettings(),
+                )..add(LoadSettings()),
+              );
+              if (isKioskMode) {
+                bloc.add(const ForceKioskModeEnabled());
+              }
+              return bloc;
+            },
           ),
           BlocProvider<LibraryBloc>(
             // ה-LoadLibrary אינו נשלח כאן יותר: בניית הקטלוג (~300ms CPU על

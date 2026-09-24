@@ -39,11 +39,7 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
   }
 
   void _checkProtection() {
-    // נבדוק אם מצב סייפר מופעל
-    final state = context.read<SettingsBloc>().state;
-    final repository = context.read<SettingsRepository>();
-
-    if (!state.protectedModeEnabled || !repository.hasProtectedModePassword()) {
+    if (!shouldRequireSaferModePassword(context)) {
       // אין הגנה - נאפשר גישה ישירה
       if (mounted) {
         setState(() {
@@ -111,23 +107,20 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
               previous.protectedModeEnabled != current.protectedModeEnabled,
           listener: (context, state) {
             // אם המצב המוגן הופעל והמשתמש עדיין לא אומת
-            if (state.protectedModeEnabled && !_isVerified) {
-              final repository = context.read<SettingsRepository>();
-              if (repository.hasProtectedModePassword()) {
-                // נאפס את הסטטוס ונבקש אימות מחדש
-                setState(() {
-                  _isVerified = false;
-                  _isChecking = false;
-                  _dialogShown = false;
-                });
-                // נציג את הדיאלוג
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && !_dialogShown) {
-                    _dialogShown = true;
-                    _showPasswordDialog();
-                  }
-                });
-              }
+            if (shouldRequireSaferModePassword(context) && !_isVerified) {
+              // נאפס את הסטטוס ונבקש אימות מחדש
+              setState(() {
+                _isVerified = false;
+                _isChecking = false;
+                _dialogShown = false;
+              });
+              // נציג את הדיאלוג
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_dialogShown) {
+                  _dialogShown = true;
+                  _showPasswordDialog();
+                }
+              });
             }
           },
         ),
@@ -230,11 +223,19 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
   }
 }
 
+/// האם האפליקציה פועלת במצב קיוסק מנוהל (דגל `--kiosk` או `--safer`).
+bool isKioskMode = false;
+
 /// פונקציה עוזרת לבדיקה האם צריך אימות סיסמה במצב סייפר
 bool shouldRequireSaferModePassword(BuildContext context) {
-  final state = context.read<SettingsBloc>().state;
-  final repository = context.read<SettingsRepository>();
-  return state.protectedModeEnabled && repository.hasProtectedModePassword();
+  if (isKioskMode) return true;
+  try {
+    final state = context.read<SettingsBloc>().state;
+    final repository = context.read<SettingsRepository>();
+    return state.protectedModeEnabled && repository.hasProtectedModePassword();
+  } catch (_) {
+    return false;
+  }
 }
 
 /// פונקציה עוזרת לאימות סיסמה לפני ביצוע פעולה מוגנת במצב סייפר
@@ -243,23 +244,27 @@ Future<bool> verifySaferModePassword(BuildContext context) async {
     return true; // אין הגנה - מאושר
   }
 
-  final repository = context.read<SettingsRepository>();
+  try {
+    final repository = context.read<SettingsRepository>();
 
-  final verified = await showDialog<bool>(
-    context: context,
-    builder: settingsDialogBuilder(
-      context,
-      (ctx) => SaferModePasswordDialog(
-        title: ctx.settingsText('אמת סיסמה'),
-        hint: ctx.settingsText(
-          'הנך במצב סייפר.\nהזן את הסיסמה כדי לבצע פעולה זו',
+    final verified = await showDialog<bool>(
+      context: context,
+      builder: settingsDialogBuilder(
+        context,
+        (ctx) => SaferModePasswordDialog(
+          title: ctx.settingsText('אמת סיסמה'),
+          hint: ctx.settingsText(
+            'הנך במצב סייפר.\nהזן את הסיסמה כדי לבצע פעולה זו',
+          ),
+          onVerify: (password) async {
+            return repository.verifyProtectedModePassword(password);
+          },
         ),
-        onVerify: (password) async {
-          return repository.verifyProtectedModePassword(password);
-        },
       ),
-    ),
-  );
+    );
 
-  return verified == true;
+    return verified == true;
+  } catch (_) {
+    return false;
+  }
 }

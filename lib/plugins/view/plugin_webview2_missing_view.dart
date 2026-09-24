@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 import 'package:otzaria/core/messages/plugin_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -23,12 +24,13 @@ class PluginWebView2MissingView extends StatelessWidget {
 
   const PluginWebView2MissingView({super.key, required this.onRetry});
 
-  Future<void> _download() async {
+  Future<void> _download(BuildContext context) async {
     final uri = Uri.parse(_webView2DownloadUrl);
     // קוראים ישירות ל-launchUrl (ללא canLaunchUrl) ובודקים את ערך ההחזרה:
     // canLaunchUrl עלול להחזיר false שקרי כשאין הצהרת <queries> מתאימה.
     try {
-      final launched = await launchUrl(
+      final launched = await saferLaunchUrl(
+        context,
         uri,
         mode: LaunchMode.externalApplication,
       );
@@ -104,7 +106,7 @@ class PluginWebView2MissingView extends StatelessWidget {
                 ActionButton.recommended(
                   text: 'הורד WebView2',
                   icon: FluentIcons.arrow_download_24_regular,
-                  onPressed: _download,
+                  onPressed: () => _download(context),
                 ),
                 const SizedBox(width: 12),
                 ActionButton.neutral(

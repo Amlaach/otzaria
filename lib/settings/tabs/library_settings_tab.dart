@@ -8,6 +8,7 @@ import 'package:flutter_settings_screens/flutter_settings_screens.dart'
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/attached_libraries/view/attached_libraries_panel.dart';
 import 'package:otzaria/settings/engine/settings_engine_exports.dart';
+import 'package:otzaria/settings/services/safer_process_guard.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
 import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
@@ -250,16 +251,9 @@ class _LibrarySettingsTabState extends State<LibrarySettingsTab> {
     }
   }
 
-  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה.
+  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה באופן מאובטח.
   void _openInFileManager(String path) {
-    if (path.isEmpty) return;
-    if (Platform.isWindows) {
-      unawaited(Process.run('explorer', [path]));
-    } else if (Platform.isMacOS) {
-      unawaited(Process.run('open', [path]));
-    } else if (Platform.isLinux) {
-      unawaited(Process.run('xdg-open', [path]));
-    }
+    unawaited(SaferProcessGuard.openInFileManager(context, path));
   }
 
   /// מחיל בחירת תיקיית שורש של הספרייה: ה-DB מאותר תחת <שורש>/books, ואם אינו

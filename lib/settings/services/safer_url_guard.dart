@@ -1,0 +1,44 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:otzaria/core/ui_snack.dart' show navigatorKey;
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
+
+/// פרוטוקולים שפתיחתם מוציאה את המשתמש מהאפליקציה.
+const _kioskDangerousSchemes = {'http', 'https', 'mailto', 'tel'};
+
+/// מחליף את `launchUrl` — חוסם URL חיצוני במצב סייפר.
+///
+/// במצב קיוסק מנוהל (`--kiosk` / `--safer`) — פתיחת דפדפן או דוא"ל חסומה לחלוטין.
+/// במצב סייפר רגיל — נדרש אימות סיסמה דרך [verifySaferModePassword].
+/// אם [context] הוא null (למשל מתוך שירות רקע) — נעשה שימוש ב-[navigatorKey.currentContext].
+Future<bool> saferLaunchUrl(
+  BuildContext? context,
+  Uri uri, {
+  LaunchMode mode = LaunchMode.platformDefault,
+}) async {
+  if (_kioskDangerousSchemes.contains(uri.scheme.toLowerCase())) {
+    if (isKioskMode) {
+      // במצב קיוסק פתיחת דפדפן/דוא"ל חיצוני חסומה תמיד למניעת בריחה (Kiosk Breakout)
+      return false;
+    }
+    final effectiveContext = context ?? navigatorKey.currentContext;
+    if (effectiveContext != null && effectiveContext.mounted) {
+      if (!await verifySaferModePassword(effectiveContext)) {
+        return false;
+      }
+    }
+  }
+  return launchUrl(uri, mode: mode);
+}
+
+/// גרסת String — מנתח את ה-URL ומעביר ל-[saferLaunchUrl].
+Future<bool> saferLaunchUrlString(
+  BuildContext? context,
+  String url, {
+  LaunchMode mode = LaunchMode.platformDefault,
+}) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  return saferLaunchUrl(context, uri, mode: mode);
+}

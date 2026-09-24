@@ -23,6 +23,7 @@ import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
 import 'package:otzaria/tabs/bloc/tabs_state.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
@@ -1060,7 +1061,8 @@ class _PluginsFooter extends StatelessWidget {
             ),
           InkWell(
             borderRadius: AppTokens.borderRadiusAll,
-            onTap: () => launchUrl(
+            onTap: () => saferLaunchUrl(
+              context,
               Uri.parse(kPluginStoreUrl),
               mode: LaunchMode.externalApplication,
             ),

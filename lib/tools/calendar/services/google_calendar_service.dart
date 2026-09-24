@@ -5,6 +5,7 @@ import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'google_calendar_credentials.dart';
 
 class GoogleCalendarApiClient {
@@ -89,7 +90,8 @@ class GoogleCalendarService {
         id,
         scopes,
         (url) async {
-          await launchUrl(
+          await saferLaunchUrl(
+            null,
             Uri.parse(url),
             mode: LaunchMode.externalApplication,
           );

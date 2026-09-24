@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/widgets/misc/app_selection_area.dart';
@@ -244,7 +245,7 @@ class ReportingNumbersWidget extends StatelessWidget {
     try {
       final phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
       if (await canLaunchUrl(phoneUri)) {
-        await launchUrl(phoneUri);
+        await saferLaunchUrl(context, phoneUri);
       } else {
         if (context.mounted) {
           UiSnack.showError(CommonMessages.cannotOpenPhoneApp);

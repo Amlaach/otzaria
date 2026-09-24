@@ -22,4 +22,15 @@ void main() {
     expect(PluginMessages.fileDownloadStarted, contains('החלה'));
     expect(PluginMessages.fileDownloadStarted, isNot(contains('נשמר')));
   });
+
+  test('מצב קיוסק מבטל את ההורדה לחלוטין למניעת בריחה', () {
+    final response = PluginDownloadHandler.responseFor(
+      isWindows: true,
+      isKiosk: true,
+    );
+
+    expect(response, isNotNull);
+    expect(response!.handled, isTrue);
+    expect(response.action, equals(DownloadStartResponseAction.CANCEL));
+  });
 }

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/app_report/models/app_report_image.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
@@ -66,8 +68,18 @@ class AppReportImageSources {
     return completer.future;
   }
 
-  /// פותח את בוחר הקבצים. מחזיר רשימה ריקה בביטול.
+  /// פותח את בוחר הקבצים. מחזיר רשימה ריקה בביטול או בחסימה.
   Future<List<AppReportImage>> pickFiles() async {
+    if (isKioskMode) {
+      UiSnack.show('צירוף קבצים חסום במצב קיוסק');
+      return const [];
+    }
+    final effectiveContext = navigatorKey.currentContext;
+    if (effectiveContext != null && effectiveContext.mounted) {
+      if (!await verifySaferModePassword(effectiveContext)) {
+        return const [];
+      }
+    }
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: AppReportImage.supportedExtensions,

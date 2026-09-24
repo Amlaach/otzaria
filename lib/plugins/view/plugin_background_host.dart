@@ -758,7 +758,8 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         // ומאפשר לתוסף לכתוב לשם טקסט חופשי (window.status).
         statusBarEnabled: false,
         cacheEnabled: !widget.plugin.isDevelopment,
-        isInspectable: kDebugMode,
+        isInspectable: kDebugMode && !isKioskMode,
+        disableContextMenu: true,
         resourceCustomSchemes: _usesAssetScheme
             ? const [pluginAssetScheme]
             : const [],
@@ -770,7 +771,15 @@ class _BackgroundPluginRunnerState extends State<_BackgroundPluginRunner> {
         ),
         buildPluginDropGuardScript(),
       ]),
+      onCreateWindow: (controller, createWindowAction) async => false,
       onShowFileChooser: (controller, showFileChooserRequest) async {
+        if (isKioskMode) {
+          UiSnack.show('בחירת קבצים חסומה במצב קיוסק');
+          return ShowFileChooserResponse(
+            handledByClient: true,
+            filePaths: null,
+          );
+        }
         final ctx = navigatorKey.currentContext;
         if (ctx == null) {
           return ShowFileChooserResponse(

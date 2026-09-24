@@ -32,6 +32,7 @@ import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/personal_notes/utils/personal_notes_book_key.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/core/connectivity_status_service.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/models/books.dart';
@@ -942,7 +943,8 @@ class PluginBridgeAdapter {
         if (uri.scheme != 'http' && uri.scheme != 'https') {
           throw Exception('error.forbidden: only http/https URLs are allowed');
         }
-        final launched = await launchUrl(
+        final launched = await saferLaunchUrl(
+          null,
           uri,
           mode: LaunchMode.externalApplication,
         );
@@ -4825,9 +4827,17 @@ class PluginBridgeAdapter {
             );
         }
 
-        final placeLabel = location == ShortcutLocation.startMenu
-            ? 'תפריט ההתחל'
-            : 'שולחן העבודה';
+        if (isKioskMode) {
+          throw Exception(
+            'error.permission_denied: shortcut creation is disabled in kiosk mode',
+          );
+        }
+        final effectiveContext = navigatorKey.currentContext;
+        if (effectiveContext != null && effectiveContext.mounted) {
+          if (!await verifySaferModePassword(effectiveContext)) {
+            return {'created': false};
+          }
+        }
         final confirmed = await _dependencies.showConfirmDialog(
           title: 'יצירת קיצור דרך',
           content:
@@ -5208,7 +5218,8 @@ class PluginBridgeAdapter {
         );
 
         try {
-          final launched = await launchUrl(
+          final launched = await saferLaunchUrl(
+            null,
             emailUri,
             mode: LaunchMode.externalApplication,
           );

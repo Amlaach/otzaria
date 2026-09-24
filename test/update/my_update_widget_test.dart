@@ -62,17 +62,23 @@ void main() {
       bool isSecondaryWindow = false,
       bool isWeb = false,
       String operatingSystem = 'windows',
+      bool isKiosk = false,
     }) => managesUpdatesInThisWindow(
       isDebug: isDebug,
       isSecondaryWindow: isSecondaryWindow,
       isWeb: isWeb,
       operatingSystem: operatingSystem,
+      isKiosk: isKiosk,
     );
 
     test('חלון ראשי ב-release על שולחן עבודה — מנהל', () {
       expect(manages(), isTrue);
       expect(manages(operatingSystem: 'macos'), isTrue);
       expect(manages(operatingSystem: 'linux'), isTrue);
+    });
+
+    test('במצב קיוסק אינו מנהל עדכונים — חסום לחלוטין למניעת בריחה', () {
+      expect(manages(isKiosk: true), isFalse);
     });
 
     test('חלון משני אינו מנהל — בדיקה, הורדה והתקנה הן פר-תהליך', () {
