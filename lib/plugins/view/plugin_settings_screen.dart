@@ -219,6 +219,19 @@ class _PluginSettingsScreenState extends State<PluginSettingsScreen> {
                         );
                       }).toList(),
                 ),
+              ] else ...[
+                const SizedBox(height: 16),
+                SettingsCard(
+                  title: 'הרשאות',
+                  children: [
+                    SettingsActionTile.text(
+                      icon: FluentIcons.shield_checkmark_24_regular,
+                      iconColor: Theme.of(context).colorScheme.primary,
+                      title: 'אין הרשאות מיוחדות נדרשות',
+                      subtitle: 'תוסף זה אינו מבקש גישה למשאבים רגישים',
+                    ),
+                  ],
+                ),
               ],
               if (_userFolders.isNotEmpty) ...[
                 const SizedBox(height: 16),
