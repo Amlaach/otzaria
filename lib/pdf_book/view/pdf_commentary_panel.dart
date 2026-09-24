@@ -8,6 +8,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/widgets/misc/commentators_filter_button.dart';
 import 'package:otzaria/widgets/layout/commentators_filter_screen.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/core/windowing/settings_sync.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/pdf_book/utils/pdf_commentary_visibility.dart';
 import 'package:otzaria/data/data_providers/database_library_provider.dart';
 import 'package:otzaria/data/data_providers/library_provider_manager.dart';
 import 'package:otzaria/models/books.dart';
@@ -395,6 +398,13 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
   List<CommentaryGroup>? _lastResolvedGroups;
   _PdfVisibleContentCache? _visibleContentCache;
   List<CommentatorGroup> _commentatorGroups = [];
+  PdfCommentaryVisibility? _visibility =
+      const HiddenLibraryStore().load().isEmpty
+      ? PdfCommentaryVisibility.empty()
+      : null;
+  StreamSubscription<dynamic>? _hiddenSelectionSubscription;
+  StreamSubscription<String>? _settingsSyncSubscription;
+  int _visibilityLoadGeneration = 0;
 
   /// סינון לפי סוג מפרש (תרגום/מדרש וכו׳). מצב מקומי ולא מוגדר: הצ׳יפים תלויים
   /// בקטע הנוכחי, ובחירה שנשמרה הייתה מסננת בשקט ספר אחר שנפתח אחריו.
@@ -502,6 +512,16 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
     widget.externalSearchController?.addListener(_onExternalSearchChanged);
     _searchFocusNode.addListener(_handleSearchFocusChange);
     widget.typeSelection?.addListener(_onTypeSelectionChanged);
+    _hiddenSelectionSubscription = const HiddenLibraryStore().changes.listen(
+      (_) => _refreshVisibility(),
+    );
+    _settingsSyncSubscription = SettingsSync.instance.changes.listen((key) {
+      if (key.isEmpty ||
+          key == HiddenLibraryStore.bookKeysSetting ||
+          key == HiddenLibraryStore.categoryPathsSetting) {
+        _refreshVisibility();
+      }
+    });
     _loadCommentatorGroups();
     _scrolledRangeKey = _currentRangeKey();
   }
@@ -528,6 +548,16 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
     if (mounted) {
       setState(() => _showFilterTab = true);
     }
+  }
+
+  void _refreshVisibility() {
+    if (!mounted) return;
+    setState(() {
+      _visibility = null;
+      _visibleContentCache = null;
+      _commentatorGroups = [];
+    });
+    _loadCommentatorGroups();
   }
 
   /// סיכום קישורי הספר (יעדים + ספירות) מהמסד — תחליף קל לסריקת כל הקישורים
@@ -559,13 +589,23 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
   }
 
   Future<void> _loadCommentatorGroups() async {
+    final generation = ++_visibilityLoadGeneration;
+    final visibility = await PdfCommentaryVisibility.current();
+    if (!mounted || generation != _visibilityLoadGeneration) return;
     final summary = widget.tab.linksAreComplete
         ? null
         : await _loadLinkTargetsSummary();
+    if (!mounted || generation != _visibilityLoadGeneration) return;
+    final visibleLinks = widget.tab.links.where(visibility.allowsLink).toList();
     final aggregation = aggregateLinkTargetsForCommentatorSelection(
       linksAreComplete: widget.tab.linksAreComplete,
-      links: widget.tab.links,
-      summaryTargets: summary?.targets,
+      links: visibleLinks,
+      summaryTargets: summary?.targets
+          .where(
+            (target) =>
+                visibility.allowsSummary(target, widget.tab.book.source),
+          )
+          .toList(),
       summaryMaxSourceLine: summary?.maxSourceLine ?? 0,
     );
     final nonCommentaryTitles = aggregation.nonCommentaryTitles;
@@ -589,15 +629,21 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
       availableCommentators,
       source: widget.tab.book.source,
       sourceByTitle: {
-        for (final target in summary?.targets ?? const <LinkTargetSummary>[])
+        for (final target
+            in summary?.targets.where(
+                  (target) =>
+                      visibility.allowsSummary(target, widget.tab.book.source),
+                ) ??
+                const <LinkTargetSummary>[])
           utils.getTitleFromPath(target.targetTitle): ?target.targetSource,
-        for (final link in widget.tab.links)
+        for (final link in visibleLinks)
           utils.getTitleFromPath(link.path2): link.targetSource,
       },
     );
     final groups = buildCommentatorGroups(eras, availableCommentators);
-    if (!mounted) return;
+    if (!mounted || generation != _visibilityLoadGeneration) return;
     setState(() {
+      _visibility = visibility;
       _visibleContentCache = null;
       _commentatorGroups = groups;
     });
@@ -656,6 +702,8 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
 
   @override
   void dispose() {
+    _hiddenSelectionSubscription?.cancel();
+    _settingsSyncSubscription?.cancel();
     _searchUpdateDebounce?.cancel();
     _searchComputeDebounce?.cancel();
     _tabController.removeListener(_tabControllerListener);
@@ -1109,6 +1157,9 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
 
   Widget _buildCommentatorsFilter() {
     final visibleContent = _getVisibleContent();
+    final availableTitles = {
+      for (final group in _commentatorGroups) ...group.commentators,
+    };
     return CommentatorsFilterScreen(
       onBack: () {
         setState(() {
@@ -1124,7 +1175,9 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
       },
       child: CommentatorsSelectionPanel(
         groups: _commentatorGroups,
-        selectedCommentators: widget.tab.activeCommentators.toList(),
+        selectedCommentators: widget.tab.activeCommentators
+            .where(availableTitles.contains)
+            .toList(),
         bookTitle: widget.tab.book.title,
         typeChipKeys: visibleContent?.typeChipKeys ?? const [],
         selectedTypeChips: visibleContent?.effectiveTypes ?? const {},
@@ -1765,6 +1818,8 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
   }
 
   _PdfVisibleContentCache? _getVisibleContent() {
+    final visibility = _visibility;
+    if (visibility == null) return null;
     final currentLine =
         widget.lineStartOverride ?? widget.tab.currentTextLineNumber;
     if (currentLine == null) {
@@ -1801,7 +1856,8 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
         !widget.enableInternalFilter && widget.tab.activeCommentators.isEmpty;
 
     final extraLines = widget.extraLineIndices;
-    for (final link in widget.tab.links) {
+    final visibleLinks = widget.tab.links.where(visibility.allowsLink).toList();
+    for (final link in visibleLinks) {
       if (!pdfLinkInVisibleScope(
         link.index1,
         range.startLine,
@@ -1823,7 +1879,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
 
     scopedCommentaryLinks.addAll(
       pdfScopedCommentaryLinks(
-        links: widget.tab.links,
+        links: visibleLinks,
         startLine: range.startLine,
         endLine: range.endLine,
         extraLineIndices: extraLines,
@@ -1835,9 +1891,9 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
     // הצ׳יפים נגזרים מכל הקישורים הטעונים ולא מהעמוד הנוכחי: צ׳יפ שנגזר
     // מהעמוד נעלם בדפדוף לעמוד שאין בו אותו סוג, והסינון נכבה בשקט.
     final typeChipKeys = CommentaryTypeFilter.chipKeysForCommentators(
-      links: widget.tab.links,
+      links: visibleLinks,
       selectedCommentators: showAllWhenEmpty
-          ? widget.tab.links
+          ? visibleLinks
                 .map((link) => utils.getTitleFromPath(link.path2))
                 .toList(growable: false)
           : widget.tab.activeCommentators.toList(growable: false),
@@ -1873,7 +1929,7 @@ class PdfCommentaryPanelState extends State<PdfCommentaryPanel>
       // אותה רשימה שממנה נגזרו הצ׳יפים — וגם מאפשר ל-Expando של המימוש
       // לפגוע, שכן זהות tab.links יציבה לכל חלון קישורים.
       commentatorsByType: CommentaryTypeFilter.commentatorsByType(
-        widget.tab.links,
+        visibleLinks,
       ),
       // אסינכרוני: קיבוץ סינכרוני על ה-UI thread קפא בדפי גמרא עם מפרשים רבים.
       sortedGroupsFuture:

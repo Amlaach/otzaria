@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/models/books.dart';
 import 'package:otzaria/models/links.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/library/hidden/hidden_library_selection.dart';
+import 'package:otzaria/library/hidden/hidden_library_store.dart';
+import 'package:otzaria/library/models/library.dart';
 import 'package:otzaria/pdf_book/view/pdf_commentary_panel.dart';
 import 'package:otzaria/personal_notes/bloc/personal_notes_bloc.dart';
 import 'package:otzaria/personal_notes/bloc/personal_notes_event.dart';
@@ -355,6 +361,67 @@ void main() {
       initialTabIndex: 0,
       openFilterRequest: notifier,
     );
+
+    testWidgets('הסתרה מנקה מיד מסנן פתוח עד השלמת טעינת הספרייה', (
+      tester,
+    ) async {
+      final tab = _tab(currentLine: 10, links: [_commentaryLink(index1: 10)]);
+      tab.linksAreComplete = true;
+      tab.activeCommentators.add('rashi');
+      final notifier = ValueNotifier<int>(0);
+      final previousLibrary =
+          DataRepository.instance.cachedLibraryFutureForTesting;
+      addTearDown(() async {
+        if (previousLibrary == null) {
+          DataRepository.instance.invalidateLibraryCache();
+        } else {
+          DataRepository.instance.library = previousLibrary;
+        }
+        await const HiddenLibraryStore().save(const HiddenLibrarySelection());
+        notifier.dispose();
+        tab.dispose();
+      });
+
+      await tester.pumpWidget(_wrap(buildPanel(tab, notifier)));
+      await tester.pumpAndSettle();
+      notifier.value++;
+      await tester.pumpAndSettle();
+      CommentatorsSelectionPanel selection() =>
+          tester.widget(find.byType(CommentatorsSelectionPanel));
+      expect(
+        selection().groups.expand((group) => group.commentators),
+        contains('rashi'),
+      );
+
+      final pendingLibrary = Completer<Library>();
+      DataRepository.instance.library = pendingLibrary.future;
+      await const HiddenLibraryStore().save(
+        const HiddenLibrarySelection(categoryPaths: {'/hidden'}),
+      );
+      await tester.pump();
+      expect(
+        selection().groups.expand((group) => group.commentators),
+        isNot(contains('rashi')),
+      );
+
+      final category = Category(
+        title: 'hidden',
+        description: '',
+        shortDescription: '',
+        order: 0,
+        subCategories: [],
+        books: [TextBook(title: 'rashi', categoryId: 1)],
+        parent: null,
+      );
+      final library = Library(categories: [category]);
+      category.parent = library;
+      pendingLibrary.complete(library);
+      await tester.pumpAndSettle();
+      expect(
+        selection().groups.expand((group) => group.commentators),
+        isNot(contains('rashi')),
+      );
+    });
 
     testWidgets('עליה ב-counter פותחת את חלונית בחירת המפרשים', (tester) async {
       final tab = _tab(currentLine: 10, links: [_commentaryLink(index1: 10)]);
