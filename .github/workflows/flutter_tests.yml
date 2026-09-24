@@ -8,6 +8,33 @@ on:
       - dev
 
 jobs:
+  native_linux:
+    name: Native updater and download assistant (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+      - name: Install native test dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
+      - name: Build and test Linux download assistant
+        run: make -C tool/download_assistant/linux all check-needed test
+      - name: Build atomic tree swap helper
+        run: cc -O2 -Wall -Wextra tool/updater/atomic_tree_swap.c -o /tmp/otzaria-atomic-swap
+
+  native_macos:
+    name: Native updater and download assistant (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+      - name: Test macOS download assistant
+        run: swift test --package-path tool/download_assistant/macos
+      - name: Build universal atomic tree swap helper
+        run: |
+          cc -O2 -Wall -Wextra -arch x86_64 -arch arm64 -mmacosx-version-min=12.0 \
+            tool/updater/atomic_tree_swap.c -o /tmp/otzaria-atomic-swap
+          lipo /tmp/otzaria-atomic-swap -verify_arch x86_64 arm64
+
   analyze:
     name: Analyze
     runs-on: ubuntu-latest

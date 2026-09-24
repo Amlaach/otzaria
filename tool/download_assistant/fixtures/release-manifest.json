@@ -1,0 +1,473 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "0.10.3+143",
+  "releaseVersion": "0.10.3",
+  "components": [
+    {
+      "id": "otzaria-android",
+      "name": "אוצריא ל-Android",
+      "description": "קובץ התקנה (APK) לטלפון או לטאבלט. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "android",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 96,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "app-release.apk",
+          "size": 96,
+          "sha256": "dcc26df7745c49c5f9aaff039715b2f70bea3a20b57170b9942c3b769cea1dfe"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-deb-arm64",
+      "name": "אוצריא ל-Linux (DEB, ARM64)",
+      "description": "חבילת התקנה ל-Ubuntu, Debian, Mint והפצות דומות, למחשבי ARM64. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "arm64",
+      "packageFormat": "deb",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 87,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3+143-linux-arm64.deb",
+          "size": 87,
+          "sha256": "7e7aaf74769effb46ae0bd04f169f01e3dd1679b35876bb872fe58e96fb53eb7"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-deb-x64",
+      "name": "אוצריא ל-Linux (DEB)",
+      "description": "חבילת התקנה ל-Ubuntu, Debian, Mint והפצות דומות, למעבדי x64. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "x64",
+      "packageFormat": "deb",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 96,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3+143-linux.deb",
+          "size": 96,
+          "sha256": "f381fde169c48c474a74916fdf398c07dfcf34cc03ccefe457cd4b12b8542fbb"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-rpm-arm64",
+      "name": "אוצריא ל-Linux (RPM, ARM64)",
+      "description": "חבילת התקנה ל-Fedora, openSUSE והפצות דומות, למחשבי ARM64. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "arm64",
+      "packageFormat": "rpm",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 127,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3+143-143.aarch64.rpm",
+          "size": 127,
+          "sha256": "07faee3b4c55e4c23ca17eabb518f9456a81c503407f2af478d3edf9e4e0a865"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-rpm-x64",
+      "name": "אוצריא ל-Linux (RPM)",
+      "description": "חבילת התקנה ל-Fedora, openSUSE והפצות דומות, למעבדי x64. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "x64",
+      "packageFormat": "rpm",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 132,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3+143-143.x86_64.rpm",
+          "size": 132,
+          "sha256": "00b0d4e60dc48066ae60fc2e5e041e60e7788aba5628bfb717d326f9705bc698"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-macos",
+      "name": "אוצריא ל-macOS",
+      "description": "קובץ DMG: גוררים ממנו את אוצריא לתיקיית היישומים. ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "macos",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 86,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-macos.dmg",
+          "size": 86,
+          "sha256": "397340a23d6c3d08bb2511354a7490a8fde6cd8772b5bd46c1956b89855db462"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-arm64",
+      "name": "אוצריא ל-Windows (ARM64)",
+      "description": "התוכנה עצמה למחשבי ARM64, ללא ספרייה.",
+      "type": "application",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "arm64",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 38,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-windows_arm64.exe",
+          "size": 38,
+          "sha256": "77e80029d0c8861cc444ecc810c943356e8301991f319af5df5ad2788928641e"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-portable-arm64",
+      "name": "אוצריא ל-Windows — גרסה ניידת (ARM64)",
+      "description": "ארכיון ZIP שאינו דורש התקנה, למחשבי ARM64.",
+      "type": "application-portable",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "arm64",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 44,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-windows_arm64.zip",
+          "size": 44,
+          "sha256": "3177142eea86d9402672f3f34129718eda53b43c140528035b2710f4231aa911"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-portable-x64",
+      "name": "אוצריא ל-Windows — גרסה ניידת",
+      "description": "ארכיון ZIP שאינו דורש התקנה, למעבדי x64.",
+      "type": "application-portable",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "x64",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 45,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-windows.zip",
+          "size": 45,
+          "sha256": "795a6e77a5d7b7760931a5cccf8cd3ae4e3e0f85feee30b1a321f862fea90799"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-x64",
+      "name": "אוצריא ל-Windows",
+      "description": "התוכנה עצמה, ללא ספרייה. מתקין רגיל למעבדי x64.",
+      "type": "application",
+      "required": true,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "x64",
+      "installOrder": 10,
+      "dependsOn": [],
+      "downloadSize": 39,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-windows.exe",
+          "size": 39,
+          "sha256": "9831e46a12f0fe126c702d1c79974403d871553e9a3a229369a6c68593baa523"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-android-full",
+      "name": "אוצריא ל-Android עם ספרייה מלאה",
+      "description": "ארכיון ZIP ובו קובץ ה-APK והספרייה המלאה, להעתקה אל המכשיר.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "android",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 1925,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-android-full.zip",
+          "size": 1925,
+          "sha256": "73d2389d12fef256044ef62716f76871862498e20a04eebd69157f3d011ba1ee"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-full-arm64",
+      "name": "אוצריא ל-Linux עם ספרייה מלאה (ARM64)",
+      "description": "ארכיון tar.zst ובו התוכנה והספרייה המלאה, למחשבי ARM64. פורסים אותו ומפעילים ללא התקנה.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "arm64",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 1900,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-linux-full-arm64.tar.zst",
+          "size": 1900,
+          "sha256": "0b0276d8f9cabee914c2eb10b0651dff7a242b5815db5124e4edfafc1d6a2fab"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-linux-full-x64",
+      "name": "אוצריא ל-Linux עם ספרייה מלאה",
+      "description": "ארכיון tar.zst ובו התוכנה והספרייה המלאה, למעבדי x64. פורסים אותו ומפעילים ללא התקנה.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "linux",
+      "architecture": "x64",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 1927,
+      "assets": [
+        {
+          "kind": "split",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-linux-full.tar.zst",
+          "size": 1927,
+          "sha256": "efc44c304280b708614362a60d6ae5725b42ad7c3374f2d739ecd6656de6e496",
+          "manifestAsset": "otzaria-linux-full.tar.zst.manifest.json",
+          "githubAssetLimit": 2147483648,
+          "partSizeLimit": 1500,
+          "parts": [
+            {
+              "name": "otzaria-linux-full.tar.zst.part-000",
+              "size": 1500,
+              "sha256": "4306aba613c2c239a7748af977727436ba776837d9d3d2ac24c02aba95e0717c"
+            },
+            {
+              "name": "otzaria-linux-full.tar.zst.part-001",
+              "size": 427,
+              "sha256": "4bdeb7b2bb2bf759a8313bc1e5fef8ceb59aabaa7190a1102bb8abbd75efeffa"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "otzaria-macos-full",
+      "name": "אוצריא ל-macOS עם ספרייה מלאה",
+      "description": "ארכיון tar.zst ובו התוכנה והספרייה המלאה. פורסים אותו ומפעילים ללא התקנה.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "macos",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 1853,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-macos-full.tar.zst",
+          "size": 1853,
+          "sha256": "a73e65f25ef6f18d856ebd100d96f433435d8821b77303d712d563cbb30b121c"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-full",
+      "name": "אוצריא ל-Windows עם ספרייה מלאה",
+      "description": "מתקין הכולל את התוכנה ואת הספרייה המלאה, בלי אינדקס חיפוש בנוי מראש.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "x64",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 2019,
+      "assets": [
+        {
+          "kind": "split",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-windows-full.exe",
+          "size": 2019,
+          "sha256": "5e2ef064cdca7d6e5a19363b1437e47d80d3205b413c2dc8d2d5cc1bed837b43",
+          "manifestAsset": "otzaria-0.10.3-windows-full.exe.manifest.json",
+          "githubAssetLimit": 2147483648,
+          "partSizeLimit": 1500,
+          "parts": [
+            {
+              "name": "otzaria-0.10.3-windows-full.exe.part-000",
+              "size": 1500,
+              "sha256": "7538a633f8cfd9256f957383c8228607b1b1db5a1a487d84bb26e5034018741f"
+            },
+            {
+              "name": "otzaria-0.10.3-windows-full.exe.part-001",
+              "size": 519,
+              "sha256": "9c7d93a1f49803f2cd42b7549e4aab29f3f7053a8e0a74959c932736c8b6953a"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-full-arm64",
+      "name": "אוצריא ל-Windows עם ספרייה מלאה (ARM64)",
+      "description": "מתקין הכולל את התוכנה ואת הספרייה המלאה, למחשבי ARM64, בלי אינדקס חיפוש בנוי מראש.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "arm64",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 1990,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-windows_arm64-full.exe",
+          "size": 1990,
+          "sha256": "8a6135e18e4a1cfd5f46f62a3b95a7b3b97c91b654be47e455577fa7f2fd4839"
+        }
+      ]
+    },
+    {
+      "id": "otzaria-windows-full-indexed",
+      "name": "אוצריא ל-Windows עם ספרייה מאונדקסת",
+      "description": "מתקין קטן שמוריד בעת ההתקנה את הספרייה המלאה עם אינדקס החיפוש הבנוי מראש.",
+      "type": "application-bundle",
+      "required": false,
+      "origin": "built",
+      "platform": "windows",
+      "architecture": "x64",
+      "installOrder": 20,
+      "dependsOn": [],
+      "downloadSize": 60,
+      "assets": [
+        {
+          "kind": "single",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-windows-full-indexed.exe",
+          "size": 60,
+          "sha256": "edf36ecb540ad41c7e2132309c1bc7f34ed958ec2b09028aafbf5c67f043ef24"
+        }
+      ]
+    },
+    {
+      "id": "library-full-indexed",
+      "name": "ספרייה מלאה עם אינדקס חיפוש",
+      "description": "מסד הספרים המלא יחד עם אינדקס החיפוש הבנוי מראש, לצירוף למחשב מנותק.",
+      "type": "library",
+      "required": false,
+      "origin": "built",
+      "platform": "any",
+      "installOrder": 30,
+      "dependsOn": [],
+      "installedBy": [
+        "otzaria-windows-full-indexed"
+      ],
+      "downloadSize": 3215,
+      "assets": [
+        {
+          "kind": "split",
+          "repository": "Otzaria/otzaria",
+          "releaseTag": "0.10.3+143",
+          "name": "otzaria-0.10.3-library-full-indexed.tar.zst",
+          "size": 3215,
+          "sha256": "d0191c71f4f36a2b4669a986c961128e5cf8ff87ede169c09943371dc99b1113",
+          "manifestAsset": "otzaria-0.10.3-library-full-indexed.tar.zst.manifest.json",
+          "githubAssetLimit": 2147483648,
+          "partSizeLimit": 1500,
+          "parts": [
+            {
+              "name": "otzaria-0.10.3-library-full-indexed.tar.zst.part-000",
+              "size": 1500,
+              "sha256": "38b20c64a2837c473e2de4d0e3b9d9459d51aca5ce247aaffdfd5a5459842eae"
+            },
+            {
+              "name": "otzaria-0.10.3-library-full-indexed.tar.zst.part-001",
+              "size": 1500,
+              "sha256": "47f67a527f1df1026438b2719e5fc525871c52cf7c50318272501abef9283c56"
+            },
+            {
+              "name": "otzaria-0.10.3-library-full-indexed.tar.zst.part-002",
+              "size": 215,
+              "sha256": "033824ad70ba2b7a6257508b3886f8852f459359223861c25a6346c77c638c88"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

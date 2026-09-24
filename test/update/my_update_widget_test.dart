@@ -458,6 +458,95 @@ void main() {
         'https://example.com/otzaria-0.9.96-windows.exe',
       );
     });
+
+    test('never selects the download assistant', () {
+      final withAssistant = [
+        ...fullReleaseAssets,
+        asset('Otzaria-Download-Assistant-windows.exe'),
+      ];
+      expect(
+        pickWindowsAssetUrl(
+          withAssistant,
+          preferredFormat: 'exe',
+          isArmMachine: false,
+        ),
+        'https://example.com/otzaria-0.9.96-windows.exe',
+      );
+      expect(
+        pickWindowsAssetUrl(
+          withAssistant,
+          preferredFormat: 'exe',
+          isArmMachine: true,
+        ),
+        'https://example.com/otzaria-0.9.96-windows_arm64.exe',
+      );
+    });
+
+    test('the download assistant is not chosen even as the only exe', () {
+      // גם השם הישן: שחרורים שכבר פורסמו נושאים אותו, והמעדכן חייב
+      // להמשיך לדלג עליהם.
+      for (final name in const [
+        'Otzaria-Download-Assistant-windows.exe',
+        'Otzaria-Download-Assistant-win.exe',
+        'otzaria_download_assistant_win.exe',
+      ]) {
+        expect(
+          pickWindowsAssetUrl(
+            [asset(name)],
+            preferredFormat: 'exe',
+            isArmMachine: false,
+          ),
+          isNull,
+          reason: name,
+        );
+        expect(
+          pickWindowsAssetUrl(
+            [asset(name)],
+            preferredFormat: 'zip',
+            isArmMachine: true,
+          ),
+          isNull,
+          reason: name,
+        );
+      }
+    });
+
+    test('differential update packages are never picked as the zip', () {
+      final assets = [
+        asset('otzaria-update-windows-x64-0.10.2_142-to-0.10.3_143.zip'),
+        asset('otzaria-update-windows-arm64-0.10.2_142-to-0.10.3_143.zip'),
+        asset('otzaria-windows.zip'),
+        asset('otzaria-windows_arm64.zip'),
+      ];
+      expect(
+        pickWindowsAssetUrl(
+          assets,
+          preferredFormat: 'zip',
+          isArmMachine: false,
+        ),
+        'https://example.com/otzaria-windows.zip',
+      );
+      expect(
+        pickWindowsAssetUrl(assets, preferredFormat: 'zip', isArmMachine: true),
+        'https://example.com/otzaria-windows_arm64.zip',
+      );
+    });
+
+    test('isDownloadAssistantAsset matches only the assistant', () {
+      expect(
+        isDownloadAssistantAsset('Otzaria-Download-Assistant-windows.exe'),
+        isTrue,
+      );
+      expect(
+        isDownloadAssistantAsset('Otzaria-Download-Assistant-win.exe'),
+        isTrue,
+      );
+      expect(isDownloadAssistantAsset('otzaria-0.9.97-windows.exe'), isFalse);
+      expect(
+        isDownloadAssistantAsset('otzaria-0.9.97-windows-full-indexed.exe'),
+        isFalse,
+      );
+    });
   });
 
   group('pickMacAssetUrl', () {
@@ -511,6 +600,138 @@ void main() {
       // עדיף null (צ'יפ שגיאה) מאשר כשל באמצע התקנה.
       final zipOnly = [asset('otzaria-macos.zip')];
       expect(pickMacAssetUrl(zipOnly, selfUpdateCapable: false), isNull);
+    });
+
+    test('never selects the macOS download assistant', () {
+      // שם המסייע מכיל "macos" ומסתיים ב-zip; הוא ממוין לפני otzaria-macos.zip.
+      final withAssistant = [
+        asset('Otzaria-Download-Assistant-macos.zip'),
+        ...fullReleaseAssets,
+      ];
+      expect(
+        pickMacAssetUrl(withAssistant, selfUpdateCapable: true),
+        'https://example.com/otzaria-macos.zip',
+      );
+      expect(
+        pickMacAssetUrl([
+          asset('Otzaria-Download-Assistant-macos.zip'),
+        ], selfUpdateCapable: true),
+        isNull,
+      );
+    });
+  });
+
+  group('pickLinuxAssetUrl', () {
+    Map<String, dynamic> asset(String name) => {
+      'name': name,
+      'browser_download_url': 'https://example.com/$name',
+    };
+
+    test('DEB first, then RPM, then a Linux zip', () {
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-0.9.97+789-789.x86_64.rpm'),
+          asset('otzaria-0.9.97+789-linux.deb'),
+        ], isArm64: false),
+        'https://example.com/otzaria-0.9.97+789-linux.deb',
+      );
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-linux-raw.zip'),
+          asset('otzaria-0.9.97+789-789.x86_64.rpm'),
+        ], isArm64: false),
+        'https://example.com/otzaria-0.9.97+789-789.x86_64.rpm',
+      );
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-windows.zip'),
+          asset('otzaria-linux-raw.zip'),
+        ], isArm64: false),
+        'https://example.com/otzaria-linux-raw.zip',
+      );
+    });
+
+    // סדר הנכסים כפי ש-GitHub מחזיר אותו ב-release 0.9.97+789 — ה-arm64
+    // לפני ה-x64 גם ב-deb וגם ב-rpm.
+    final release09797 = [
+      for (final name in const [
+        'app-release.apk',
+        'assemble_split_asset.ps1',
+        'assemble_split_asset.sh',
+        'otzaria-0.9.97+99702-99702.aarch64.rpm',
+        'otzaria-0.9.97+99702-99702.x86_64.rpm',
+        'otzaria-0.9.97+99702-linux-arm64.deb',
+        'otzaria-0.9.97+99702-linux.deb',
+        'otzaria-0.9.97-library-full-indexed.tar.zst.manifest.json',
+        'otzaria-0.9.97-windows-full-indexed.exe',
+        'otzaria-0.9.97-windows-full.exe',
+        'otzaria-0.9.97-windows.exe',
+        'otzaria-0.9.97-windows_arm64.exe',
+        'otzaria-android-full.zip',
+        'otzaria-linux-full-arm64.tar.zst',
+        'otzaria-linux-full.tar.zst',
+        'otzaria-macos-full.tar.zst',
+        'otzaria-macos.dmg',
+        'otzaria-macos.zip',
+        'otzaria-windows.zip',
+        'otzaria-windows_arm64.zip',
+      ])
+        asset(name),
+    ];
+
+    test('x64 never gets the arm64 package from the real 0.9.97 release', () {
+      expect(
+        pickLinuxAssetUrl(release09797, isArm64: false),
+        'https://example.com/otzaria-0.9.97+99702-linux.deb',
+      );
+      final withoutDeb = release09797
+          .where((a) => !(a['name'] as String).endsWith('.deb'))
+          .toList();
+      expect(
+        pickLinuxAssetUrl(withoutDeb, isArm64: false),
+        'https://example.com/otzaria-0.9.97+99702-99702.x86_64.rpm',
+      );
+    });
+
+    test('arm64 gets the arm64 package, and never an x64 one', () {
+      expect(
+        pickLinuxAssetUrl(release09797, isArm64: true),
+        'https://example.com/otzaria-0.9.97+99702-linux-arm64.deb',
+      );
+      final withoutDeb = release09797
+          .where((a) => !(a['name'] as String).endsWith('.deb'))
+          .toList();
+      expect(
+        pickLinuxAssetUrl(withoutDeb, isArm64: true),
+        'https://example.com/otzaria-0.9.97+99702-99702.aarch64.rpm',
+      );
+      // x64 בלבד — עדיף בלי עדכון מאשר חבילה שלא תותקן.
+      expect(
+        pickLinuxAssetUrl([
+          asset('otzaria-0.9.97+99702-linux.deb'),
+          asset('otzaria-0.9.97+99702-99702.x86_64.rpm'),
+        ], isArm64: true),
+        isNull,
+      );
+    });
+
+    test('never selects the Linux download assistant', () {
+      for (final name in const [
+        'Otzaria-Download-Assistant-linux-x64.tar.gz',
+        'Otzaria-Download-Assistant-linux-arm64.tar.gz',
+        // גם אם ייארז יום אחד כ-zip או כ-deb, הוא אינו עדכון.
+        'Otzaria-Download-Assistant-linux-x64.zip',
+        'Otzaria-Download-Assistant-linux-x64.deb',
+        'Otzaria-Download-Assistant-linux-arm64.deb',
+      ]) {
+        for (final isArm64 in const [false, true]) {
+          expect(
+            pickLinuxAssetUrl([asset(name)], isArm64: isArm64),
+            isNull,
+            reason: '$name (arm64: $isArm64)',
+          );
+        }
+      }
     });
   });
 

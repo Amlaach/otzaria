@@ -130,6 +130,38 @@ abstract class LibraryMessages {
       '$deltaApplySize והחלה ארוכה — עשרות דקות ומעלה. מתאים לרשת איטית.\n'
       'הורדה מלאה: הורדה גדולה ($fullDownloadSize) והחלה מהירה — דקות.';
 
+  static const String smallUpdateDialogTitle = 'העדכון מוכן';
+
+  /// לפני האישור: המעדכן החיצוני משוגר רק בלחיצה על הכפתור, ולכן אסור
+  /// להבטיח כאן שסגירה ידנית של אוצריא תשלים את העדכון.
+  static const String smallUpdateDialogContent =
+      'לחיצה על "סגור והתקן" היא שמתחילה את ההתקנה: אוצריא תיסגר — כולל '
+      'חלונות נוספים — ותיפתח מחדש בגרסה החדשה.';
+
+  static const String smallUpdateDialogCancel = 'לא עכשיו';
+
+  static const String smallUpdateDialogConfirm = 'סגור והתקן';
+
+  /// אחרי האישור, כשחלון כלשהו עוד פתוח: רק כאן המעדכן כבר רץ וממתין
+  /// ליציאת התהליך, ולכן רק כאן סגירה ידנית באמת משלימה את העדכון.
+  static const String smallUpdateAwaitingCloseChip = 'סגור את החלונות שנותרו';
+
+  static const String smallUpdateAwaitingCloseMessage =
+      'העדכון יושלם כשאוצריא תיסגר לגמרי. סגור את החלונות שנותרו פתוחים — '
+      'והעדכון יושלם מעצמו ואוצריא תיפתח מחדש בגרסה החדשה.';
+
+  /// המעדכן ויתר כי חלון סירב להיסגר. ההתקנה לא נגעה, והעדכון חזר למצב
+  /// "מוכן להתקנה" — ההבטחה של [smallUpdateAwaitingCloseMessage] כבר אינה נכונה.
+  static const String smallUpdateGaveUp =
+      'העדכון לא הותקן, כי אוצריא לא נסגרה לגמרי. שום דבר לא השתנה, '
+      'והעדכון עדיין מוכן — לחץ על "מוכן להתקנה" כדי לנסות שוב.';
+
+  /// התקנת Linux ניידת אינה מתעדכנת במנהל החבילות, ולעדכון המצומצם לא
+  /// נמצאה חבילה — דף ההורדות נפתח בדפדפן.
+  static const String portableUpdateOpenedReleasePage =
+      'דף ההורדות נפתח בדפדפן. הורד את החבילה המלאה ופרוס אותה במקום '
+      'התיקייה הקיימת.';
+
   /// נלווה להודעת שלב ההחלה כשמסלול הדלתא כבד ואין הורדה מלאה חלופית.
   static String applyStageWithHeavyDeltaNotice(String stageMessage) =>
       '$stageMessage — ההחלה עשויה להימשך זמן רב';

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:otzaria/update/my_update_widget.dart' show pickWindowsAssetUrl;
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -116,8 +117,9 @@ void main() {
   });
 
   test('ה-workflow מפריד בין המתקין לחלקי הספרייה שמתחת ל-2 GiB', () {
-    final workflow = File('.github/workflows/build-and-announce.yml')
-        .readAsStringSync();
+    final workflow = File(
+      '.github/workflows/build-and-announce.yml',
+    ).readAsStringSync();
 
     // האינדקס אינו נבנה כאן יותר — הוא מגיע מוכן מ-SeforimLibrary.
     expect(workflow, isNot(contains('build-release-index')));
@@ -184,8 +186,9 @@ void main() {
     final talmudSource = Directory(p.join(talmudRoot, 'תלמוד בבלי'))
       ..createSync(recursive: true);
     for (final tractate in ['מסכת ברכות', 'מסכת שבת', 'מסכת עירובין']) {
-      File(p.join(talmudSource.path, '$tractate.pdf'))
-          .writeAsStringSync('%PDF-1.4 $tractate');
+      File(
+        p.join(talmudSource.path, '$tractate.pdf'),
+      ).writeAsStringSync('%PDF-1.4 $tractate');
     }
     File(p.join(talmudSource.path, '.version')).writeAsStringSync('deadbeef');
     final talmud = File(p.join(temp.path, 'talmud_bavli_latest.tar.zst'));
@@ -203,7 +206,8 @@ void main() {
     final talmudVolumesDigest = (volumesDigest.stdout as String).trim();
     expect(talmudVolumesDigest, hasLength(64));
 
-    final lock = File(p.join(temp.path, 'pubspec.lock'))..writeAsStringSync('''
+    final lock = File(p.join(temp.path, 'pubspec.lock'))
+      ..writeAsStringSync('''
 packages:
   otzaria_search_engine:
     dependency: "direct main"
@@ -326,8 +330,9 @@ packages:
   });
 
   test('ה-workflow שומר את ה-SHA שנבחר ותומך בתיקון חירום', () {
-    final workflow = File('.github/workflows/build-and-announce.yml')
-        .readAsStringSync();
+    final workflow = File(
+      '.github/workflows/build-and-announce.yml',
+    ).readAsStringSync();
 
     expect(workflow, contains('      hotfix:'));
     expect(workflow, contains('default: "0"'));
@@ -338,5 +343,250 @@ packages:
     expect(workflow, isNot(contains('ref: \${{ github.ref_name }}')));
     expect(workflow, contains(r'"hotfix": %s'));
     expect(workflow, contains(r'"$NEW_VERSION" "$HOTFIX"'));
+  });
+  group('מסייע ההורדה ומניפסט ה-release ב-workflow', () {
+    // סופי השורות תלויים בהגדרת ה-checkout, ולכן מנורמלים לפני ההשוואה.
+    final workflow = File(
+      '.github/workflows/build-and-announce.yml',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+
+    test('האשף נבנה עם ה-ISCC הקיים ואינו מפיל את שחרור אוצריא', () {
+      expect(
+        workflow,
+        contains(r'& "$env:ISCC" installer\download_assistant.iss'),
+      );
+      expect(
+        workflow,
+        contains(
+          '      - name: Build Download Assistant (non-fatal helper tool)\n'
+          '        id: download_assistant\n'
+          '        continue-on-error: true\n'
+          '        timeout-minutes: 15\n',
+        ),
+      );
+      expect(workflow, contains('name: otzaria-download-assistant'));
+
+      // ההתקנה של Inno Setup לא שוכפלה בשביל הכלי החדש.
+      expect('Install Inno Setup'.allMatches(workflow).length, 3);
+    });
+
+    test('המניפסט נוצר אחרי ארגון הקבצים ונכתב לתוך release-files', () {
+      final organize = workflow.indexOf('- name: Organize release files');
+      final generate = workflow.indexOf('- name: Generate release manifest');
+      final createRelease = workflow.indexOf('- name: Create Release');
+      expect(organize, greaterThan(0));
+      expect(generate, greaterThan(organize));
+      expect(createRelease, greaterThan(generate));
+
+      expect(
+        workflow,
+        contains('dart run tool/release/generate_release_manifest.dart'),
+      );
+      expect(workflow, contains('--dir release-files'));
+      expect(
+        workflow,
+        contains('--out release-files/otzaria-release-manifest.json'),
+      );
+
+      // נכס עזר אינו מבטל release: כישלון כאן מזהיר, מוחק מניפסט חלקי
+      // וממשיך — בדיוק כמו בניית האשף עצמו.
+      expect(
+        workflow.substring(generate, generate + 300),
+        contains('continue-on-error: true'),
+      );
+      final warn = workflow.indexOf(
+        '- name: Warn when the release manifest is missing',
+      );
+      expect(warn, greaterThan(generate));
+      expect(warn, lessThan(createRelease));
+      expect(
+        workflow.substring(warn, warn + 400),
+        contains('rm -f release-files/otzaria-release-manifest.json'),
+      );
+    });
+
+    test('שם נכס המניפסט הוא זה שהאשף מחפש', () {
+      final iss = File('installer/download_assistant.iss').readAsStringSync();
+      final suffix = RegExp(
+        r"EndsWithText\(Name, '([^']*manifest[^']*)'\)",
+      ).firstMatch(iss)!.group(1)!;
+      expect('otzaria-release-manifest.json'.endsWith(suffix), isTrue);
+    });
+
+    test('פיצול מתקין ה-FULL מותנה במגבלת ה-2 GiB ואינו נדרש היום', () {
+      expect(workflow, contains('GITHUB_ASSET_LIMIT=2147483648'));
+      expect(
+        workflow,
+        contains(
+          r'for installer in release-files/otzaria-*-windows-full.exe '
+          r'release-files/otzaria-*-windows_arm64-full.exe; do',
+        ),
+      );
+      expect(
+        workflow,
+        contains(r'if [ "$size" -lt "$GITHUB_ASSET_LIMIT" ]; then'),
+      );
+      expect(
+        workflow,
+        contains(
+          r'tool/release/split_release_asset.sh "$installer" '
+          r'windows-full-parts "$PART_SIZE"',
+        ),
+      );
+
+      // הגודל בפועל של otzaria-0.9.97-windows-full.exe — התנאי יוצא שקר,
+      // ולכן הנכס של היום נשאר קובץ אחד, בית-בבית.
+      const fullInstallerSizeToday = 2012390081;
+      const githubAssetLimit = 2147483648;
+      expect(fullInstallerSizeToday, lessThan(githubAssetLimit));
+    });
+
+    test('הערות השחרור מציגות את האשף ככלי עזר ואת החלקים אם יופיעו', () {
+      // המסווג ממיר לאותיות קטנות לפני ההשוואה, ולכן הענף נשאר קטן.
+      expect(workflow, contains('otzaria-download-assistant-*)'));
+      expect(
+        workflow,
+        contains(
+          'מסייע הורדה — כלי עזר להורדת אוצריא ולהכנת התקנה למחשב ללא '
+          'אינטרנט. זהו אינו קובץ ההתקנה עצמו',
+        ),
+      );
+      final tools = workflow.substring(workflow.indexOf('## כלי עזר'));
+      for (final label in const [
+        'מסייע הורדה למחשב Windows',
+        'מסייע הורדה למק',
+        'מסייע הורדה ללינוקס',
+        'מסייע הורדה ללינוקס במחשב עם מעבד ARM',
+      ]) {
+        expect(tools, contains('"$label"'));
+      }
+
+      // הסיווג רגיש לסדר: החלקים חייבים להיתפס לפני *windows-full*.exe.
+      final parts = workflow.indexOf('*windows-full.exe.part-*)');
+      final support = workflow.indexOf('*windows-full.exe.manifest.json)');
+      final fullExe = workflow.indexOf('*windows-full*.exe)');
+      expect(parts, greaterThan(0));
+      expect(support, greaterThan(0));
+      expect(fullExe, greaterThan(parts));
+      expect(fullExe, greaterThan(support));
+    });
+
+    test('ענף המסייעים הוא הראשון ב-case של הערות השחרור', () {
+      final caseStart = workflow.indexOf(r'case "$lower" in');
+      expect(caseStart, greaterThan(0));
+      final firstBranch = RegExp(
+        r'^\s+([^\s#][^\n]*\))\s*$',
+        multiLine: true,
+      ).firstMatch(workflow.substring(caseStart))!;
+      expect(
+        firstBranch.group(1),
+        'otzaria-download-assistant-*)',
+        reason:
+            'Otzaria-Download-Assistant-macos.zip / linux-*.tar.gz / windows.exe '
+            'היו נבלעים בתבניות *macos* / *linux* / *windows*',
+      );
+    });
+
+    test('Stage Download Assistant מעתיק את ארבעת המסייעים בלי להיכשל', () {
+      final start = workflow.indexOf('- name: Stage Download Assistant');
+      final step = workflow.substring(
+        start,
+        workflow.indexOf('\n      - name: ', start + 1),
+      );
+      for (final path in const [
+        'artifacts/otzaria-download-assistant/Otzaria-Download-Assistant-windows.exe',
+        'artifacts/otzaria-download-assistant-macos/Otzaria-Download-Assistant-macos.zip',
+        'artifacts/otzaria-download-assistant-linux-x64/Otzaria-Download-Assistant-linux-x64.tar.gz',
+        'artifacts/otzaria-download-assistant-linux-arm64/Otzaria-Download-Assistant-linux-arm64.tar.gz',
+      ]) {
+        expect(step, contains(path));
+      }
+      // כל קובץ חסר מזהיר בנפרד, ואף אחד מהם אינו מפיל את השחרור.
+      expect(step, contains('if [ -f "\$assistant" ]; then'));
+      expect(step, contains('echo "::warning::Download Assistant'));
+      expect(step, isNot(contains('exit 1')));
+      expect(step, isNot(contains('continue-on-error: false')));
+    });
+  });
+
+  group('מתקין FULL ל-ARM64 בשחרור', () {
+    final workflow = File(
+      '.github/workflows/build-and-announce.yml',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+    const asset = 'otzaria-0.9.97-windows_arm64-full.exe';
+
+    test('Organize release files מעתיק אותו, וחסרונו רק מזהיר', () {
+      final start = workflow.indexOf('- name: Organize release files');
+      final step = workflow.substring(
+        start,
+        workflow.indexOf('\n      - name: ', start + 1),
+      );
+      expect(
+        step,
+        contains(
+          'cp artifacts/otzaria-windows-arm64-installer-full/*.exe '
+          'release-files/ || true',
+        ),
+      );
+      expect(step, contains('::warning::ARM64 FULL installer is missing'));
+    });
+
+    test('הסיווג בהערות השחרור קודם לענף של מתקין ה-ARM הרגיל', () {
+      final caseStart = workflow.indexOf(r'case "$lower" in');
+      final basicArm = workflow.indexOf('*windows_arm64*.exe)', caseStart);
+      expect(basicArm, greaterThan(caseStart));
+      for (final branch in const [
+        '*windows_arm64-full.exe.part-*)',
+        '*windows_arm64-full.exe.manifest.json)',
+        '*windows_arm64-full*.exe)',
+      ]) {
+        final at = workflow.indexOf(branch, caseStart);
+        expect(at, inExclusiveRange(caseStart, basicArm), reason: branch);
+      }
+      // תבניות ה-x64 דורשות "windows-full", ולכן אינן בולעות את נכס ה-ARM.
+      expect(asset.contains('windows-full'), isFalse);
+      expect(
+        workflow,
+        contains(
+          'emit_link_group "חבילה מלאה למחשבי ARM (מעבדי Snapdragon; '
+          'במחשב רגיל הורידו את החבילה שמעל)" "\${windows_arm64_full[@]}"',
+        ),
+      );
+      expect(
+        workflow,
+        contains(
+          'emit_link_group "חלק מהחבילה המלאה למחשבי ARM" '
+          '"\${windows_arm64_full_parts[@]}"',
+        ),
+      );
+    });
+
+    test('העדכון שבתוך התוכנה לעולם אינו בוחר בו', () {
+      Map<String, dynamic> a(String name) => {
+        'name': name,
+        'browser_download_url': 'https://example.com/$name',
+      };
+      for (final isArm in const [true, false]) {
+        for (final format in const ['exe', 'zip']) {
+          expect(
+            pickWindowsAssetUrl(
+              [a(asset), a('$asset.part-000')],
+              preferredFormat: format,
+              isArmMachine: isArm,
+            ),
+            isNull,
+            reason: 'isArm=$isArm format=$format',
+          );
+        }
+      }
+      expect(
+        pickWindowsAssetUrl(
+          [a(asset), a('otzaria-0.9.97-windows_arm64.exe')],
+          preferredFormat: 'exe',
+          isArmMachine: true,
+        ),
+        'https://example.com/otzaria-0.9.97-windows_arm64.exe',
+      );
+    });
   });
 }

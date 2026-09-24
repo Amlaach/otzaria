@@ -19,12 +19,25 @@
 #define BundledPluginsDirName "bundled_plugins"
 
 #ifdef IndexedSplitFull
+  ; דרך משתנה סביבה: ‎/D‎ עם מרכאות מ-pwsh הגיע ל-ISPP עטוף בלוכסנים
+  ; (נמדד: ‎\0.10.0+139\‎), והכתובת שנבנתה ממנו הייתה שבורה.
   #ifndef IndexedReleaseTag
+    #define IndexedReleaseTag GetEnv("OTZARIA_INDEXED_RELEASE_TAG")
+  #endif
+  #if IndexedReleaseTag == ""
     #define IndexedReleaseTag MyAppVersion
   #endif
   #define IndexedArchiveName "otzaria-" + MyAppVersion + "-library-full-indexed.tar.zst"
   #define IndexedEmbeddedManifestName "indexed_library.manifest.json"
   #define IndexedReleaseBaseUrl "https://github.com/Otzaria/otzaria/releases/download/" + IndexedReleaseTag
+#endif
+
+; ארכיטקטורת היעד כמו ב-otzaria.iss: "x64" (ברירת מחדל) או ‎ISCC /DAppArch=arm64‎.
+#ifndef AppArch
+  #define AppArch "x64"
+#endif
+#if defined(IndexedSplitFull) && AppArch == "arm64"
+  #error IndexedSplitFull is built for x64 only
 #endif
 
 [Setup]
@@ -37,8 +50,15 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
+#if AppArch == "arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+; zstd ו-7za שמחלצים את הספרייה הם x64, ו-Windows 10 על ARM מאמלץ רק x86.
+MinVersion=10.0.22000
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 ; lowest = לא מבקש UAC כשמפעילים רגיל; אם המשתמש בחר "Run as administrator"
 ; התהליך כבר מורם, IsAdmin=True, ואז משגרים מחדש עם /ALLUSERS.
 PrivilegesRequired=lowest
@@ -49,6 +69,9 @@ DisableProgramGroupPage=yes
 OutputDir=.
 #ifdef IndexedSplitFull
 OutputBaseFilename=otzaria-{#MyAppVersion}-windows-full-indexed
+#elif AppArch == "arm64"
+; "full" בשם מונע מהעדכון שבתוך התוכנה לבחור בו כמתקין עדכון.
+OutputBaseFilename=otzaria-{#MyAppVersion}-windows_arm64-full
 #else
 OutputBaseFilename=otzaria-{#MyAppVersion}-windows-full
 #endif
@@ -2398,9 +2421,9 @@ Name: "resetsettings"; Description: "איפוס הגדרות משתמש — אז
 
 [Files]
 ; Copy DLL files without compression to prevent corruption
-Source: "..\build\windows\x64\runner\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion nocompression
+Source: "..\build\windows\{#AppArch}\runner\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion nocompression
 ; Copy all other app files
-Source: "..\build\windows\x64\runner\Release\*"; \
+Source: "..\build\windows\{#AppArch}\runner\Release\*"; \
   Excludes: "*.dll"; \
     DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; ארכיוני התוספים שנארזו במתקין (ראה docs/bundled_plugins.md). התיקייה נוצרת
