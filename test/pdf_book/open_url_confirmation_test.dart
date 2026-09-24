@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/pdf_book/view/widgets/open_url_confirmation.dart';
-import 'package:otzaria/widgets/dialogs/app_dialogs.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 
 /// דיאלוג האישור למעבר לכתובת חיצונית מתוך PDF (issue #1482).
