@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:otzaria/core/messages/settings_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/data/data_providers/tantivy_data_provider.dart';
 import 'package:otzaria/data/repository/data_repository.dart';
@@ -151,7 +152,7 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     try {
       content = await File(path).readAsString();
     } catch (error) {
-      UiSnack.showError('לא ניתן לקרוא את הקובץ: $error');
+      UiSnack.showError(SettingsMessages.hiddenBooksFileReadError(error));
       return;
     }
 
@@ -160,7 +161,7 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     if (!mounted) return;
 
     if (result.isEmpty) {
-      UiSnack.showError('הקובץ ריק — לא הוסתר דבר');
+      UiSnack.showError(SettingsMessages.hiddenBooksFileEmpty);
       return;
     }
 
@@ -176,10 +177,10 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
     if (!mounted) return;
 
     UiSnack.show(
-      result.unmatchedNames.isEmpty
-          ? 'הוסתרו ${result.matchedBookKeys.length} ספרים'
-          : 'הוסתרו ${result.matchedBookKeys.length} ספרים; '
-                '${result.unmatchedNames.length} שמות לא נמצאו בספרייה',
+      SettingsMessages.hiddenBooksImported(
+        result.matchedBookKeys.length,
+        result.unmatchedNames.length,
+      ),
     );
   }
 
