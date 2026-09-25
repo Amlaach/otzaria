@@ -6,6 +6,7 @@ import 'dart:io' hide Link;
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/models/book_source.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/dialogs/input_dialog.dart';
@@ -3624,15 +3625,11 @@ class PluginBridgeAdapter {
     );
   }
 
-  /// בורר התיקיות המוגדר כברירת מחדל — דיאלוג המערכת דרך [FilePicker].
+  /// בורר התיקיות המוגדר כברירת מחדל — דיאלוג המערכת דרך [SaferFilePicker].
   Future<String?> _defaultPickFolder({String? title}) async {
     final context = navigatorKey.currentContext;
-    if (context != null && !await verifySaferModePassword(context)) {
-      return null;
-    }
-    return FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    return SaferFilePicker.getDirectoryPath(
+      context: context,
       dialogTitle: title,
     );
   }
@@ -4097,21 +4094,17 @@ class PluginBridgeAdapter {
     };
   }
 
-  /// בורר הקבצים המוגדר כברירת מחדל — דיאלוג המערכת דרך [FilePicker].
+  /// בורר הקבצים המוגדר כברירת מחדל — דיאלוג המערכת דרך [SaferFilePicker].
   Future<String?> _defaultPickFile({
     List<String>? allowedExtensions,
     String? title,
   }) async {
     final context = navigatorKey.currentContext;
-    if (context != null && !await verifySaferModePassword(context)) {
-      return null;
-    }
     final hasExtensions =
         allowedExtensions != null && allowedExtensions.isNotEmpty;
-    final result = await FilePicker.pickFile(
+    final result = await SaferFilePicker.pickFile(
+      context: context,
       dialogTitle: title,
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
       type: hasExtensions ? FileType.custom : FileType.any,
       allowedExtensions: hasExtensions ? allowedExtensions : null,
     );

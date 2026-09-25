@@ -4,6 +4,7 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'dart:async';
 import 'dart:io';
@@ -130,9 +131,8 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
 
   Future<void> _addFolder() async {
     final bloc = context.read<CustomFoldersBloc>();
-    final path = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    final path = await SaferFilePicker.getDirectoryPath(
+      context: context,
     );
     if (path == null) return;
 
@@ -654,11 +654,10 @@ class UserContentImportTile extends StatelessWidget {
 
   Future<void> _import(BuildContext context) async {
     final bloc = context.read<CustomFoldersBloc>();
-    final files = await FilePicker.pickFiles(
+    final files = await SaferFilePicker.pickFiles(
+      context: context,
       type: FileType.custom,
       allowedExtensions: const ['csv', 'json'],
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     final paths = files.map((f) => f.path).whereType<String>().toList();
     if (paths.isEmpty) return;

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
@@ -250,9 +251,8 @@ class _LibrarySetupDialogContentState
   bool get _isAtDefaultRoot => _targetRoot == widget.defaultTargetPath;
 
   Future<void> _pickTargetRoot() async {
-    final path = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    final path = await SaferFilePicker.getDirectoryPath(
+      context: context,
       dialogTitle: context.settingsText('בחר את תיקיית היעד לספרייה'),
     );
     if (path != null && mounted) setState(() => _targetRoot = path);
@@ -260,9 +260,8 @@ class _LibrarySetupDialogContentState
 
   /// בוחר תיקיית מקור לייבוא וסורק אילו נכסי ספרייה זוהו בה (דחוסים או רגילים).
   Future<void> _pickSourceFolder() async {
-    final folder = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    final folder = await SaferFilePicker.getDirectoryPath(
+      context: context,
       dialogTitle: context.settingsText('בחר תיקייה המכילה את קבצי הספרייה'),
     );
     if (folder == null || !mounted) return;
@@ -284,7 +283,8 @@ class _LibrarySetupDialogContentState
   }) async {
     if (_copyingPickedFile) return null;
     try {
-      final file = await FilePicker.pickFile(
+      final file = await SaferFilePicker.pickFile(
+        context: context,
         type: FileType.custom,
         allowedExtensions: allowedExtensions,
         dialogTitle: dialogTitle,
@@ -294,8 +294,6 @@ class _LibrarySetupDialogContentState
             _copyingFor = status == FilePickerStatus.picking ? action : null;
           });
         },
-        windowsOptions: kModalWindowsOptions,
-        linuxOptions: kModalLinuxOptions,
       );
       if (file != null && file.path == null) {
         throw StateError('picked file without a path');
@@ -346,9 +344,8 @@ class _LibrarySetupDialogContentState
 
   /// בוחר תיקיית ספרייה קיימת לשימוש במקומה (ללא העתקה).
   Future<void> _pickInPlaceFolder() async {
-    final folder = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    final folder = await SaferFilePicker.getDirectoryPath(
+      context: context,
       dialogTitle: context.settingsText('בחר את תיקיית הספרייה הקיימת'),
     );
     if (folder == null || !mounted) return;

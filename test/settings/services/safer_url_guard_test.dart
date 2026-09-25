@@ -143,6 +143,37 @@ void main() {
       expect(result, isFalse);
       expect(launcher.launched, isEmpty);
     });
+
+    testWidgets('חוסם קישור file ו-ms-settings במצב קיוסק', (tester) async {
+      isKioskMode = true;
+
+      late BuildContext testContext;
+      await tester.pumpWidget(
+        createTestWidget(
+          protectedModeEnabled: true,
+          hasPassword: true,
+          child: Builder(
+            builder: (ctx) {
+              testContext = ctx;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+
+      final fileResult = await saferLaunchUrl(
+        testContext,
+        Uri.parse('file:///C:/Windows/explorer.exe'),
+      );
+      final msResult = await saferLaunchUrl(
+        testContext,
+        Uri.parse('ms-settings:appsfeatures'),
+      );
+
+      expect(fileResult, isFalse);
+      expect(msResult, isFalse);
+      expect(launcher.launched, isEmpty);
+    });
   });
 
   group('saferLaunchUrl - מצב רגיל (ללא סייפר)', () {
@@ -234,6 +265,11 @@ void main() {
 
     test('מחזיר false ל-URL לא תקין', () async {
       final result = await saferLaunchUrlString(null, ':::invalid-url');
+      expect(result, isFalse);
+    });
+
+    test('חוסם פתיחה (fail-closed) כאשר context הוא null', () async {
+      final result = await saferLaunchUrl(null, Uri.parse('https://example.com'));
       expect(result, isFalse);
     });
   });

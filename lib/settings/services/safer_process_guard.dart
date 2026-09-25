@@ -33,10 +33,15 @@ abstract final class SaferProcessGuard {
     }
 
     final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null && effectiveContext.mounted) {
-      if (!await verifySaferModePassword(effectiveContext)) {
-        return false;
+    if (effectiveContext != null) {
+      if (shouldRequireSaferModePassword(effectiveContext)) {
+        if (!effectiveContext.mounted || !await verifySaferModePassword(effectiveContext)) {
+          return false;
+        }
       }
+    } else {
+      // Fail-closed: לא מאפשרים פתיחת מנהל קבצים ללא context מתאים לאימות
+      return false;
     }
 
     final runner =

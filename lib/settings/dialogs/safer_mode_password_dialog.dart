@@ -36,6 +36,8 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
   final FocusNode _confirmFocusNode = FocusNode();
   bool _isObscured = true;
   bool _isVerifying = false;
+  int _failedAttempts = 0;
+  DateTime? _lockoutUntil;
 
   @override
   void initState() {
@@ -57,6 +59,15 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
   }
 
   Future<void> _handleVerify() async {
+    if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) {
+      final secondsLeft =
+          _lockoutUntil!.difference(DateTime.now()).inSeconds + 1;
+      UiSnack.showError(
+        'הוזנו ניסיונות שגויים מרובים. נסה שוב בעוד $secondsLeft שניות',
+      );
+      return;
+    }
+
     if (_passwordController.text.isEmpty) {
       UiSnack.showError(SettingsMessages.passwordRequired);
       return;
@@ -74,7 +85,16 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
       if (isValid) {
         Navigator.of(context).pop(true);
       } else {
-        UiSnack.showError(SettingsMessages.wrongPassword);
+        _failedAttempts++;
+        if (_failedAttempts >= 5) {
+          _lockoutUntil = DateTime.now().add(const Duration(seconds: 5));
+          UiSnack.showError('סיסמה שגויה. המתן 5 שניות לפני ניסיון נוסף');
+        } else if (_failedAttempts >= 3) {
+          _lockoutUntil = DateTime.now().add(const Duration(seconds: 2));
+          UiSnack.showError('סיסמה שגויה. המתן 2 שניות לפני ניסיון נוסף');
+        } else {
+          UiSnack.showError(SettingsMessages.wrongPassword);
+        }
         _passwordController.clear();
       }
     } finally {

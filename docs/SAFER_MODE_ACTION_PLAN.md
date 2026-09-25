@@ -47,6 +47,42 @@
 7. **חבילת בדיקות יחידה (Unit Tests):**
    - נוספו והורחבו קבצי בדיקות ב-[`test/settings/services/safer_process_guard_test.dart`](../test/settings/services/safer_process_guard_test.dart), [`test/plugins/services/plugin_download_handler_test.dart`](../test/plugins/services/plugin_download_handler_test.dart), [`test/update/my_update_widget_test.dart`](../test/update/my_update_widget_test.dart), ו-[`test/utils/file/save_file_with_extension_test.dart`](../test/utils/file/save_file_with_extension_test.dart).
 
+### ג. מה בוצע והוטמע בקוד בסבב שלישי (ביקורת עומק מקיפה, סגירת 15 פרצות קצה ונעילת קיוסק הרמטית):
+1. **חסימת בריחת חלונות מרובים (Multi-Window Breakout):**
+   - ב-[`multi_window_service.dart`](../lib/core/windowing/multi_window_service.dart): נקבע ש-`canOpenWindows` ו-`canDragTabsOut` מחזירים `false` מוחלט כאשר `isKioskMode` פעיל.
+   - ב-[`main.dart`](../lib/main.dart): נקודת הכניסה של חלונות משניים (`secondaryWindowMain`) בודקת `isKioskMode` וסוגרת את עצמה מיידית במצב קיוסק.
+2. **הקמת שומר בוררי קבצים מרכזי ([`SaferFilePicker`](../lib/settings/services/safer_file_picker.dart)):**
+   - נוצר שירות מרכזי יחיד המעטף את `FilePicker.pickFile`, `FilePicker.pickFiles`, `FilePicker.getDirectoryPath` ו-`FilePicker.saveFile`.
+   - במצב קיוסק: חוסם הרמטית כל דיאלוג קבצים מערכתי ומציג הודעת חסימה.
+   - במצב סייפר: דורש אימות סיסמה מוקדם ופועל במדיניות Fail-Closed (נחסם אם אין Context).
+   - הוחלף בכל 10 המוקדים ברחבי האפליקציה.
+3. **הקשחת `SaferUrlGuard` ומניעת עקיפת פרוטוקולים (`file:///`, `ms-settings:`):**
+   - הוסרה רשימת הפרוטוקולים החלקית: במצב קיוסק כל ניסיון לפתוח URL חיצוני נחסם מיידית.
+   - הוטמעה מדיניות Fail-Closed: אם אין Context זמין לאימות סיסמה בסייפר, פתיחת קישורים נחסמת.
+   - תוקנה קריאה גולמית ל-`launchUrl` ב-[`my_update_widget.dart`](../lib/update/my_update_widget.dart).
+4. **חסימת הרצת מעדכן דיפרנציאלי ושיגור תהליכים מנותקים (`CREATE_BREAKAWAY_FROM_JOB`):**
+   - ב-[`my_update_widget.dart`](../lib/update/my_update_widget.dart): נוספה חסימת `isKioskMode` ואימות סיסמה בראש `_launchInstaller`, המגינה גם על עדכון דיפרנציאלי המשגר את `otzaria_updater.exe`.
+   - ב-[`main.dart`](../lib/main.dart): `_runDeferredSwapRecovery` נוטרל במצב קיוסק.
+5. **נעילת סרגל הכותרת ומניעת הקטנת חלון (Unmaximize / Dragging):**
+   - ב-[`custom_title_bar.dart`](../lib/navigation/view/custom_title_bar.dart): בוטלה פעולת הקטנת החלון בלחיצה כפולה (`_onTabsAreaDoubleTap`) ובוטלה גרירת החלון (`onPanStart`) במצב קיוסק, כך שהחלון מקובע במסך מלא/מוגדל ואינו חושף את שולחן העבודה.
+6. **הגנת סגירת החלון ו-Alt+F4:**
+   - ב-[`window_listener.dart`](../lib/core/window_listener.dart): בתוך `handleWindowClose()`, במצב קיוסק נדרש אימות סיסמת מנהל לסגירת החלון, מה שמונע יציאה מהקיוסק ב-Alt+F4 או בכפתור X.
+7. **חסימת נפילה לדיאלוג ההדפסה של Windows:**
+   - ב-[`safer_print_service.dart`](../lib/printing/safer_print_service.dart): בהיעדר מדפסת פיזית, נחסמה הנפילה ל-`Printing.layoutPdf` במצב קיוסק.
+8. **הגנה על `OtzarUtils.launchOtzarLocal`:**
+   - ב-[`otzar_utils.dart`](../lib/utils/navigation/otzar_utils.dart): נוספה חסימת קיוסק פנימית והוחלף `launchUrlString` ב-`saferLaunchUrlString`.
+9. **חסימת גרירת תוספים (Drag & Drop) במצב קיוסק:**
+   - ב-[`plugin_drop_zone.dart`](../lib/plugins/view/widgets/plugin_drop_zone.dart): נחסמה קליטת גרירת קובצי `.otzplugin`.
+10. **הגנת Brute-Force בדיאלוג הסיסמה:**
+    - ב-[`safer_mode_password_dialog.dart`](../lib/settings/dialogs/safer_mode_password_dialog.dart): נוסף מונה שגיאות עם מנגנון השהיה (Rate Limiting / Backoff) מדורג (2 שנ' אחרי 3 טעויות, 5 שנ' אחרי 5 טעויות).
+11. **הקשחת `SettingsBloc`:**
+    - ב-[`settings_bloc.dart`](../lib/settings/engine/settings_bloc.dart): נחסמה האפשרות להשבית מצב מוגן או למחוק סיסמה באמצעות אירועי Bloc ישירים כאשר `isKioskMode` פעיל.
+12. **חסימת הורדת קבצים מתוספים בסייפר:**
+    - ב-[`plugin_download_handler.dart`](../lib/plugins/services/plugin_download_handler.dart): נדרש אימות סיסמה גם בסייפר רגיל לפני תחילת הורדת קבצים.
+13. **חבילת בדיקות יחידה חדשה ומורחבת:**
+    - נוספו בדיקות מקיפות עבור `SaferFilePicker` ב-[`safer_file_picker_test.dart`](../test/settings/services/safer_file_picker_test.dart).
+    - הורחבו בדיקות Fail-Closed ופרוטוקולים ב-[`safer_url_guard_test.dart`](../test/settings/services/safer_url_guard_test.dart) וב-[`safer_process_guard_test.dart`](../test/settings/services/safer_process_guard_test.dart).
+
 ---
 
 ## ⚠️ 2. ניתוח כשלי דו"ח סוכן המחקר (The Blind Spots)

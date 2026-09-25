@@ -11,6 +11,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:otzaria/core/app_paths.dart';
@@ -2187,7 +2188,8 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// שחזור מקובץ גיבוי שהמשתמש בוחר — הדרך היחידה לשחזר אחרי התקנה מחדש
   /// במובייל, שבו תיקיית הגיבוי הפנימית נמחקת עם האפליקציה.
   Future<void> _restoreFromPickedFile() async {
-    final result = await FilePicker.pickFile(
+    final result = await SaferFilePicker.pickFile(
+      context: context,
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
@@ -2212,7 +2214,8 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// ייבוא ממזג מגיבוי של מכשיר אחר — מוסיף פריטים ואינו מוחק דבר, ולכן
   /// דיאלוג רגיל ולא אזהרה.
   Future<void> _importMergeFromPickedFile() async {
-    final result = await FilePicker.pickFile(
+    final result = await SaferFilePicker.pickFile(
+      context: context,
       type: FileType.custom,
       allowedExtensions: ['json'],
     );

@@ -12,6 +12,7 @@ import 'package:otzaria/core/windowing/drag_preview_colors.dart';
 import 'package:otzaria/core/windowing/window_bus.dart';
 import 'package:otzaria/library/hidden/hidden_library_selection.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
 import 'package:otzaria/tabs/models/tab.dart';
 
@@ -78,14 +79,17 @@ class MultiWindowService {
   /// ההגדרות והמשבצת של מצב המשתמש.
   static bool get canOpenWindows =>
       debugSupportedOverride ??
-      (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux));
+      (!isKioskMode &&
+          !kIsWeb &&
+          (Platform.isWindows || Platform.isMacOS || Platform.isLinux));
 
   /// האם אפשר לגרור כרטיסיה החוצה לחלון חדש או לחלון קיים.
   ///
   /// Windows בלבד: ב-macOS ובלינוקס ה-runner אינו מממש את מסלול הגרירה
   /// (מיקום חלון לפי הסמן אינו אפשרי ב-Wayland).
   static bool get canDragTabsOut =>
-      debugSupportedOverride ?? (!kIsWeb && Platform.isWindows);
+      debugSupportedOverride ??
+      (!isKioskMode && !kIsWeb && Platform.isWindows);
 
   /// הארגומנט שבו ה-runner של לינוקס מסמן חלון משני. ל-`FlDartProject` אין
   /// נקודת כניסה שאינה `main`, ולכן `main` מפנה לפיו ל-`secondaryWindowMain`.

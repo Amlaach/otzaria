@@ -42,6 +42,10 @@ Future<bool> printPdfWithSaferMode({
   if (!effectiveContext.mounted) return false;
 
   if (printers.isEmpty) {
+    if (isKioskMode) {
+      UiSnack.show('אין מדפסת פיזית מחוברת בעמדה זו');
+      return false;
+    }
     final useSystemDialog = await showTwoActionsDialog(
       context: effectiveContext,
       title: 'אין מדפסת זמינה',

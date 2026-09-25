@@ -16,16 +16,25 @@ abstract final class PluginDownloadHandler {
     InAppWebViewController controller,
     DownloadStartRequest request,
   ) async {
+    if (isKioskMode) {
+      UiSnack.show('הורדת קבצים חסומה במצב קיוסק');
+      return responseFor(isWindows: Platform.isWindows, isKiosk: true);
+    }
+
+    final context = navigatorKey.currentContext;
+    if (context != null && shouldRequireSaferModePassword(context)) {
+      if (!context.mounted || !await verifySaferModePassword(context)) {
+        UiSnack.show('הורדת הקובץ בוטלה');
+        return responseFor(isWindows: Platform.isWindows, isKiosk: true);
+      }
+    }
+
     final response = responseFor(
       isWindows: Platform.isWindows,
-      isKiosk: isKioskMode,
+      isKiosk: false,
     );
     if (response != null) {
-      if (isKioskMode) {
-        UiSnack.show('הורדת קבצים חסומה במצב קיוסק');
-      } else {
-        UiSnack.show(PluginMessages.fileDownloadStarted);
-      }
+      UiSnack.show(PluginMessages.fileDownloadStarted);
     }
     return response;
   }
