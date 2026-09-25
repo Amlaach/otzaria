@@ -4,8 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/core/ui_snack.dart' show navigatorKey;
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 
-/// פרוטוקולים שפתיחתם מוציאה את המשתמש מהאפליקציה.
-const _kioskDangerousSchemes = {'http', 'https', 'mailto', 'tel'};
 
 /// מחליף את `launchUrl` — חוסם URL חיצוני במצב סייפר.
 ///
@@ -17,18 +15,23 @@ Future<bool> saferLaunchUrl(
   Uri uri, {
   LaunchMode mode = LaunchMode.platformDefault,
 }) async {
-  if (_kioskDangerousSchemes.contains(uri.scheme.toLowerCase())) {
-    if (isKioskMode) {
-      // במצב קיוסק פתיחת דפדפן/דוא"ל חיצוני חסומה תמיד למניעת בריחה (Kiosk Breakout)
-      return false;
-    }
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null && effectiveContext.mounted) {
-      if (!await verifySaferModePassword(effectiveContext)) {
+  if (isKioskMode) {
+    // במצב קיוסק פתיחת דפדפן, דוא"ל או כל תוכנה/קישור חיצוני חסומה תמיד למניעת בריחה (Kiosk Breakout)
+    return false;
+  }
+
+  final effectiveContext = context ?? navigatorKey.currentContext;
+  if (effectiveContext != null) {
+    if (shouldRequireSaferModePassword(effectiveContext)) {
+      if (!effectiveContext.mounted || !await verifySaferModePassword(effectiveContext)) {
         return false;
       }
     }
+  } else {
+    // Fail-closed: אם אין context זמין לאימות סיסמה בסייפר, חוסמים קישורים חיצוניים
+    return false;
   }
+
   return launchUrl(uri, mode: mode);
 }
 

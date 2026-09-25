@@ -38,6 +38,7 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/plugins/bridge/plugin_reference_resolver.dart';
 import 'package:otzaria/utils/navigation/book_open_coordinator.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/plugins/bridge/plugin_save_target.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
@@ -408,25 +409,19 @@ class _PluginTabPageState extends State<PluginTabPage> {
         );
       },
       pickFolder: ({String? title}) async {
-        if (!mounted || isKioskMode) return null;
-        if (!await verifySaferModePassword(context)) return null;
         if (!mounted) return null;
-        return FilePicker.getDirectoryPath(
-          windowsOptions: kModalWindowsOptions,
-          linuxOptions: kModalLinuxOptions,
+        return SaferFilePicker.getDirectoryPath(
+          context: context,
           dialogTitle: title,
         );
       },
       pickFile: ({List<String>? allowedExtensions, String? title}) async {
-        if (!mounted || isKioskMode) return null;
-        if (!await verifySaferModePassword(context)) return null;
         if (!mounted) return null;
         final hasExtensions =
             allowedExtensions != null && allowedExtensions.isNotEmpty;
-        final result = await FilePicker.pickFile(
+        final result = await SaferFilePicker.pickFile(
+          context: context,
           dialogTitle: title,
-          windowsOptions: kModalWindowsOptions,
-          linuxOptions: kModalLinuxOptions,
           type: hasExtensions ? FileType.custom : FileType.any,
           allowedExtensions: hasExtensions ? allowedExtensions : null,
         );
@@ -438,13 +433,10 @@ class _PluginTabPageState extends State<PluginTabPage> {
             List<String>? allowedExtensions,
             String? title,
           }) async {
-            if (!mounted || isKioskMode) return null;
-            if (!await verifySaferModePassword(context)) return null;
             if (!mounted) return null;
-            final folder = await FilePicker.getDirectoryPath(
+            final folder = await SaferFilePicker.getDirectoryPath(
+              context: context,
               dialogTitle: pluginSaveFolderDialogTitle(title),
-              windowsOptions: kModalWindowsOptions,
-              linuxOptions: kModalLinuxOptions,
             );
             if (folder == null || !mounted) return null;
             final typed = await showInputDialog(

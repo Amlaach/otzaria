@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:otzaria/settings/services/safer_url_guard.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 
 class OtzarUtils {
   static final List<String> _availableDrives = [
@@ -137,8 +138,11 @@ class OtzarUtils {
   }
 
   static Future<void> launchOtzarLocal(int bookId) async {
+    if (isKioskMode) {
+      throw Exception('Launching external applications is blocked in kiosk mode');
+    }
     if (Platform.isMacOS) {
-      if (!await launchUrlString(macBookUri(bookId))) {
+      if (!await saferLaunchUrlString(null, macBookUri(bookId))) {
         throw Exception('Failed to launch Otzar: no handler for OtzarBook://');
       }
       return;

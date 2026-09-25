@@ -39,6 +39,7 @@ import 'windows_installer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 export 'differential/swap_recovery.dart' show differentialWorkDirectory;
 
@@ -1152,7 +1153,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
         _latestVersion!,
       ).timeout(_kGithubTimeout);
       final url = release['html_url'];
-      if (url is! String || !await launchUrl(Uri.parse(url))) {
+      if (url is! String || !await saferLaunchUrl(context, Uri.parse(url))) {
         throw Exception('the release page could not be opened');
       }
       if (!mounted) return;
@@ -1352,6 +1353,13 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   /// השקט ב-Windows): `true` בעדכון יזום ("התקן כעת"), `false` בעדכון
   /// בעת סגירת התוכנה.
   Future<bool> _launchInstaller({required bool relaunchApp}) async {
+    if (isKioskMode) {
+      UiSnack.show('עדכון תוכנה חסום במצב קיוסק');
+      return false;
+    }
+    if (context.mounted && !await verifySaferModePassword(context)) {
+      return false;
+    }
     if (_differentialUpdate != null) {
       return _launchDifferentialSwap(relaunchApp: relaunchApp);
     }

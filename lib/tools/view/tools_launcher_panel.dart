@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -246,13 +247,14 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
   }
 
   Future<void> _installPlugin() async {
-    final verified = await verifySaferModePassword(context);
-    if (!verified || !mounted) return;
-    final result = await FilePicker.pickFile(
+    if (isKioskMode) {
+      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+      return;
+    }
+    final result = await SaferFilePicker.pickFile(
+      context: context,
       type: FileType.custom,
       allowedExtensions: ['otzplugin'],
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     final path = result?.path;
     if (path == null || !mounted) return;
@@ -260,11 +262,12 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
   }
 
   Future<void> _loadDevPlugin() async {
-    final verified = await verifySaferModePassword(context);
-    if (!verified || !mounted) return;
-    final rootPath = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    if (isKioskMode) {
+      UiSnack.show('טעינת תוספי פיתוח חסומה במצב קיוסק');
+      return;
+    }
+    final rootPath = await SaferFilePicker.getDirectoryPath(
+      context: context,
     );
     if (rootPath == null || !mounted) return;
     context.read<PluginSystemBloc>().add(

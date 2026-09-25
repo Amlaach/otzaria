@@ -1852,6 +1852,11 @@ void cleanup() {
 /// פותח ישירות, כמו הספרייה עצמה. ראו `docs/multi-window.md`.
 @pragma('vm:entry-point')
 void secondaryWindowMain(List<String> args) async {
+  isKioskMode = isKioskMode || args.contains('--kiosk') || args.contains('--safer');
+  if (isKioskMode) {
+    await const MultiWindowService().closeSelf();
+    return;
+  }
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
@@ -2140,7 +2145,7 @@ String? secondaryWindowPayload;
 /// עצמו רץ במעדכן אחרי יציאת אוצריא, כי ההתקנה החיה נעולה כל עוד היא רצה.
 Future<void> _runDeferredSwapRecovery() async {
   // פר-תהליך: ההתקנה אחת, וחלון נוסף היה משגר מעדכן שני על אותם קבצים.
-  if (WindowRole.isSecondary || !Platform.isWindows) return;
+  if (WindowRole.isSecondary || !Platform.isWindows || isKioskMode) return;
   final planFile = pendingInterruptedSwapPlan(differentialWorkDirectory());
   if (planFile == null) return;
   try {

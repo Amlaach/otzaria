@@ -223,5 +223,14 @@ void main() {
       expect(executedProcesses, hasLength(1));
       expect(executedProcesses.first.args, contains(targetPath));
     });
+
+    test('חוסם פתיחה (fail-closed) כאשר context הוא null', () async {
+      final result = await SaferProcessGuard.openInFileManager(
+        null,
+        r'C:\Otzaria\Library',
+      );
+      expect(result, isFalse);
+      expect(executedProcesses, isEmpty);
+    });
   });
 }

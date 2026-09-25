@@ -76,6 +76,10 @@ class _PluginDropZoneState extends State<PluginDropZone> {
 
   Future<void> _onDrop(PluginFileDrag drop) async {
     if (_isHovering) setState(() => _isHovering = false);
+    if (isKioskMode) {
+      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+      return;
+    }
     if (!_contains(drop.physicalPosition)) return;
 
     final paths = _pluginPaths(drop.paths);
