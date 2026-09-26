@@ -1852,7 +1852,10 @@ void cleanup() {
 /// פותח ישירות, כמו הספרייה עצמה. ראו `docs/multi-window.md`.
 @pragma('vm:entry-point')
 void secondaryWindowMain(List<String> args) async {
-  isKioskMode = isKioskMode || args.contains('--kiosk') || args.contains('--safer');
+  isKioskMode = isKioskMode ||
+      args.any((a) =>
+          a.toLowerCase().contains('kiosk') ||
+          a.toLowerCase().contains('safer'));
   if (isKioskMode) {
     await const MultiWindowService().closeSelf();
     return;

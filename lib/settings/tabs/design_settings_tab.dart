@@ -176,6 +176,22 @@ class DesignSettingsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsBloc, SettingsState>(
+      buildWhen: (previous, current) =>
+          previous.settingsLanguageCode != current.settingsLanguageCode ||
+          previous.followSystemTheme != current.followSystemTheme ||
+          previous.isDarkMode != current.isDarkMode ||
+          previous.darkSeedColor != current.darkSeedColor ||
+          previous.seedColor != current.seedColor ||
+          previous.compactMenuMode != current.compactMenuMode ||
+          previous.readingTabsPlacement != current.readingTabsPlacement ||
+          previous.enablePerBookSettings != current.enablePerBookSettings ||
+          previous.pdfBookViewByDefault != current.pdfBookViewByDefault ||
+          previous.talmudBavliOpenFormat != current.talmudBavliOpenFormat ||
+          previous.pinSidebar != current.pinSidebar ||
+          previous.defaultSidebarOpen != current.defaultSidebarOpen ||
+          previous.defaultCommentaryOpen != current.defaultCommentaryOpen ||
+          previous.personalNotesCollapsedByDefault !=
+              current.personalNotesCollapsedByDefault,
       builder: (context, state) {
         return SingleChildScrollView(
           primary: true,

@@ -1379,9 +1379,6 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       UiSnack.show('עדכון תוכנה חסום במצב קיוסק');
       return;
     }
-    if (context.mounted && !await verifySaferModePassword(context)) {
-      return;
-    }
     final installer = _installerFile;
     if (installer == null) return;
 

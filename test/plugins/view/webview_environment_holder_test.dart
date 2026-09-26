@@ -2,10 +2,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
 
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  tearDown(() => WebViewEnvironmentHolder.debugOverrideRuntimeAvailable(null));
+  tearDown(() {
+    WebViewEnvironmentHolder.debugOverrideRuntimeAvailable(null);
+    isKioskMode = false;
+  });
 
   group('WebViewEnvironmentHolder.isRuntimeAvailable', () {
     test('override true → מחזיר true', () async {
@@ -57,6 +62,25 @@ void main() {
       expect(registration.scheme, pluginAssetScheme);
       expect(registration.treatAsSecure, isTrue);
       expect(registration.hasAuthorityComponent, isTrue);
+    });
+
+    test('omits additional browser arguments by default', () {
+      isKioskMode = false;
+      final settings = WebViewEnvironmentHolder.debugEnvironmentSettings(
+        r'C:\app-data\webview2',
+      );
+      expect(settings.additionalBrowserArguments, isNull);
+    });
+
+    test('disables devtools, PDF toolbar, and print preview in kiosk mode', () {
+      isKioskMode = true;
+      final settings = WebViewEnvironmentHolder.debugEnvironmentSettings(
+        r'C:\app-data\webview2',
+      );
+      expect(
+        settings.additionalBrowserArguments,
+        '--disable-features=msEdgeDevTools,PdfOopif --disable-print-preview',
+      );
     });
   });
 }

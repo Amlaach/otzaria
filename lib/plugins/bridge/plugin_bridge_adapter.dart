@@ -4336,14 +4336,20 @@ class PluginBridgeAdapter {
     List<String>? allowedExtensions,
     String? title,
   }) async {
-    final context = navigatorKey.currentContext;
-    if (context != null && !await verifySaferModePassword(context)) {
+    if (isKioskMode) {
+      UiSnack.show('פתיחת בורר קבצים חסומה במצב קיוסק');
       return null;
     }
-    final folder = await FilePicker.getDirectoryPath(
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      return null;
+    }
+    if (!await verifySaferModePassword(context)) {
+      return null;
+    }
+    final folder = await SaferFilePicker.getDirectoryPath(
+      context: context,
       dialogTitle: pluginSaveFolderDialogTitle(title),
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     if (folder == null) return null;
 

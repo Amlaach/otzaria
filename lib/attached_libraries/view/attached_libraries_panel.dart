@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -58,13 +59,12 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
 
   Future<void> _importFile() async {
     final bloc = context.read<AttachedLibrariesBloc>();
-    final files = await FilePicker.pickFiles(
+    final files = await SaferFilePicker.pickFiles(
+      context: context,
       // בורר המערכת במובייל אינו מכיר את הסיומת db; הקובץ נבדק לפי תוכנו.
       type: widget.supportsLinking ? FileType.custom : FileType.any,
       allowedExtensions: widget.supportsLinking ? const ['db'] : null,
       dialogTitle: context.settingsText('בחר קובץ מסד ספרים'),
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     final path = files.map((f) => f.path).whereType<String>().firstOrNull;
     if (path != null) bloc.add(ImportAttachedLibraryFile(path));
@@ -72,9 +72,8 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
 
   Future<void> _addFolder() async {
     final bloc = context.read<AttachedLibrariesBloc>();
-    final path = await FilePicker.getDirectoryPath(
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
+    final path = await SaferFilePicker.getDirectoryPath(
+      context: context,
     );
     if (path != null) bloc.add(AddAttachedLibraryFolder(path));
   }

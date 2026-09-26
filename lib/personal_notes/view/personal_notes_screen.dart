@@ -17,6 +17,7 @@ import 'package:otzaria/personal_notes/bloc/personal_notes_state.dart';
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart';
 import 'package:otzaria/printing/word_export_service.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 import 'package:pdf/pdf.dart';
 import 'package:otzaria/personal_notes/services/personal_notes_import_export_service.dart';
@@ -647,14 +648,11 @@ class _PersonalNotesManagerScreenState
   }
 
   Future<void> _importNotes() async {
-    if (!await verifySaferModePassword(context)) return;
-    if (!mounted) return;
-    final picked = await FilePicker.pickFile(
+    final picked = await SaferFilePicker.pickFile(
+      context: context,
       dialogTitle: 'בחר קובץ ייבוא',
       allowedExtensions: ['json'],
       type: FileType.custom,
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     if (!mounted) return;
     final pickedPath = picked?.path;

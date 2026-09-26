@@ -23,6 +23,22 @@ abstract final class SaferFilePicker {
   @visibleForTesting
   static Future<String?> Function()? saveFileOverride;
 
+  static final SecurityGate _gate = SecurityGate(
+    onFeedback: (message) => UiSnack.show(message),
+  );
+
+  static Future<bool> _authorize(BuildContext? context, {bool isSave = false}) async {
+    final action = isSave ? SecurityAction.fileSave : SecurityAction.directoryPick;
+    final decision = await _gate.policy.evaluate(action, context: context);
+    if (decision == SecurityDecision.denyKiosk) {
+      UiSnack.show(isSave
+          ? 'שמירת קבצים למערכת ההפעלה חסומה בעמדה זו'
+          : 'פתיחת בורר קבצים חסומה במצב קיוסק');
+      return false;
+    }
+    return decision == SecurityDecision.allow;
+  }
+
   /// בוחר תיקייה ממערכת ההפעלה.
   static Future<String?> getDirectoryPath({
     BuildContext? context,
@@ -30,23 +46,7 @@ abstract final class SaferFilePicker {
     String? initialDirectory,
     bool lockParentWindow = false,
   }) async {
-    if (isKioskMode) {
-      UiSnack.show('פתיחת בורר קבצים חסומה במצב קיוסק');
-      return null;
-    }
-
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null) {
-      if (shouldRequireSaferModePassword(effectiveContext)) {
-        if (!effectiveContext.mounted ||
-            !await verifySaferModePassword(effectiveContext)) {
-          return null;
-        }
-      }
-    } else {
-      // Fail-closed
-      return null;
-    }
+    if (!await _authorize(context)) return null;
 
     if (getDirectoryPathOverride != null) {
       return getDirectoryPathOverride!();
@@ -71,23 +71,7 @@ abstract final class SaferFilePicker {
     Function(FilePickerStatus)? onFileLoading,
     bool lockParentWindow = false,
   }) async {
-    if (isKioskMode) {
-      UiSnack.show('פתיחת בורר קבצים חסומה במצב קיוסק');
-      return null;
-    }
-
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null) {
-      if (shouldRequireSaferModePassword(effectiveContext)) {
-        if (!effectiveContext.mounted ||
-            !await verifySaferModePassword(effectiveContext)) {
-          return null;
-        }
-      }
-    } else {
-      // Fail-closed
-      return null;
-    }
+    if (!await _authorize(context)) return null;
 
     if (pickFileOverride != null) {
       return pickFileOverride!();
@@ -115,23 +99,7 @@ abstract final class SaferFilePicker {
     Function(FilePickerStatus)? onFileLoading,
     bool lockParentWindow = false,
   }) async {
-    if (isKioskMode) {
-      UiSnack.show('פתיחת בורר קבצים חסומה במצב קיוסק');
-      return const [];
-    }
-
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null) {
-      if (shouldRequireSaferModePassword(effectiveContext)) {
-        if (!effectiveContext.mounted ||
-            !await verifySaferModePassword(effectiveContext)) {
-          return const [];
-        }
-      }
-    } else {
-      // Fail-closed
-      return const [];
-    }
+    if (!await _authorize(context)) return const [];
 
     if (pickFilesOverride != null) {
       return pickFilesOverride!();
@@ -159,23 +127,7 @@ abstract final class SaferFilePicker {
     List<String>? allowedExtensions,
     bool lockParentWindow = false,
   }) async {
-    if (isKioskMode) {
-      UiSnack.show('שמירת קבצים למערכת ההפעלה חסומה בעמדה זו');
-      return null;
-    }
-
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext != null) {
-      if (shouldRequireSaferModePassword(effectiveContext)) {
-        if (!effectiveContext.mounted ||
-            !await verifySaferModePassword(effectiveContext)) {
-          return null;
-        }
-      }
-    } else {
-      // Fail-closed
-      return null;
-    }
+    if (!await _authorize(context, isSave: true)) return null;
 
     if (saveFileOverride != null) {
       return saveFileOverride!();
@@ -193,3 +145,6 @@ abstract final class SaferFilePicker {
     );
   }
 }
+
+/// שער מרכזי לקריאות בורר קבצים (Phase 2 Architectural Model)
+typedef FilePickerGateway = SaferFilePicker;

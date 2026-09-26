@@ -26,8 +26,10 @@ Future<String?> saveFileWithExtension({
     return null;
   }
   final effectiveContext = context ?? navigatorKey.currentContext;
-  if (effectiveContext != null &&
-      !await verifySaferModePassword(effectiveContext)) {
+  if (effectiveContext == null || !effectiveContext.mounted) {
+    return null;
+  }
+  if (!await verifySaferModePassword(effectiveContext)) {
     return null;
   }
   final uri = await FilePicker.saveFile(

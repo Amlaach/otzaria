@@ -5,6 +5,7 @@
 #include <flutter_windows.h>
 
 #include "resource.h"
+#include "utils.h"
 
 namespace {
 
@@ -335,6 +336,16 @@ Win32Window::MessageHandler(HWND hwnd,
         SetFocus(child_content_);
       }
       return 0;
+
+    case WM_SYSCOMMAND:
+      if (IsKioskModeEnabled()) {
+        const WPARAM cmd = wparam & 0xFFF0;
+        if (cmd == SC_KEYMENU || cmd == SC_MINIMIZE || cmd == SC_RESTORE ||
+            cmd == SC_MOVE) {
+          return 0;
+        }
+      }
+      break;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);

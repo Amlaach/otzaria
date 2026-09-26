@@ -167,6 +167,18 @@ static bool IsCliInvocation(const std::vector<std::string>& args) {
          EqualsIgnoreCase(cmd, "build-release-index");
 }
 
+// Returns true when the command-line contains --kiosk or --safer.
+static bool IsKioskInvocation(const std::vector<std::string>& args) {
+  for (const auto& arg : args) {
+    if (EqualsIgnoreCase(arg, "--kiosk") || EqualsIgnoreCase(arg, "-kiosk") ||
+        EqualsIgnoreCase(arg, "/kiosk") || EqualsIgnoreCase(arg, "--safer") ||
+        EqualsIgnoreCase(arg, "-safer") || EqualsIgnoreCase(arg, "/safer")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Case-insensitive check whether `s` ends with `suffix` (ASCII only).
 static bool EndsWithIgnoreCase(const std::string& s, const std::string& suffix) {
   if (s.size() < suffix.size()) return false;
@@ -274,6 +286,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // is rendered.
   std::vector<std::string> early_args = GetCommandLineArguments();
   const bool is_cli_invocation = IsCliInvocation(early_args);
+  const bool is_kiosk_invocation = IsKioskInvocation(early_args);
+
+  if (is_kiosk_invocation) {
+    SetKioskMode(true);
+    InstallKioskKeyboardHook();
+  }
 
 
   // Single-instance check: must happen before the Flutter engine starts so
@@ -359,6 +377,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (!window.Create(kMainWindowTitle, origin, size)) {
     startup_watchdog::Stop();
     splash::Close();
+    if (is_kiosk_invocation) {
+      UninstallKioskKeyboardHook();
+    }
     if (mutex) CloseHandle(mutex);
     ::CoUninitialize();
     return EXIT_FAILURE;
@@ -390,6 +411,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::RemovePropW(main_hwnd, kMainWindowPropName);
   }
 
+  if (is_kiosk_invocation) {
+    UninstallKioskKeyboardHook();
+  }
   startup_watchdog::Stop();
   jump_list::WaitForPendingTasks(200);
   if (mutex) CloseHandle(mutex);

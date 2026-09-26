@@ -14,6 +14,7 @@ import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
+import 'package:otzaria/plugins/services/plugin_management_actions.dart';
 import 'package:otzaria/plugins/services/plugin_update_check_service.dart';
 import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
@@ -246,51 +247,14 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
     super.dispose();
   }
 
-  Future<void> _installPlugin() async {
-    if (isKioskMode) {
-      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
-      return;
-    }
-    final result = await SaferFilePicker.pickFile(
-      context: context,
-      type: FileType.custom,
-      allowedExtensions: ['otzplugin'],
-    );
-    final path = result?.path;
-    if (path == null || !mounted) return;
-    context.read<PluginSystemBloc>().add(InstallPluginRequested(path));
-  }
+  Future<void> _installPlugin() =>
+      PluginManagementActions.installPlugin(context);
 
-  Future<void> _loadDevPlugin() async {
-    if (isKioskMode) {
-      UiSnack.show('טעינת תוספי פיתוח חסומה במצב קיוסק');
-      return;
-    }
-    final rootPath = await SaferFilePicker.getDirectoryPath(
-      context: context,
-    );
-    if (rootPath == null || !mounted) return;
-    context.read<PluginSystemBloc>().add(
-      LoadDevelopmentPluginRequested(rootPath),
-    );
-  }
+  Future<void> _loadDevPlugin() =>
+      PluginManagementActions.loadDevPlugin(context);
 
-  Future<void> _loadLocalhostPlugin() async {
-    final verified = await verifySaferModePassword(context);
-    if (!verified || !mounted) return;
-    final bloc = context.read<PluginSystemBloc>();
-    final url = await showInputDialog(
-      context: context,
-      title: context.settingsText('טעינת תוסף מ-localhost'),
-      labelText: 'Base URL',
-      hintText: 'http://localhost:3000',
-      initialValue: 'http://localhost:3000',
-      cancelText: context.settingsText('ביטול'),
-      confirmText: context.settingsText('טען'),
-    );
-    if (url == null || url.isEmpty) return;
-    bloc.add(LoadLocalhostPluginRequested(url));
-  }
+  Future<void> _loadLocalhostPlugin() =>
+      PluginManagementActions.loadLocalhostPlugin(context);
 
   void _moveHighlight(int delta, int total) {
     if (total == 0) return;
@@ -631,7 +595,15 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final settingsState = context.watch<SettingsBloc>().state;
+    context.select<SettingsBloc, int>(
+      (b) => Object.hash(
+        Object.hashAll(b.state.hiddenBuiltInToolIds),
+        b.state.isOfflineMode,
+        Object.hashAll(b.state.builtInToolsOrder),
+        b.state.compactMenuMode,
+      ),
+    );
+    final settingsState = context.read<SettingsBloc>().state;
     final currentPluginState = context.watch<PluginSystemBloc>().state;
     if (currentPluginState is PluginSystemLoaded) {
       _lastLoadedPluginState = currentPluginState;

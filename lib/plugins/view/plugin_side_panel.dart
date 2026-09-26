@@ -11,6 +11,7 @@ import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
 import 'package:otzaria/plugins/models/installed_plugin.dart';
 import 'package:otzaria/plugins/utils/plugin_icon_resolver.dart';
+import 'package:otzaria/plugins/services/plugin_management_actions.dart';
 import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
 import 'package:otzaria/plugins/view/widgets/plugin_drop_zone.dart';
@@ -46,57 +47,14 @@ class _PluginSidePanelState extends State<PluginSidePanel> {
     super.dispose();
   }
 
-  Future<void> _installPlugin(BuildContext context) async {
-    if (isKioskMode) {
-      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
-      return;
-    }
+  Future<void> _installPlugin(BuildContext context) =>
+      PluginManagementActions.installPlugin(context);
 
-    final result = await SaferFilePicker.pickFile(
-      context: context,
-      type: FileType.custom,
-      allowedExtensions: ['otzplugin'],
-    );
-    final path = result?.path;
-    if (path != null && context.mounted) {
-      context.read<PluginSystemBloc>().add(InstallPluginRequested(path));
-    }
-  }
+  Future<void> _loadDevPlugin(BuildContext context) =>
+      PluginManagementActions.loadDevPlugin(context);
 
-  Future<void> _loadDevPlugin(BuildContext context) async {
-    if (isKioskMode) {
-      UiSnack.show('טעינת תוספי פיתוח חסומה במצב קיוסק');
-      return;
-    }
-
-    final rootPath = await SaferFilePicker.getDirectoryPath(
-      context: context,
-    );
-    if (rootPath != null && context.mounted) {
-      context.read<PluginSystemBloc>().add(
-        LoadDevelopmentPluginRequested(rootPath),
-      );
-    }
-  }
-
-  Future<void> _loadLocalhostPlugin(BuildContext context) async {
-    final verified = await verifySaferModePassword(context);
-    if (!verified || !context.mounted) return;
-
-    final bloc = context.read<PluginSystemBloc>();
-    final url = await showInputDialog(
-      context: context,
-      title: 'טעינת תוסף מ-localhost',
-      labelText: 'Base URL',
-      hintText: 'http://localhost:3000',
-      initialValue: 'http://localhost:3000',
-      cancelText: 'ביטול',
-      confirmText: 'טען',
-    );
-    if (url != null && url.isNotEmpty) {
-      bloc.add(LoadLocalhostPluginRequested(url));
-    }
-  }
+  Future<void> _loadLocalhostPlugin(BuildContext context) =>
+      PluginManagementActions.loadLocalhostPlugin(context);
 
   @override
   Widget build(BuildContext context) {

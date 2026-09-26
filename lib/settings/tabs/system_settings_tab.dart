@@ -886,6 +886,17 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsBloc, SettingsState>(
+      buildWhen: (previous, current) =>
+          previous.isOfflineMode != current.isOfflineMode ||
+          previous.softwareAndBookUpdatesEnabled !=
+              current.softwareAndBookUpdatesEnabled ||
+          previous.dbSizeBytes != current.dbSizeBytes ||
+          previous.libraryPath != current.libraryPath ||
+          previous.internalDbPath != current.internalDbPath ||
+          previous.externalDbPath != current.externalDbPath ||
+          previous.protectedModePasswordSet !=
+              current.protectedModePasswordSet ||
+          previous.protectedModeEnabled != current.protectedModeEnabled,
       builder: (context, state) {
         return BlocListener<LibraryBloc, LibraryState>(
           // הספרייה נטענת מחדש אחרי עדכון/החלפת מיקום — בלי ריענון כאן

@@ -1961,7 +1961,6 @@ class _CombinedViewState extends State<CombinedView> {
           builder: (context, constraints) {
             // שומר את גובה הבלוק בפועל לשימוש בחישובי הגלילה
             _viewportHeight = constraints.maxHeight;
-            context.watch<SettingsBloc>().state;
 
             // יירוט Ctrl+C ממוקם *מעל* ה-SelectionArea — שם מנגנון ה-override
             // של CopySelectionTextIntent מאתר אותו. מתחתיו הוא בלתי-נראה, ואז

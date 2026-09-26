@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
@@ -11,6 +12,17 @@ Map<String, String> windowsPrinterPorts() {
   if (!Platform.isWindows) return const {};
   try {
     return _enumeratePorts();
+  } catch (_) {
+    return const {};
+  }
+}
+
+/// גרסה אסינכרונית המריצה את קריאת ה-FFI ב-Worker Isolate נפרד
+/// כדי למנוע קיפאון של ממשק המשתמש (UI Thread hitch) במקרה של מדפסות רשת לא זמינות.
+Future<Map<String, String>> windowsPrinterPortsAsync() async {
+  if (!Platform.isWindows) return const {};
+  try {
+    return await Isolate.run(_enumeratePorts);
   } catch (_) {
     return const {};
   }

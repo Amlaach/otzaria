@@ -215,6 +215,17 @@ class TextSettingsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsBloc, SettingsState>(
+      buildWhen: (previous, current) =>
+          previous.fontSize != current.fontSize ||
+          previous.fontFamily != current.fontFamily ||
+          previous.fontBold != current.fontBold ||
+          previous.lineSpacing != current.lineSpacing ||
+          previous.removeNikud != current.removeNikud ||
+          previous.stripCantillation != current.stripCantillation ||
+          previous.copyFormat != current.copyFormat ||
+          previous.copyIncludeBookName != current.copyIncludeBookName ||
+          previous.copyIncludeChapterName != current.copyIncludeChapterName ||
+          previous.perBookSettings != current.perBookSettings,
       builder: (context, settingsState) {
         final content = SingleChildScrollView(
           primary: true,
