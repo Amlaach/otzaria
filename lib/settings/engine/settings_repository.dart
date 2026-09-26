@@ -8,6 +8,9 @@ import 'package:otzaria/text_display/text_display_exports.dart';
 import 'package:otzaria/utils/text/text_manipulation.dart' show HolyNameStyle;
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'dart:isolate';
+import 'dart:math';
+import 'dart:typed_data';
 
 class SettingsRepository {
   static const String keyDarkMode = 'key-dark-mode';
@@ -908,11 +911,11 @@ class SettingsRepository {
   }
 
   Future<void> updateProtectedModePassword(String password) async {
-    final hash = _hashPassword(password);
+    final hash = await PasswordHasher.hashPassword(password);
     await _settings.setValue(keyProtectedModePasswordHash, hash);
   }
 
-  bool verifyProtectedModePassword(String password) {
+  Future<bool> verifyProtectedModePassword(String password) async {
     final storedHash = _settings.getValue<String>(
       keyProtectedModePasswordHash,
       defaultValue: '',
@@ -922,8 +925,37 @@ class SettingsRepository {
       return false;
     }
 
-    final inputHash = _hashPassword(password);
-    return inputHash == storedHash;
+    final isValid = await PasswordHasher.verifyPassword(password, storedHash);
+    if (isValid && !storedHash.startsWith('pbkdf2:')) {
+      // שדרוג אוטומטי של Hash ישן ל-PBKDF2 עם Salt אקראי
+      final newHash = await PasswordHasher.hashPassword(password);
+      await _settings.setValue(keyProtectedModePasswordHash, newHash);
+    }
+    return isValid;
+  }
+
+  bool verifyProtectedModePasswordSync(String password) {
+    final storedHash = _settings.getValue<String>(
+      keyProtectedModePasswordHash,
+      defaultValue: '',
+    );
+    if (storedHash.isEmpty) return false;
+    if (storedHash.startsWith('pbkdf2:')) {
+      final parts = storedHash.split(':');
+      if (parts.length != 4) return false;
+      final rounds = int.tryParse(parts[1]) ?? PasswordHasher.iterations;
+      final salt = parts[2];
+      final expected = parts[3];
+      final computed = PasswordHasher.pbkdf2Sync(
+        password,
+        salt,
+        rounds,
+        PasswordHasher.keyLength,
+      );
+      return PasswordHasher.constantTimeEquals(computed, expected);
+    }
+    final inputHash = sha256.convert(utf8.encode(password)).toString();
+    return PasswordHasher.constantTimeEquals(inputHash, storedHash);
   }
 
   bool hasProtectedModePassword() {
@@ -936,12 +968,6 @@ class SettingsRepository {
 
   Future<void> clearProtectedModePassword() async {
     await _settings.remove(keyProtectedModePasswordHash);
-  }
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final hash = sha256.convert(bytes);
-    return hash.toString();
   }
 
   // Calendar Notification Settings
@@ -1262,3 +1288,100 @@ class SettingsRepository {
     await _settings.setValue('settings_initialized', true);
   }
 }
+
+/// מימוש תקני ומאובטח של PBKDF2-HMAC-SHA256 הרץ ברקע ב-Isolate נפרד
+/// כדי לשחרר לחלוטין את ה-UI Isolate.
+abstract final class PasswordHasher {
+  static const int iterations = 100000;
+  static const int saltLength = 16;
+  static const int keyLength = 32;
+
+  static String generateSalt([int length = saltLength]) {
+    final random = Random.secure();
+    final bytes = List<int>.generate(length, (_) => random.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  static Future<String> hashPassword(String password, {String? salt}) async {
+    final actualSalt = salt ?? generateSalt();
+    final hashHex = await Isolate.run(
+      () => pbkdf2Sync(password, actualSalt, iterations, keyLength),
+    );
+    return 'pbkdf2:$iterations:$actualSalt:$hashHex';
+  }
+
+  static Future<bool> verifyPassword(String password, String storedHash) async {
+    if (storedHash.isEmpty) return false;
+
+    if (storedHash.startsWith('pbkdf2:')) {
+      final parts = storedHash.split(':');
+      if (parts.length != 4) return false;
+      final rounds = int.tryParse(parts[1]) ?? iterations;
+      final salt = parts[2];
+      final expectedHash = parts[3];
+      final computed = await Isolate.run(
+        () => pbkdf2Sync(password, salt, rounds, keyLength),
+      );
+      return constantTimeEquals(computed, expectedHash);
+    }
+
+    // Legacy fallback: single round unsalted sha256
+    final legacyHash = sha256.convert(utf8.encode(password)).toString();
+    return constantTimeEquals(legacyHash, storedHash);
+  }
+
+  static String pbkdf2Sync(
+    String password,
+    String saltHex,
+    int rounds,
+    int keyLen,
+  ) {
+    final passwordBytes = utf8.encode(password);
+    final saltBytes = hexDecode(saltHex);
+    final hmac = Hmac(sha256, passwordBytes);
+
+    final numBlocks = (keyLen + 31) ~/ 32;
+    final derivedKey = Uint8List(numBlocks * 32);
+
+    for (int block = 1; block <= numBlocks; block++) {
+      final blockBytes = Uint8List(4)
+        ..buffer.asByteData().setUint32(0, block, Endian.big);
+      final initialData = Uint8List(saltBytes.length + 4)
+        ..setRange(0, saltBytes.length, saltBytes)
+        ..setRange(saltBytes.length, saltBytes.length + 4, blockBytes);
+
+      var u = hmac.convert(initialData).bytes;
+      final xorSum = Uint8List.fromList(u);
+
+      for (int r = 1; r < rounds; r++) {
+        u = hmac.convert(u).bytes;
+        for (int i = 0; i < xorSum.length; i++) {
+          xorSum[i] ^= u[i];
+        }
+      }
+
+      derivedKey.setRange((block - 1) * 32, block * 32, xorSum);
+    }
+
+    final outBytes = derivedKey.sublist(0, keyLen);
+    return outBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  static Uint8List hexDecode(String hex) {
+    final result = Uint8List(hex.length ~/ 2);
+    for (int i = 0; i < result.length; i++) {
+      result[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return result;
+  }
+
+  static bool constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    int diff = 0;
+    for (int i = 0; i < a.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return diff == 0;
+  }
+}
+

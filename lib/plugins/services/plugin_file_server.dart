@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:path/path.dart' as p;
 
 /// רשומת קובץ אישי שהמשתמש אישר לתוסף, כפי שהיא מוחזקת בזיכרון השרת.
@@ -125,6 +126,9 @@ class PluginFileServer {
   }
 
   Future<void> _ensureStarted() async {
+    if (isKioskMode) {
+      throw StateError('Plugin file server is disabled in kiosk mode');
+    }
     if (_server != null) return;
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _server = server;

@@ -7,7 +7,11 @@ import 'package:otzaria/navigation/bloc/navigation_state.dart';
 import 'package:otzaria/settings/engine/settings_engine_exports.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/dialogs/safer_mode_password_dialog.dart';
+import 'package:otzaria/settings/services/security_policy_service.dart';
 import 'package:otzaria/widgets/layout/centered_scrollable_state.dart';
+
+export 'package:otzaria/settings/services/security_policy_service.dart'
+    show AppSecurityConfig, ISecurityPolicyService, SecurityAction, SecurityDecision, SecurityGate;
 
 /// Wrapper שבודק סיסמה לפני כניסה למסך מוגן במצב סייפר
 class SaferModeGuard extends StatefulWidget {
@@ -158,9 +162,12 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
       children: [
         Offstage(
           offstage: locked,
-          child: ExcludeFocus(
-            excluding: locked,
-            child: widget.child,
+          child: TickerMode(
+            enabled: !locked,
+            child: ExcludeFocus(
+              excluding: locked,
+              child: widget.child,
+            ),
           ),
         ),
         if (_isChecking)
@@ -224,15 +231,21 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
 }
 
 /// האם האפליקציה פועלת במצב קיוסק מנוהל (דגל `--kiosk` או `--safer`).
-bool isKioskMode = false;
+/// מגובה על ידי [AppSecurityConfig] האימוטבילי (AP-01).
+bool get isKioskMode => AppSecurityConfig.instance.isKioskMode;
+set isKioskMode(bool value) {
+  AppSecurityConfig.initialize(
+    isKioskMode: value,
+    isSecondaryWindow: AppSecurityConfig.instance.isSecondaryWindow,
+  );
+}
 
 /// פונקציה עוזרת לבדיקה האם צריך אימות סיסמה במצב סייפר
 bool shouldRequireSaferModePassword(BuildContext context) {
   if (isKioskMode) return true;
   try {
     final state = context.read<SettingsBloc>().state;
-    final repository = context.read<SettingsRepository>();
-    return state.protectedModeEnabled && repository.hasProtectedModePassword();
+    return state.protectedModeEnabled && state.protectedModePasswordSet;
   } catch (_) {
     return false;
   }

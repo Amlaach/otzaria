@@ -146,8 +146,8 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
     bool zipExtracted = false;
     String? extractedFileName;
 
-    final zipFiles = dir
-        .listSync()
+    final entities = await dir.list().toList();
+    final zipFiles = entities
         .where(
           (entity) =>
               entity is File && entity.path.toLowerCase().endsWith('.zip'),

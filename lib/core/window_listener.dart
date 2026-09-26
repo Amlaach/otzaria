@@ -184,6 +184,7 @@ class AppWindowListener extends WindowListener {
   /// נקרא בכל אירוע resize רציף — מיועד ל-debounced restore.
   VoidCallback? onWindowResizeOccurred;
   bool _isClosing = false;
+  bool _isCloseAuthPending = false;
 
   Future<void> _runBestEffortShutdownStep(
     String stepName,
@@ -278,17 +279,21 @@ class AppWindowListener extends WindowListener {
     bool Function()? canClose,
     bool quit = false,
   }) async {
-    if (_isClosing) {
+    if (_isClosing || _isCloseAuthPending) {
       return;
     }
     if (isKioskMode) {
       final context = navigatorKey.currentContext;
-      if (context != null && context.mounted) {
+      if (context == null || !context.mounted) {
+        return;
+      }
+      _isCloseAuthPending = true;
+      try {
         if (!await verifySaferModePassword(context)) {
           return;
         }
-      } else {
-        return;
+      } finally {
+        _isCloseAuthPending = false;
       }
     }
     if (canClose != null && !canClose()) return;

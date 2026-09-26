@@ -63,3 +63,102 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   }
   return utf8_string;
 }
+
+namespace {
+
+bool g_kiosk_mode_enabled = false;
+HHOOK g_kiosk_keyboard_hook = nullptr;
+STICKYKEYS g_orig_sticky_keys = {sizeof(STICKYKEYS), 0};
+TOGGLEKEYS g_orig_toggle_keys = {sizeof(TOGGLEKEYS), 0};
+FILTERKEYS g_orig_filter_keys = {sizeof(FILTERKEYS), 0};
+bool g_accessibility_shortcuts_disabled = false;
+
+LRESULT CALLBACK KioskKeyboardHookProc(int code, WPARAM wparam, LPARAM lparam) {
+  if (code == HC_ACTION && g_kiosk_mode_enabled) {
+    auto* pkb = reinterpret_cast<KBDLLHOOKSTRUCT*>(lparam);
+    if (pkb != nullptr) {
+      // 1. Windows Logo Keys (VK_LWIN 0x5B, VK_RWIN 0x5C)
+      if (pkb->vkCode == VK_LWIN || pkb->vkCode == VK_RWIN) {
+        return 1;
+      }
+      // 2. Alt+Tab, Alt+Esc, Alt+Space
+      const bool is_alt_down = (pkb->flags & LLKHF_ALTDOWN) != 0;
+      if (is_alt_down && (pkb->vkCode == VK_TAB || pkb->vkCode == VK_ESCAPE ||
+                          pkb->vkCode == VK_SPACE)) {
+        return 1;
+      }
+      // 3. Ctrl+Esc (Start Menu)
+      const bool is_ctrl_down = (::GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+      if (is_ctrl_down && pkb->vkCode == VK_ESCAPE) {
+        return 1;
+      }
+      // 4. Ctrl+Shift+Esc (Task Manager)
+      const bool is_shift_down = (::GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+      if (is_ctrl_down && is_shift_down && pkb->vkCode == VK_ESCAPE) {
+        return 1;
+      }
+    }
+  }
+  return ::CallNextHookEx(g_kiosk_keyboard_hook, code, wparam, lparam);
+}
+
+void DisableAccessibilityShortcuts() {
+  ::SystemParametersInfoW(SPI_GETSTICKYKEYS, sizeof(STICKYKEYS),
+                          &g_orig_sticky_keys, 0);
+  STICKYKEYS sk = g_orig_sticky_keys;
+  sk.dwFlags &= ~SKF_HOTKEYACTIVE;
+  ::SystemParametersInfoW(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS), &sk, 0);
+
+  ::SystemParametersInfoW(SPI_GETTOGGLEKEYS, sizeof(TOGGLEKEYS),
+                          &g_orig_toggle_keys, 0);
+  TOGGLEKEYS tk = g_orig_toggle_keys;
+  tk.dwFlags &= ~TKF_HOTKEYACTIVE;
+  ::SystemParametersInfoW(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS), &tk, 0);
+
+  ::SystemParametersInfoW(SPI_GETFILTERKEYS, sizeof(FILTERKEYS),
+                          &g_orig_filter_keys, 0);
+  FILTERKEYS fk = g_orig_filter_keys;
+  fk.dwFlags &= ~FKF_HOTKEYACTIVE;
+  ::SystemParametersInfoW(SPI_SETFILTERKEYS, sizeof(FILTERKEYS), &fk, 0);
+
+  g_accessibility_shortcuts_disabled = true;
+}
+
+void RestoreAccessibilityShortcuts() {
+  if (g_accessibility_shortcuts_disabled) {
+    ::SystemParametersInfoW(SPI_SETSTICKYKEYS, sizeof(STICKYKEYS),
+                            &g_orig_sticky_keys, 0);
+    ::SystemParametersInfoW(SPI_SETTOGGLEKEYS, sizeof(TOGGLEKEYS),
+                            &g_orig_toggle_keys, 0);
+    ::SystemParametersInfoW(SPI_SETFILTERKEYS, sizeof(FILTERKEYS),
+                            &g_orig_filter_keys, 0);
+    g_accessibility_shortcuts_disabled = false;
+  }
+}
+
+}  // namespace
+
+void SetKioskMode(bool enabled) {
+  g_kiosk_mode_enabled = enabled;
+}
+
+bool IsKioskModeEnabled() {
+  return g_kiosk_mode_enabled;
+}
+
+void InstallKioskKeyboardHook() {
+  if (g_kiosk_keyboard_hook == nullptr) {
+    g_kiosk_keyboard_hook = ::SetWindowsHookExW(
+        WH_KEYBOARD_LL, KioskKeyboardHookProc, ::GetModuleHandleW(nullptr), 0);
+  }
+  DisableAccessibilityShortcuts();
+}
+
+void UninstallKioskKeyboardHook() {
+  if (g_kiosk_keyboard_hook != nullptr) {
+    ::UnhookWindowsHookEx(g_kiosk_keyboard_hook);
+    g_kiosk_keyboard_hook = nullptr;
+  }
+  RestoreAccessibilityShortcuts();
+}
+

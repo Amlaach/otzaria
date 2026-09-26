@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
@@ -648,18 +649,11 @@ class _CalendarSettingsTabState extends State<CalendarSettingsTab> {
   }
 
   Future<void> _importIcsFile(BuildContext context) async {
-    if (isKioskMode) {
-      UiSnack.show('ייבוא קבצים חסום במצב קיוסק');
-      return;
-    }
-    if (!await verifySaferModePassword(context)) return;
-    if (!context.mounted) return;
     final cubit = context.read<CalendarCubit>();
-    final result = await FilePicker.pickFile(
+    final result = await SaferFilePicker.pickFile(
+      context: context,
       type: FileType.custom,
       allowedExtensions: ['ics'],
-      windowsOptions: kModalWindowsOptions,
-      linuxOptions: kModalLinuxOptions,
     );
     final path = result?.path;
     if (path == null) return;

@@ -75,10 +75,11 @@ class AppReportImageSources {
       return const [];
     }
     final effectiveContext = navigatorKey.currentContext;
-    if (effectiveContext != null && effectiveContext.mounted) {
-      if (!await verifySaferModePassword(effectiveContext)) {
-        return const [];
-      }
+    if (effectiveContext == null || !effectiveContext.mounted) {
+      return const [];
+    }
+    if (!await verifySaferModePassword(effectiveContext)) {
+      return const [];
     }
     final files = await FilePicker.pickFiles(
       type: FileType.custom,

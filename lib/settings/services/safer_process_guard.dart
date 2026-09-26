@@ -67,8 +67,9 @@ abstract final class SaferProcessGuard {
   /// במצב קיוסק או סייפר, במקום לפתוח את סייר הקבצים של Windows (המהווה פרצת אבטחה),
   /// מוצג דיאלוג פנימי עם תוכן הלוג ואפשרות להעתקה ללוח.
   static Future<void> openErrorLog(BuildContext context) async {
-    if (isKioskMode || shouldRequireSaferModePassword(context)) {
-      if (shouldRequireSaferModePassword(context)) {
+    final requiresPassword = shouldRequireSaferModePassword(context);
+    if (isKioskMode || requiresPassword) {
+      if (requiresPassword) {
         if (!await verifySaferModePassword(context)) return;
       }
       if (!context.mounted) return;

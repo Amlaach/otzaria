@@ -1561,6 +1561,10 @@ class MainWindowScreenState extends State<MainWindowScreen>
       case OpenPdfBookAction():
         return await _openPdfBookByExternalId(action);
       case InstallPluginAction(:final request):
+        if (isKioskMode) {
+          UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+          return true;
+        }
         if (!await verifySaferModePassword(context)) return true;
         context.read<PluginSystemBloc>().add(
           InstallRemotePluginRequested(
@@ -1571,6 +1575,10 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
         return true;
       case InstallLocalPluginAction(:final archivePath):
+        if (isKioskMode) {
+          UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+          return true;
+        }
         if (!await verifySaferModePassword(context)) return true;
         context.read<PluginSystemBloc>().add(
           InstallPluginRequested(archivePath),
@@ -3623,15 +3631,19 @@ class MainWindowScreenState extends State<MainWindowScreen>
                                                                             context,
                                                                             pluginState,
                                                                           ) {
+                                                                            context.select<
+                                                                                SettingsBloc,
+                                                                                int
+                                                                              >(
+                                                                                (b) => Object.hash(
+                                                                                  Object.hashAll(b.state.builtInToolsPinnedToNavRail),
+                                                                                  Object.hashAll(b.state.hiddenBuiltInToolIds),
+                                                                                  b.state.isOfflineMode,
+                                                                                  Object.hashAll(b.state.builtInToolsOrder),
+                                                                                ),
+                                                                              );
                                                                             final settingsState =
-                                                                                context.select<
-                                                                                  SettingsBloc,
-                                                                                  SettingsState
-                                                                                >(
-                                                                                  (
-                                                                                    b,
-                                                                                  ) => b.state,
-                                                                                );
+                                                                                context.read<SettingsBloc>().state;
                                                                             final pinnedItems = _resolvePinnedItems(
                                                                               pluginState: pluginState,
                                                                               pinnedBuiltInIds: settingsState.builtInToolsPinnedToNavRail,

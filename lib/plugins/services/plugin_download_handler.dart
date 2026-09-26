@@ -22,8 +22,12 @@ abstract final class PluginDownloadHandler {
     }
 
     final context = navigatorKey.currentContext;
-    if (context != null && shouldRequireSaferModePassword(context)) {
-      if (!context.mounted || !await verifySaferModePassword(context)) {
+    if (context == null || !context.mounted) {
+      UiSnack.show('הורדת הקובץ בוטלה');
+      return responseFor(isWindows: Platform.isWindows, isKiosk: true);
+    }
+    if (shouldRequireSaferModePassword(context)) {
+      if (!await verifySaferModePassword(context)) {
         UiSnack.show('הורדת הקובץ בוטלה');
         return responseFor(isWindows: Platform.isWindows, isKiosk: true);
       }

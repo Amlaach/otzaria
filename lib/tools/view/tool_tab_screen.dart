@@ -183,7 +183,14 @@ class ToolTabScreenState extends State<ToolTabScreen>
     if (_isVisible) _markActivated();
     if (!_activated) return const SizedBox.shrink();
 
-    final settingsState = context.watch<SettingsBloc>().state;
+    context.select<SettingsBloc, int>(
+      (b) => Object.hash(
+        Object.hashAll(b.state.hiddenBuiltInToolIds),
+        b.state.isOfflineMode,
+        b.state.isFullscreen,
+      ),
+    );
+    final settingsState = context.read<SettingsBloc>().state;
     final pluginState = context.watch<PluginSystemBloc>().state;
     final lookup = resolveToolLookup(
       lookupTool(
