@@ -1,7 +1,5 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';

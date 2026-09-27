@@ -9,7 +9,6 @@ import 'package:url_launcher_platform_interface/url_launcher_platform_interface.
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/dialogs/safer_mode_password_dialog.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
-import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';

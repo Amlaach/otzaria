@@ -1,6 +1,3 @@
-import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/widgets/misc/app_cursors.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -16,9 +13,7 @@ import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
 import 'package:otzaria/plugins/view/widgets/plugin_drop_zone.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/theme/theme_exports.dart';
-import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/misc/app_popup_menu.dart';
 
 class PluginSidePanel extends StatefulWidget {

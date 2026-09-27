@@ -8,7 +8,6 @@ import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/models/book_source.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/dialogs/input_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;

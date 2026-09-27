@@ -155,7 +155,6 @@ void main() {
           ),
         );
 
-        String? saveResult;
         late BuildContext testContext;
 
         await tester.pumpWidget(

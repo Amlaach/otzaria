@@ -52,7 +52,6 @@ import 'package:otzaria/plugins/bridge/plugin_reference_resolver.dart';
 import 'package:otzaria/utils/navigation/book_open_coordinator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/workspaces/bloc/workspace_bloc.dart';

@@ -37,7 +37,6 @@ import 'linux_installer.dart';
 import 'macos_installer.dart';
 import 'tree_swap.dart';
 import 'windows_installer.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/settings/services/safer_url_guard.dart';

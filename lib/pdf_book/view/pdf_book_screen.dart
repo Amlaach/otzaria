@@ -75,7 +75,6 @@ import 'package:pdfrx/pdfrx.dart';
 
 import 'pdf_search_screen.dart';
 
-import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 import 'pdf_outlines_screen.dart';

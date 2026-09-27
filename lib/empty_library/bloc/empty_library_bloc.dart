@@ -5,7 +5,6 @@ import 'package:otzaria/core/app_paths.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/text/byte_size_text.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/core/http_client_registry.dart';

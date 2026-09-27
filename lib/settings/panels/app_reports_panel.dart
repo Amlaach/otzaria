@@ -22,7 +22,6 @@ import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 /// כרטיס "דיווחים על התוכנה" במסך ההגדרות: פתיחת הטופס, מצב הדיווח אחרי

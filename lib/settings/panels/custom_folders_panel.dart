@@ -6,7 +6,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/file/document_format.dart';
-import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'dart:async';
 import 'dart:io';
 
