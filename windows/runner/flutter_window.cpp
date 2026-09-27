@@ -408,8 +408,7 @@ bool CreateSecondaryWindowOnThisThread(const flutter::DartProject& base,
   // לעולם (ראו [g_live_engine_count]), ולכן ספירת החלונות הגלויים אפשרה
   // ליצור מנוע נוסף כל עוד חלון אחד מוסתר — וכאן זה כבר לא יכול לקרות,
   // כי לולאת המיחזור שמעל הייתה מוצאת אותו.
-  if (IsKioskModeEnabled() ||
-      g_live_engine_count.load() >= static_cast<int>(kMaxWindows) ||
+  if (g_live_engine_count.load() >= static_cast<int>(kMaxWindows) ||
       g_live_window_count.load() >= static_cast<int>(kMaxWindows)) {
     return false;
   }
@@ -851,10 +850,6 @@ bool FlutterWindow::OnCreate() {
         // ⚠️ אפשרי **רק** מפני שחלון סגור מוסתר ולא נהרס: המנוע שלו עדיין
         // חי עם הכרטיסיות שהיו בו, ולכן השחזור הוא הצגה בלבד.
         if (call.method_name() == "restoreLastClosedWindow") {
-          if (IsKioskModeEnabled()) {
-            result->Success(flutter::EncodableValue(false));
-            return;
-          }
           result->Success(
               flutter::EncodableValue(RestoreLastHiddenWindow()));
           return;
@@ -966,8 +961,7 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
           return;
         }
-        if (IsKioskModeEnabled() ||
-            g_live_window_count.load() >= static_cast<int>(kMaxWindows)) {
+        if (g_live_window_count.load() >= static_cast<int>(kMaxWindows)) {
           result->Success(flutter::EncodableValue(false));
           return;
         }

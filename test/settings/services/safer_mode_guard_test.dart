@@ -172,30 +172,15 @@ void main() {
     expect(find.text('count: 0'), findsOneWidget);
   });
 
-  testWidgets('isKioskMode דורש אימות גם כשמצב סייפר לא הוגדר בהגדרות', (tester) async {
+  test('isKioskMode דורש אימות גם כשמצב סייפר לא הוגדר בהגדרות', () {
     isKioskMode = true;
-    addTearDown(() => isKioskMode = false);
-
-    late BuildContext ctx;
-    await tester.pumpWidget(
-      MultiRepositoryProvider(
-        providers: [
-          RepositoryProvider<SettingsRepository>.value(value: repository),
-        ],
-        child: BlocProvider<SettingsBloc>.value(
-          value: settingsBloc,
-          child: MaterialApp(
-            home: Builder(
-              builder: (c) {
-                ctx = c;
-                return const SizedBox();
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-
-    expect(shouldRequireSaferModePassword(ctx), isTrue);
+    try {
+      expect(shouldRequireSaferModePassword(_FakeBuildContext()), isTrue);
+    } finally {
+      isKioskMode = false;
+    }
   });
 }
+
+class _FakeBuildContext extends Fake implements BuildContext {}
+

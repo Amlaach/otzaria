@@ -19,8 +19,6 @@ std::vector<std::string> GetCommandLineArguments();
 // Kiosk Mode & OS Security Barrier
 void SetKioskMode(bool enabled);
 bool IsKioskModeEnabled();
-void InstallKioskKeyboardHook();
-void UninstallKioskKeyboardHook();
 
 #endif  // RUNNER_UTILS_H_
 

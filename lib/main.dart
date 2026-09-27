@@ -1856,10 +1856,6 @@ void secondaryWindowMain(List<String> args) async {
       args.any((a) =>
           a.toLowerCase().contains('kiosk') ||
           a.toLowerCase().contains('safer'));
-  if (isKioskMode) {
-    await const MultiWindowService().closeSelf();
-    return;
-  }
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }

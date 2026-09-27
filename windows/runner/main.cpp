@@ -290,7 +290,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   if (is_kiosk_invocation) {
     SetKioskMode(true);
-    InstallKioskKeyboardHook();
   }
 
 
@@ -377,9 +376,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (!window.Create(kMainWindowTitle, origin, size)) {
     startup_watchdog::Stop();
     splash::Close();
-    if (is_kiosk_invocation) {
-      UninstallKioskKeyboardHook();
-    }
     if (mutex) CloseHandle(mutex);
     ::CoUninitialize();
     return EXIT_FAILURE;
@@ -411,9 +407,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::RemovePropW(main_hwnd, kMainWindowPropName);
   }
 
-  if (is_kiosk_invocation) {
-    UninstallKioskKeyboardHook();
-  }
   startup_watchdog::Stop();
   jump_list::WaitForPendingTasks(200);
   if (mutex) CloseHandle(mutex);
