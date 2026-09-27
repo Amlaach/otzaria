@@ -1,3 +1,6 @@
+import 'package:otzaria/settings/l10n/settings_dialog_scope.dart';
+import 'package:otzaria/core/messages/report_messages.dart';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -28,7 +31,7 @@ abstract final class SaferProcessGuard {
     if (path.isEmpty) return false;
 
     if (isKioskMode) {
-      UiSnack.show('פתיחת סייר הקבצים חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskFileManagerBlocked);
       return false;
     }
 
@@ -104,7 +107,9 @@ abstract final class SaferProcessGuard {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: settingsDialogBuilder(
+        context,
+        (dialogContext) {
         return AlertDialog(
           title: const Row(
             children: [
@@ -137,7 +142,7 @@ abstract final class SaferProcessGuard {
             TextButton.icon(
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: content));
-                UiSnack.show('תוכן יומן השגיאות הועתק ללוח');
+                UiSnack.show(ReportMessages.errorLogCopied);
               },
               icon: const Icon(FluentIcons.copy_24_regular),
               label: const Text('העתק ללוח'),
@@ -148,7 +153,7 @@ abstract final class SaferProcessGuard {
             ),
           ],
         );
-      },
+      }),
     );
   }
 }

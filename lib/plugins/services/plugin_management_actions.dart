@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
@@ -16,7 +17,7 @@ class PluginManagementActions {
   /// מתקין תוסף מקובץ .otzplugin
   static Future<void> installPlugin(BuildContext context) async {
     if (isKioskMode) {
-      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
       return;
     }
 
@@ -34,7 +35,7 @@ class PluginManagementActions {
   /// טוען תוסף פיתוח מקומי מתיקייה
   static Future<void> loadDevPlugin(BuildContext context) async {
     if (isKioskMode) {
-      UiSnack.show('טעינת תוספי פיתוח חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskDevPluginBlocked);
       return;
     }
 
@@ -51,7 +52,7 @@ class PluginManagementActions {
   /// טוען תוסף מכתובת localhost
   static Future<void> loadLocalhostPlugin(BuildContext context) async {
     if (isKioskMode) {
-      UiSnack.show('טעינת תוספי localhost חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskLocalhostPluginBlocked);
       return;
     }
 

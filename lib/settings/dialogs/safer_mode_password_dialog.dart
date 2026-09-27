@@ -89,9 +89,7 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
   Future<void> _handleVerify() async {
     if (SaferModeLockout.isLockedOut) {
       final secondsLeft = SaferModeLockout.secondsLeft;
-      UiSnack.showError(
-        'הוזנו ניסיונות שגויים מרובים. נסה שוב בעוד $secondsLeft שניות',
-      );
+      UiSnack.showError(SettingsMessages.tooManyFailedAttempts(secondsLeft));
       return;
     }
 
@@ -115,9 +113,9 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
       } else {
         SaferModeLockout.recordFailure();
         if (SaferModeLockout.failedAttempts >= 5) {
-          UiSnack.showError('סיסמה שגויה. המתן 5 שניות לפני ניסיון נוסף');
+          UiSnack.showError(SettingsMessages.wrongPasswordWaitSeconds(5));
         } else if (SaferModeLockout.failedAttempts >= 3) {
-          UiSnack.showError('סיסמה שגויה. המתן 2 שניות לפני ניסיון נוסף');
+          UiSnack.showError(SettingsMessages.wrongPasswordWaitSeconds(2));
         } else {
           UiSnack.showError(SettingsMessages.wrongPassword);
         }

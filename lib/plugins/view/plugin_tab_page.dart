@@ -1,4 +1,5 @@
 import 'package:otzaria/bookmarks/bloc/bookmark_bloc.dart';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/settings/services/custom_folders/bloc/custom_folders_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -904,7 +905,7 @@ class _PluginTabPageState extends State<PluginTabPage> {
       onShowFileChooser: (controller, showFileChooserRequest) async {
         if (!mounted || isKioskMode) {
           if (isKioskMode) {
-            UiSnack.show('בחירת קבצים חסומה במצב קיוסק');
+            UiSnack.show(CommonMessages.kioskFilePickerBlocked);
           }
           return ShowFileChooserResponse(
             handledByClient: true,

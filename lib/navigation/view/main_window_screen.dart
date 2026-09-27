@@ -1561,7 +1561,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
         return await _openPdfBookByExternalId(action);
       case InstallPluginAction(:final request):
         if (isKioskMode) {
-          UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+          UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
           return true;
         }
         if (!await verifySaferModePassword(context)) return true;
@@ -1575,7 +1575,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
         return true;
       case InstallLocalPluginAction(:final archivePath):
         if (isKioskMode) {
-          UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+          UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
           return true;
         }
         if (!await verifySaferModePassword(context)) return true;

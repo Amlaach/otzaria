@@ -94,6 +94,7 @@ void main() {
         const Stream<SettingsState>.empty(),
         initialState: SettingsState.initial().copyWith(
           protectedModeEnabled: true,
+          protectedModePasswordSet: true,
         ),
       );
 
@@ -152,6 +153,7 @@ void main() {
           const Stream<SettingsState>.empty(),
           initialState: SettingsState.initial().copyWith(
             protectedModeEnabled: true,
+            protectedModePasswordSet: true,
           ),
         );
 

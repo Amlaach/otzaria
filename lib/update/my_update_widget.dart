@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -1416,7 +1417,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   /// בעת סגירת התוכנה.
   Future<bool> _launchInstaller({required bool relaunchApp}) async {
     if (isKioskMode) {
-      UiSnack.show('עדכון תוכנה חסום במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskSoftwareUpdateBlocked);
       return false;
     }
     if (context.mounted && !await verifySaferModePassword(context)) {
@@ -1438,7 +1439,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
 
   Future<void> _launchInstallerDirect({required bool relaunchApp}) async {
     if (isKioskMode) {
-      UiSnack.show('עדכון תוכנה חסום במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskSoftwareUpdateBlocked);
       return;
     }
     final installer = _installerFile;

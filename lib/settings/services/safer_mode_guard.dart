@@ -245,7 +245,14 @@ bool shouldRequireSaferModePassword(BuildContext context) {
   if (isKioskMode) return true;
   try {
     final state = context.read<SettingsBloc>().state;
-    return state.protectedModeEnabled && state.protectedModePasswordSet;
+    if (state.protectedModeEnabled) {
+      if (state.protectedModePasswordSet) return true;
+      try {
+        final repo = context.read<SettingsRepository>();
+        return repo.hasProtectedModePassword();
+      } catch (_) {}
+    }
+    return false;
   } catch (_) {
     return false;
   }

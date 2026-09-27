@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:otzaria/core/messages/pdf_messages.dart';
@@ -31,7 +32,7 @@ Future<bool> printPdfWithSaferMode({
       await windowsPrinterPortsAsync(),
     );
     if (printers.isEmpty) {
-      UiSnack.show('אין מדפסת פיזית מחוברת בעמדה זו');
+      UiSnack.show(CommonMessages.noPhysicalPrinterConnected);
       return false;
     }
     final effectiveContext = context ?? navigatorKey.currentContext;

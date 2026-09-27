@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:otzaria/core/messages/common_messages.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -17,18 +18,18 @@ abstract final class PluginDownloadHandler {
     DownloadStartRequest request,
   ) async {
     if (isKioskMode) {
-      UiSnack.show('הורדת קבצים חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskFileDownloadBlocked);
       return responseFor(isWindows: Platform.isWindows, isKiosk: true);
     }
 
     final context = navigatorKey.currentContext;
     if (context == null || !context.mounted) {
-      UiSnack.show('הורדת הקובץ בוטלה');
+      UiSnack.show(CommonMessages.fileDownloadCancelled);
       return responseFor(isWindows: Platform.isWindows, isKiosk: true);
     }
     if (shouldRequireSaferModePassword(context)) {
       if (!await verifySaferModePassword(context)) {
-        UiSnack.show('הורדת הקובץ בוטלה');
+        UiSnack.show(CommonMessages.fileDownloadCancelled);
         return responseFor(isWindows: Platform.isWindows, isKiosk: true);
       }
     }

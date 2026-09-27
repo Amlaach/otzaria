@@ -55,6 +55,7 @@ abstract class ReportMessages {
   /// כותרת חלון הסיכום של סקריפט השליחה האופליין (bat/sh).
   static const String offlineScriptWindowTitle =
       'שליחת דיווחים שמורים - אוצריא';
+  static const String errorLogCopied = 'תוכן יומן השגיאות הועתק ללוח';
 
   // ── דיאלוג הדיווח (error_report_dialog) ────────────────────────────────
 

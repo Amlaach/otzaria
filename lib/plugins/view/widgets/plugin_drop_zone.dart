@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:otzaria/core/messages/common_messages.dart';
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
@@ -77,7 +78,7 @@ class _PluginDropZoneState extends State<PluginDropZone> {
   Future<void> _onDrop(PluginFileDrag drop) async {
     if (_isHovering) setState(() => _isHovering = false);
     if (isKioskMode) {
-      UiSnack.show('התקנת תוספים חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
       return;
     }
     if (!_contains(drop.physicalPosition)) return;

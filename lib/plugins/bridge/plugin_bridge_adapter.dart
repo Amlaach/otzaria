@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 // dart:io מגדיר Link משלו (קישור בקובץ־מערכת) שמתנגש ב-Link של הקישורים.
@@ -4336,7 +4337,7 @@ class PluginBridgeAdapter {
     String? title,
   }) async {
     if (isKioskMode) {
-      UiSnack.show('פתיחת בורר קבצים חסומה במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskFilePickerBlocked);
       return null;
     }
     final context = navigatorKey.currentContext;

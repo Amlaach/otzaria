@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -22,7 +23,7 @@ Future<String?> saveFileWithExtension({
   BuildContext? context,
 }) async {
   if (isKioskMode) {
-    UiSnack.show('שמירת קבצים למערכת ההפעלה חסומה במצב קיוסק');
+    UiSnack.show(CommonMessages.kioskFileSaveBlocked);
     return null;
   }
   final effectiveContext = context ?? navigatorKey.currentContext;

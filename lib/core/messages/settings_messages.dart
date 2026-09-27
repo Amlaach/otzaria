@@ -44,6 +44,11 @@ abstract class SettingsMessages {
   static const String protectedModeEnabled = 'המצב המוגן הופעל';
   static const String protectedModeDisabled = 'המצב המוגן הושבת';
 
+  static String tooManyFailedAttempts(int seconds) =>
+      'הוזנו ניסיונות שגויים מרובים. נסה שוב בעוד $seconds שניות';
+  static String wrongPasswordWaitSeconds(int seconds) =>
+      'סיסמה שגויה. המתן $seconds שניות לפני ניסיון נוסף';
+
   // ── ייבוא ספרים אישיים (personal_books_import_panel) ───────────────────
 
   static String importErrors(String errors) => 'שגיאות בייבוא:\n$errors';

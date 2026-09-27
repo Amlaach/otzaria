@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -71,7 +72,7 @@ class AppReportImageSources {
   /// פותח את בוחר הקבצים. מחזיר רשימה ריקה בביטול או בחסימה.
   Future<List<AppReportImage>> pickFiles() async {
     if (isKioskMode) {
-      UiSnack.show('צירוף קבצים חסום במצב קיוסק');
+      UiSnack.show(CommonMessages.kioskFileAttachmentBlocked);
       return const [];
     }
     final effectiveContext = navigatorKey.currentContext;
