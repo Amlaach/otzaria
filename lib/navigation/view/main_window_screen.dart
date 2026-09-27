@@ -1457,6 +1457,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
       }
     } else if (state is PluginSystemDevInstallRequiresPermissions) {
+      if (!context.mounted) return;
       final handled = await showDialog<bool>(
         context: context,
         builder: (_) => PluginInstallScreen(
@@ -1483,6 +1484,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
         bloc.add(LoadPlugins());
       }
     } else if (state is PluginSystemOverwriteRequired) {
+      if (!context.mounted) return;
       final value = await showWarningDialog(
         context: context,
         title: 'התוסף כבר קיים',

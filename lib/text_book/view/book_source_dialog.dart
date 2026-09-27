@@ -317,6 +317,7 @@ class _SourceCredit extends StatelessWidget {
   Future<void> _openSource(BuildContext context) async {
     final uri = Uri.parse(info.url);
     if (await canLaunchUrl(uri)) {
+      if (!context.mounted) return;
       await saferLaunchUrl(context, uri);
     }
   }

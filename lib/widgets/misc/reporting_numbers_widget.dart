@@ -245,6 +245,7 @@ class ReportingNumbersWidget extends StatelessWidget {
     try {
       final phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
       if (await canLaunchUrl(phoneUri)) {
+        if (!context.mounted) return;
         await saferLaunchUrl(context, phoneUri);
       } else {
         if (context.mounted) {

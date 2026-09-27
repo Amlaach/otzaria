@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:otzaria/settings/services/safer_process_guard.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
@@ -78,7 +77,8 @@ class BackupService {
   /// Open the backup directory in the file explorer safely
   static Future<void> openBackupDirectory([BuildContext? context]) async {
     final dir = await getBackupDirectory();
-    await SaferProcessGuard.openInFileManager(context, dir);
+    final effectiveContext = (context != null && context.mounted) ? context : null;
+    await SaferProcessGuard.openInFileManager(effectiveContext, dir);
   }
 
   /// Create a backup with specified options.

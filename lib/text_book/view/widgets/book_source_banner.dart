@@ -103,6 +103,7 @@ class _BookSourceBannerState extends State<BookSourceBanner> {
     _recognizer = TapGestureRecognizer()
       ..onTap = () async {
         if (await canLaunchUrl(uri)) {
+          if (!mounted) return;
           await saferLaunchUrl(context, uri);
         }
       };

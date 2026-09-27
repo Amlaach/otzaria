@@ -58,7 +58,6 @@ abstract final class SaferFilePicker {
     return FilePicker.getDirectoryPath(
       dialogTitle: dialogTitle,
       initialDirectory: initialDirectory,
-      lockParentWindow: lockParentWindow,
       windowsOptions: kModalWindowsOptions,
       linuxOptions: kModalLinuxOptions,
     );
@@ -86,7 +85,6 @@ abstract final class SaferFilePicker {
       type: type,
       allowedExtensions: allowedExtensions,
       onFileLoading: onFileLoading,
-      lockParentWindow: lockParentWindow,
       windowsOptions: kModalWindowsOptions,
       linuxOptions: kModalLinuxOptions,
     );
@@ -114,7 +112,6 @@ abstract final class SaferFilePicker {
       type: type,
       allowedExtensions: allowedExtensions,
       onFileLoading: onFileLoading,
-      lockParentWindow: lockParentWindow,
       windowsOptions: kModalWindowsOptions,
       linuxOptions: kModalLinuxOptions,
     );
@@ -140,7 +137,6 @@ abstract final class SaferFilePicker {
       fileName: fileName ?? '',
       initialDirectory: initialDirectory,
       bytes: bytes ?? Uint8List(0),
-      lockParentWindow: lockParentWindow,
       windowsOptions: kModalWindowsOptions,
       linuxOptions: kModalLinuxOptions,
     );

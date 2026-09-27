@@ -1741,6 +1741,7 @@ Future<bool> launchDictaEditPage(
       ErrorReportHelper.dictaEditUrlFor(bookTitle, selectedText: selectedText),
     );
     if (await canLaunchUrl(uri)) {
+      if (!context.mounted) return false;
       return await saferLaunchUrl(context, uri, mode: LaunchMode.externalApplication);
     }
   } catch (e) {

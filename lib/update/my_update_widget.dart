@@ -1420,7 +1420,8 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       UiSnack.show(CommonMessages.kioskSoftwareUpdateBlocked);
       return false;
     }
-    if (context.mounted && !await verifySaferModePassword(context)) {
+    if (!mounted) return false;
+    if (!await verifySaferModePassword(context)) {
       return false;
     }
     if (_differentialUpdate != null) {

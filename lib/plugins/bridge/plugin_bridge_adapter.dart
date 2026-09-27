@@ -4347,6 +4347,7 @@ class PluginBridgeAdapter {
     if (!await verifySaferModePassword(context)) {
       return null;
     }
+    if (!context.mounted) return null;
     final folder = await SaferFilePicker.getDirectoryPath(
       context: context,
       dialogTitle: pluginSaveFolderDialogTitle(title),

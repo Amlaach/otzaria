@@ -4841,6 +4841,7 @@ class _PdfBookScreenState extends State<PdfBookScreen>
 
   Future<void> navigateToUrl(Uri url) async {
     if (await shouldOpenUrl(context, url)) {
+      if (!mounted) return;
       await saferLaunchUrl(context, url);
     }
   }

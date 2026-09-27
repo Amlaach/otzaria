@@ -187,6 +187,7 @@ Future<bool> _openNoteUrl(BuildContext context, String url) async {
       ? uri
       : Uri.parse('https://www.sefaria.org').resolveUri(uri);
   if (await canLaunchUrl(resolved)) {
+    if (!context.mounted) return false;
     await saferLaunchUrl(context, resolved);
   }
   return true;
