@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 // ignore: depend_on_referenced_packages
 import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
@@ -35,6 +37,12 @@ final class _FakePlatformFile extends PlatformFile {
 
   @override
   Future<int> length() async => 100;
+
+  @override
+  Future<Uint8List> readAsBytes() async => Uint8List(0);
+
+  @override
+  Stream<Uint8List> readAsByteStream() => const Stream.empty();
 }
 
 class _MockSettingsRepository extends Mock implements SettingsRepository {}
