@@ -1,3 +1,5 @@
+// ignore: depend_on_referenced_packages
+import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,6 +13,29 @@ import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
+
+final class _FakePlatformFile extends PlatformFile {
+  _FakePlatformFile(this._path);
+  final String _path;
+
+  @override
+  String get name => _path.split('/').last;
+
+  @override
+  String? get path => _path;
+
+  @override
+  Uri get uri => Uri.file(_path);
+
+  @override
+  XFile get xFile => XFile(_path);
+
+  @override
+  int? lengthSync() => 100;
+
+  @override
+  Future<int> length() async => 100;
+}
 
 class _MockSettingsRepository extends Mock implements SettingsRepository {}
 
@@ -39,12 +64,12 @@ void main() {
     };
     SaferFilePicker.pickFileOverride = () async {
       fileCalled = true;
-      return PlatformFile(name: 'test.txt', size: 100, path: '/mock/test.txt');
+      return _FakePlatformFile('/mock/test.txt');
     };
     SaferFilePicker.pickFilesOverride = () async {
       filesCalled = true;
       return [
-        PlatformFile(name: 'test.txt', size: 100, path: '/mock/test.txt'),
+        _FakePlatformFile('/mock/test.txt'),
       ];
     };
     SaferFilePicker.saveFileOverride = () async {

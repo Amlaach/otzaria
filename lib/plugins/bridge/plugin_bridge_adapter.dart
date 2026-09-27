@@ -4825,6 +4825,9 @@ class PluginBridgeAdapter {
               'error.invalid_params: location must be "desktop" or "startMenu"',
             );
         }
+        final placeLabel = location == ShortcutLocation.startMenu
+            ? 'תפריט ההתחל'
+            : 'שולחן העבודה';
 
         if (isKioskMode) {
           throw Exception(

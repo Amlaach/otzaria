@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/core/ui_snack.dart';
@@ -122,9 +124,8 @@ abstract final class SaferFilePicker {
     BuildContext? context,
     String? dialogTitle,
     String? fileName,
+    Uint8List? bytes,
     String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
     bool lockParentWindow = false,
   }) async {
     if (!await _authorize(context, isSave: true)) return null;
@@ -133,16 +134,17 @@ abstract final class SaferFilePicker {
       return saveFileOverride!();
     }
 
-    return FilePicker.saveFile(
+    final uri = await FilePicker.saveFile(
       dialogTitle: dialogTitle,
-      fileName: fileName,
+      fileName: fileName ?? '',
       initialDirectory: initialDirectory,
-      type: type,
-      allowedExtensions: allowedExtensions,
+      bytes: bytes ?? Uint8List(0),
       lockParentWindow: lockParentWindow,
       windowsOptions: kModalWindowsOptions,
       linuxOptions: kModalLinuxOptions,
     );
+    if (uri == null) return null;
+    return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
   }
 }
 

@@ -892,10 +892,6 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
           previous.isOfflineMode != current.isOfflineMode ||
           previous.softwareAndBookUpdatesEnabled !=
               current.softwareAndBookUpdatesEnabled ||
-          previous.dbSizeBytes != current.dbSizeBytes ||
-          previous.libraryPath != current.libraryPath ||
-          previous.internalDbPath != current.internalDbPath ||
-          previous.externalDbPath != current.externalDbPath ||
           previous.protectedModePasswordSet !=
               current.protectedModePasswordSet ||
           previous.protectedModeEnabled != current.protectedModeEnabled,

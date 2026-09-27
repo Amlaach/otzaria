@@ -915,7 +915,11 @@ class SettingsRepository {
     await _settings.setValue(keyProtectedModePasswordHash, hash);
   }
 
-  Future<bool> verifyProtectedModePassword(String password) async {
+  bool verifyProtectedModePassword(String password) {
+    return verifyProtectedModePasswordSync(password);
+  }
+
+  Future<bool> verifyProtectedModePasswordAsync(String password) async {
     final storedHash = _settings.getValue<String>(
       keyProtectedModePasswordHash,
       defaultValue: '',

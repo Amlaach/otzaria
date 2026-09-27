@@ -5,8 +5,8 @@ import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/widgets/dialogs.dart';
-import 'package:otzaria/widgets/ui_snack.dart';
+import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
+import 'package:otzaria/core/ui_snack.dart';
 
 /// פעולות מנוהלות של התקנה וטעינת תוספים, המבטיחות חסימה במצב קיוסק ואימות במצב סייפר
 /// ומאחדות את המימוש בין ToolsLauncherPanel ו-PluginSidePanel.
