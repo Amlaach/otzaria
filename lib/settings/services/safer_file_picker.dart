@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
@@ -34,8 +35,8 @@ abstract final class SaferFilePicker {
     final decision = await _gate.policy.evaluate(action, context: context);
     if (decision == SecurityDecision.denyKiosk) {
       UiSnack.show(isSave
-          ? 'שמירת קבצים למערכת ההפעלה חסומה בעמדה זו'
-          : 'פתיחת בורר קבצים חסומה במצב קיוסק');
+          ? CommonMessages.kioskFileSaveBlocked
+          : CommonMessages.kioskFilePickerBlocked);
       return false;
     }
     return decision == SecurityDecision.allow;

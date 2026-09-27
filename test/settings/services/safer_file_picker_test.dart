@@ -205,6 +205,8 @@ void main() {
       expect(result, isNull);
       expect(directoryCalled, isFalse);
       expect(find.byType(SaferModePasswordDialog), findsNothing);
+      UiSnack.hide();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('blocks pickFile completely in kiosk mode', (tester) async {
@@ -229,6 +231,8 @@ void main() {
 
       expect(result, isNull);
       expect(fileCalled, isFalse);
+      UiSnack.hide();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('blocks pickFiles completely in kiosk mode', (tester) async {
@@ -253,6 +257,8 @@ void main() {
 
       expect(result, isEmpty);
       expect(filesCalled, isFalse);
+      UiSnack.hide();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('blocks saveFile completely in kiosk mode', (tester) async {
@@ -277,6 +283,8 @@ void main() {
 
       expect(result, isNull);
       expect(saveCalled, isFalse);
+      UiSnack.hide();
+      await tester.pumpAndSettle();
     });
   });
 

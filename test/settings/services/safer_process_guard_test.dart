@@ -100,6 +100,8 @@ void main() {
       expect(result, isFalse);
       expect(executedProcesses, isEmpty);
       expect(find.byType(SaferModePasswordDialog), findsNothing);
+      UiSnack.hide();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('נתיב ריק מחזיר false ישירות', (tester) async {
