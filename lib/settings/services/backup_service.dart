@@ -77,8 +77,12 @@ class BackupService {
   /// Open the backup directory in the file explorer safely
   static Future<void> openBackupDirectory([BuildContext? context]) async {
     final dir = await getBackupDirectory();
-    final effectiveContext = (context != null && context.mounted) ? context : null;
-    await SaferProcessGuard.openInFileManager(effectiveContext, dir);
+    if (context != null) {
+      if (!context.mounted) return;
+      await SaferProcessGuard.openInFileManager(context, dir);
+    } else {
+      await SaferProcessGuard.openInFileManager(null, dir);
+    }
   }
 
   /// Create a backup with specified options.

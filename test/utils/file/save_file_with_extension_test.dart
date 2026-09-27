@@ -185,6 +185,8 @@ void main() {
 
         expect(result, isNull);
         expect(find.byType(SaferModePasswordDialog), findsNothing);
+        UiSnack.hide();
+        await tester.pumpAndSettle();
       } finally {
         isKioskMode = false;
       }

@@ -1567,6 +1567,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
           return true;
         }
         if (!await verifySaferModePassword(context)) return true;
+        if (!context.mounted) return true;
         context.read<PluginSystemBloc>().add(
           InstallRemotePluginRequested(
             request.downloadUri.toString(),
@@ -1581,6 +1582,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
           return true;
         }
         if (!await verifySaferModePassword(context)) return true;
+        if (!context.mounted) return true;
         context.read<PluginSystemBloc>().add(
           InstallPluginRequested(archivePath),
         );

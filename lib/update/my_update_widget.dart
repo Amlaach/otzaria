@@ -1215,6 +1215,7 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       final release = await _fetchRelease(
         _latestVersion!,
       ).timeout(_kGithubTimeout);
+      if (!mounted) return;
       final url = release['html_url'];
       if (url is! String || !await saferLaunchUrl(context, Uri.parse(url))) {
         throw Exception('the release page could not be opened');
