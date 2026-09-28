@@ -4,8 +4,7 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
-import 'package:otzaria/utils/file/document_format.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -21,7 +20,7 @@ import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/widgets/dialogs/zip_extraction_progress_dialog.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
-import 'package:otzaria/settings/services/safer_process_guard.dart';
+import 'package:otzaria/utils/file/document_format.dart';
 import 'package:otzaria/theme/theme_exports.dart';
 
 /// סיווג הרכב הקבצים בתיקייה מותאמת אישית — קובע אילו אפשרויות אחסון
@@ -131,8 +130,9 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
 
   Future<void> _addFolder() async {
     final bloc = context.read<CustomFoldersBloc>();
-    final path = await SaferFilePicker.getDirectoryPath(
-      context: context,
+    final path = await FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     if (path == null) return;
 
@@ -146,8 +146,8 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
     bool zipExtracted = false;
     String? extractedFileName;
 
-    final entities = await dir.list().toList();
-    final zipFiles = entities
+    final zipFiles = dir
+        .listSync()
         .where(
           (entity) =>
               entity is File && entity.path.toLowerCase().endsWith('.zip'),
@@ -226,9 +226,16 @@ class _CustomFoldersPanelState extends State<CustomFoldersPanel> {
     bloc.add(ToggleAddToDatabase(folder, toDatabase));
   }
 
-  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה באופן מאובטח.
+  /// פותח נתיב במנהל הקבצים של מערכת ההפעלה.
   void _openInFileManager(String path) {
-    unawaited(SaferProcessGuard.openInFileManager(context, path));
+    if (path.isEmpty) return;
+    if (Platform.isWindows) {
+      unawaited(Process.run('explorer', [path]));
+    } else if (Platform.isMacOS) {
+      unawaited(Process.run('open', [path]));
+    } else if (Platform.isLinux) {
+      unawaited(Process.run('xdg-open', [path]));
+    }
   }
 
   /// קובע אם התיקייה תמוזג לעץ הספרייה. `null` = לפי ההגדרה הגלובלית.
@@ -654,10 +661,11 @@ class UserContentImportTile extends StatelessWidget {
 
   Future<void> _import(BuildContext context) async {
     final bloc = context.read<CustomFoldersBloc>();
-    final files = await SaferFilePicker.pickFiles(
-      context: context,
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['csv', 'json'],
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     final paths = files.map((f) => f.path).whereType<String>().toList();
     if (paths.isEmpty) return;

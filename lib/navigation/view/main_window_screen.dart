@@ -13,6 +13,7 @@ import 'package:otzaria/core/windowing/multi_window_service.dart';
 import 'package:otzaria/core/windowing/tab_drag_preview.dart';
 import 'package:otzaria/widgets/misc/rtl_icon.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/core/error_log_file.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/core/messages/library_messages.dart';
@@ -64,7 +65,6 @@ import 'package:otzaria/update/my_update_widget.dart';
 import 'package:otzaria/tools/calendar/utils/calendar_cubit.dart';
 import 'package:otzaria/widgets/dialogs/ad_popup_dialog.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/settings/services/safer_process_guard.dart';
 import 'package:otzaria/main.dart'
     show appWindowListener, presentMainWindow, startupRecoveryVerified;
 import 'package:otzaria/core/splash_screen.dart' show SplashIcon;
@@ -1457,7 +1457,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
       }
     } else if (state is PluginSystemDevInstallRequiresPermissions) {
-      if (!context.mounted) return;
       final handled = await showDialog<bool>(
         context: context,
         builder: (_) => PluginInstallScreen(
@@ -1484,7 +1483,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
         bloc.add(LoadPlugins());
       }
     } else if (state is PluginSystemOverwriteRequired) {
-      if (!context.mounted) return;
       final value = await showWarningDialog(
         context: context,
         title: 'התוסף כבר קיים',
@@ -1562,12 +1560,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
       case OpenPdfBookAction():
         return await _openPdfBookByExternalId(action);
       case InstallPluginAction(:final request):
-        if (isKioskMode) {
-          UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
-          return true;
-        }
-        if (!await verifySaferModePassword(context)) return true;
-        if (!mounted) return true;
         context.read<PluginSystemBloc>().add(
           InstallRemotePluginRequested(
             request.downloadUri.toString(),
@@ -1577,12 +1569,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
         );
         return true;
       case InstallLocalPluginAction(:final archivePath):
-        if (isKioskMode) {
-          UiSnack.show(CommonMessages.kioskPluginInstallBlocked);
-          return true;
-        }
-        if (!await verifySaferModePassword(context)) return true;
-        if (!mounted) return true;
         context.read<PluginSystemBloc>().add(
           InstallPluginRequested(archivePath),
         );
@@ -1857,6 +1843,7 @@ class MainWindowScreenState extends State<MainWindowScreen>
     final now = DateTime.now();
     if (_lastBackPressAt != null &&
         now.difference(_lastBackPressAt!) < const Duration(seconds: 2)) {
+      if (context.read<SettingsBloc>().state.protectedModeEnabled) return;
       SystemNavigator.pop();
       return;
     }
@@ -3634,19 +3621,15 @@ class MainWindowScreenState extends State<MainWindowScreen>
                                                                             context,
                                                                             pluginState,
                                                                           ) {
-                                                                            context.select<
-                                                                                SettingsBloc,
-                                                                                int
-                                                                              >(
-                                                                                (b) => Object.hash(
-                                                                                  Object.hashAll(b.state.builtInToolsPinnedToNavRail),
-                                                                                  Object.hashAll(b.state.hiddenBuiltInToolIds),
-                                                                                  b.state.isOfflineMode,
-                                                                                  Object.hashAll(b.state.builtInToolsOrder),
-                                                                                ),
-                                                                              );
                                                                             final settingsState =
-                                                                                context.read<SettingsBloc>().state;
+                                                                                context.select<
+                                                                                  SettingsBloc,
+                                                                                  SettingsState
+                                                                                >(
+                                                                                  (
+                                                                                    b,
+                                                                                  ) => b.state,
+                                                                                );
                                                                             final pinnedItems = _resolvePinnedItems(
                                                                               pluginState: pluginState,
                                                                               pinnedBuiltInIds: settingsState.builtInToolsPinnedToNavRail,
@@ -3942,7 +3925,16 @@ class MainWindowScreenState extends State<MainWindowScreen>
   }
 
   Future<void> _openErrorLogFile() async {
-    await SaferProcessGuard.openErrorLog(context);
+    if (!await verifySaferModePassword(context)) return;
+    ErrorLogFile.ensureExists();
+    final path = ErrorLogFile.resolvePath();
+    if (Platform.isWindows) {
+      unawaited(Process.run('explorer', [path]));
+    } else if (Platform.isMacOS) {
+      unawaited(Process.run('open', [path]));
+    } else if (Platform.isLinux) {
+      unawaited(Process.run('xdg-open', [path]));
+    }
   }
 
   int? _pageIndexForScreen(Screen screen) {

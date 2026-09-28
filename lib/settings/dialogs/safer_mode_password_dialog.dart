@@ -26,36 +26,6 @@ class SaferModePasswordDialog extends StatefulWidget {
       _SaferModePasswordDialogState();
 }
 
-/// מנהל נעילת Brute-force מתמשך בזיכרון התהליך (אינו מתאפס בעת סגירת הדיאלוג).
-abstract final class SaferModeLockout {
-  static int _failedAttempts = 0;
-  static DateTime? _lockoutUntil;
-
-  static bool get isLockedOut =>
-      _lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!);
-
-  static int get secondsLeft =>
-      _lockoutUntil != null
-          ? _lockoutUntil!.difference(DateTime.now()).inSeconds + 1
-          : 0;
-
-  static void recordSuccess() {
-    _failedAttempts = 0;
-    _lockoutUntil = null;
-  }
-
-  static void recordFailure() {
-    _failedAttempts++;
-    if (_failedAttempts >= 5) {
-      _lockoutUntil = DateTime.now().add(const Duration(seconds: 5));
-    } else if (_failedAttempts >= 3) {
-      _lockoutUntil = DateTime.now().add(const Duration(seconds: 2));
-    }
-  }
-
-  static int get failedAttempts => _failedAttempts;
-}
-
 class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
     with
         DialogNavigationMixin,
@@ -87,12 +57,6 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
   }
 
   Future<void> _handleVerify() async {
-    if (SaferModeLockout.isLockedOut) {
-      final secondsLeft = SaferModeLockout.secondsLeft;
-      UiSnack.showError(SettingsMessages.tooManyFailedAttempts(secondsLeft));
-      return;
-    }
-
     if (_passwordController.text.isEmpty) {
       UiSnack.showError(SettingsMessages.passwordRequired);
       return;
@@ -108,17 +72,9 @@ class _SaferModePasswordDialogState extends State<SaferModePasswordDialog>
       if (!mounted) return;
 
       if (isValid) {
-        SaferModeLockout.recordSuccess();
         Navigator.of(context).pop(true);
       } else {
-        SaferModeLockout.recordFailure();
-        if (SaferModeLockout.failedAttempts >= 5) {
-          UiSnack.showError(SettingsMessages.wrongPasswordWaitSeconds(5));
-        } else if (SaferModeLockout.failedAttempts >= 3) {
-          UiSnack.showError(SettingsMessages.wrongPasswordWaitSeconds(2));
-        } else {
-          UiSnack.showError(SettingsMessages.wrongPassword);
-        }
+        UiSnack.showError(SettingsMessages.wrongPassword);
         _passwordController.clear();
       }
     } finally {

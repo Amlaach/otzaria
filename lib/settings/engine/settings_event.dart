@@ -501,9 +501,3 @@ class UpdateSettingsLanguageCode extends SettingsEvent {
   @override
   List<Object?> get props => [settingsLanguageCode];
 }
-
-class ForceKioskModeEnabled extends SettingsEvent {
-  const ForceKioskModeEnabled();
-  @override
-  List<Object> get props => [];
-}

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:otzaria/core/messages/settings_messages.dart';
@@ -323,8 +322,7 @@ class _HiddenBooksPanelState extends State<HiddenBooksPanel> {
   }
 
   Future<String?> _pickFile() async {
-    final result = await SaferFilePicker.pickFile(
-      context: context,
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['csv', 'json', 'txt'],
     );

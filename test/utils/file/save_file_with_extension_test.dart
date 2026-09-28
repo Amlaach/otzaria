@@ -5,13 +5,11 @@ import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/dialogs/safer_mode_password_dialog.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_repository.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/utils/file/save_file_with_extension.dart';
 
 void main() {
@@ -95,7 +93,6 @@ void main() {
         const Stream<SettingsState>.empty(),
         initialState: SettingsState.initial().copyWith(
           protectedModeEnabled: true,
-          protectedModePasswordSet: true,
         ),
       );
 
@@ -139,58 +136,6 @@ void main() {
 
       await future;
       expect(saveResult, isNull);
-    });
-
-    testWidgets('במצב קיוסק מנוהל (isKioskMode) — חוסם שמירה מיד ללא דיאלוג', (
-      tester,
-    ) async {
-      isKioskMode = true;
-      try {
-        final settingsBloc = _MockSettingsBloc();
-        final repository = _FakeSettingsRepo();
-
-        whenListen(
-          settingsBloc,
-          const Stream<SettingsState>.empty(),
-          initialState: SettingsState.initial().copyWith(
-            protectedModeEnabled: true,
-            protectedModePasswordSet: true,
-          ),
-        );
-
-        late BuildContext testContext;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: RepositoryProvider<SettingsRepository>.value(
-              value: repository,
-              child: BlocProvider<SettingsBloc>.value(
-                value: settingsBloc,
-                child: Builder(
-                  builder: (context) {
-                    testContext = context;
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ),
-            ),
-          ),
-        );
-
-        final result = await saveFileWithExtension(
-          fileName: 'test.pdf',
-          extension: 'pdf',
-          bytes: Uint8List.fromList([1, 2, 3]),
-          context: testContext,
-        );
-
-        expect(result, isNull);
-        expect(find.byType(SaferModePasswordDialog), findsNothing);
-        UiSnack.hide();
-        await tester.pumpAndSettle();
-      } finally {
-        isKioskMode = false;
-      }
     });
   });
 }

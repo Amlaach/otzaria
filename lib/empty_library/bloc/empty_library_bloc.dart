@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:otzaria/core/app_paths.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/utils/text/byte_size_text.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_settings_screens/flutter_settings_screens.dart';
 import 'package:otzaria/core/http_client_registry.dart';
@@ -112,8 +112,10 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
     PickDirectoryRequested event,
     Emitter<EmptyLibraryState> emit,
   ) async {
-    final result = await SaferFilePicker.getDirectoryPath(
+    final result = await FilePicker.getDirectoryPath(
       dialogTitle: 'בחר את תיקיית הספרייה (התיקייה שמכילה את seforim.db)',
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
 
     if (result == null) return;
@@ -1097,9 +1099,11 @@ class EmptyLibraryBloc extends Bloc<EmptyLibraryEvent, EmptyLibraryState> {
     Emitter<EmptyLibraryState> emit,
   ) async {
     try {
-      final pickedFile = await SaferFilePicker.pickFile(
+      final pickedFile = await FilePicker.pickFile(
         type: FileType.any,
         dialogTitle: 'בחר את קובץ ${DatabaseConstants.databaseFileName}',
+        windowsOptions: kModalWindowsOptions,
+        linuxOptions: kModalLinuxOptions,
       );
 
       if (pickedFile == null) {

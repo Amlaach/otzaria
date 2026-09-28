@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:collection/collection.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +13,6 @@ import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_bloc.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
-import 'package:otzaria/plugins/services/plugin_management_actions.dart';
 import 'package:otzaria/plugins/services/plugin_update_check_service.dart';
 import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
@@ -21,7 +22,7 @@ import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/settings/engine/settings_event.dart';
 import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/tabs/bloc/tabs_bloc.dart';
 import 'package:otzaria/tabs/bloc/tabs_state.dart';
 import 'package:otzaria/tabs/models/combined_tab.dart';
@@ -31,6 +32,7 @@ import 'package:otzaria/tools/built_in_tools_catalog.dart';
 import 'package:otzaria/tools/tool_catalog_entry.dart';
 import 'package:otzaria/tools/tool_order.dart';
 import 'package:otzaria/widgets/controls/action_buttons.dart';
+import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/feedback/edge_scrollbar_behavior.dart';
 import 'package:otzaria/widgets/feedback/otzaria_empty_state.dart';
 import 'package:otzaria/widgets/layout/app_card.dart';
@@ -242,14 +244,51 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
     super.dispose();
   }
 
-  Future<void> _installPlugin() =>
-      PluginManagementActions.installPlugin(context);
+  Future<void> _installPlugin() async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !mounted) return;
+    final result = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['otzplugin'],
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
+    );
+    final path = result?.path;
+    if (path == null || !mounted) return;
+    context.read<PluginSystemBloc>().add(
+      InstallPluginRequested(path, isUserInitiated: true),
+    );
+  }
 
-  Future<void> _loadDevPlugin() =>
-      PluginManagementActions.loadDevPlugin(context);
+  Future<void> _loadDevPlugin() async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !mounted) return;
+    final rootPath = await FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
+    );
+    if (rootPath == null || !mounted) return;
+    context.read<PluginSystemBloc>().add(
+      LoadDevelopmentPluginRequested(rootPath),
+    );
+  }
 
-  Future<void> _loadLocalhostPlugin() =>
-      PluginManagementActions.loadLocalhostPlugin(context);
+  Future<void> _loadLocalhostPlugin() async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !mounted) return;
+    final bloc = context.read<PluginSystemBloc>();
+    final url = await showInputDialog(
+      context: context,
+      title: context.settingsText('טעינת תוסף מ-localhost'),
+      labelText: 'Base URL',
+      hintText: 'http://localhost:3000',
+      initialValue: 'http://localhost:3000',
+      cancelText: context.settingsText('ביטול'),
+      confirmText: context.settingsText('טען'),
+    );
+    if (url == null || url.isEmpty) return;
+    bloc.add(LoadLocalhostPluginRequested(url));
+  }
 
   void _moveHighlight(int delta, int total) {
     if (total == 0) return;
@@ -590,15 +629,7 @@ class _ToolsLauncherPanelState extends State<ToolsLauncherPanel> {
 
   @override
   Widget build(BuildContext context) {
-    context.select<SettingsBloc, int>(
-      (b) => Object.hash(
-        Object.hashAll(b.state.hiddenBuiltInToolIds),
-        b.state.isOfflineMode,
-        Object.hashAll(b.state.builtInToolsOrder),
-        b.state.compactMenuMode,
-      ),
-    );
-    final settingsState = context.read<SettingsBloc>().state;
+    final settingsState = context.watch<SettingsBloc>().state;
     final currentPluginState = context.watch<PluginSystemBloc>().state;
     if (currentPluginState is PluginSystemLoaded) {
       _lastLoadedPluginState = currentPluginState;
@@ -1031,8 +1062,7 @@ class _PluginsFooter extends StatelessWidget {
             ),
           InkWell(
             borderRadius: AppTokens.borderRadiusAll,
-            onTap: () => saferLaunchUrl(
-              context,
+            onTap: () => launchUrl(
               Uri.parse(kPluginStoreUrl),
               mode: LaunchMode.externalApplication,
             ),

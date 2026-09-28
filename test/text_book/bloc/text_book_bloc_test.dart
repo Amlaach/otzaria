@@ -492,10 +492,7 @@ void main() {
           ),
         );
 
-        await _waitFor(
-          () => repository.getBookLinksInRangeCalls >= 1,
-          description: 'repository.getBookLinksInRangeCalls >= 1',
-        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         expect(repository.getBookLinksInRangeCalls, 1);
         expect((bloc.state as TextBookLoaded).visibleIndices, const [10]);
@@ -958,18 +955,12 @@ void main() {
         ),
       );
 
-      await _waitFor(
-        () => repository.getBookLinksInRangeCalls >= 1,
-        description: 'repository.getBookLinksInRangeCalls >= 1',
-      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(repository.getBookLinksInRangeCalls, 1);
 
       // חורג מחלון הקישורים שכבר נטען, אחרת הגלילה נענית ממנו בלי שאילתה.
       bloc.add(UpdateVisibleIndecies([_farLine, _farLine + 1, _farLine + 2]));
-      await _waitFor(
-        () => repository.getBookLinksInRangeCalls >= 2,
-        description: 'repository.getBookLinksInRangeCalls >= 2',
-      );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
 
       expect(repository.getBookLinksInRangeCalls, 2);
 
@@ -995,10 +986,7 @@ void main() {
           ),
         );
 
-        await _waitFor(
-          () => repository.getBookLinksInRangeCalls >= 1,
-          description: 'repository.getBookLinksInRangeCalls >= 1',
-        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
         expect(repository.getBookLinksInRangeCalls, 1);
 
         bloc.add(const UpdateSelectedIndex(12));
@@ -1095,21 +1083,15 @@ void main() {
           ),
         );
 
-        await _waitFor(
-          () => repository.getBookLinksInRangeCalls >= 1,
-          description: 'repository.getBookLinksInRangeCalls >= 1',
-        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         // גלילה בתוך החלון שכבר נטען אינה מייצרת שאילתה נוספת.
         bloc.add(const UpdateVisibleIndecies([20, 21, 22]));
-        await Future<void>.delayed(const Duration(milliseconds: 30));
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         expect(repository.getBookLinksInRangeCalls, 1);
 
         bloc.add(const UpdateCommentators(['אבן עזרא על בראשית']));
-        await _waitFor(
-          () => repository.getBookLinksInRangeCalls >= 2,
-          description: 'repository.getBookLinksInRangeCalls >= 2',
-        );
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         expect(repository.getBookLinksInRangeCalls, 2);
         expect(repository.lastStartIndex, 0);
@@ -1780,10 +1762,7 @@ void main() {
         repository.completeFullContent(
           List.generate(30, (index) => 'שורה $index').join('\n'),
         );
-        await _waitFor(
-          () => bloc.state is TextBookLoaded,
-          description: 'bloc.state is TextBookLoaded',
-        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         final state = bloc.state;
         expect(state, isA<TextBookLoaded>());

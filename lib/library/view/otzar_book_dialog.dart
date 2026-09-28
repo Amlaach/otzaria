@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/theme/app_tokens.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
@@ -170,13 +169,7 @@ class OtzarBookDialog extends StatelessWidget {
           ElevatedButton.icon(
             icon: const Icon(FluentIcons.desktop_24_regular),
             label: const Text('פתח מקומית'),
-            onPressed: () async {
-              if (isKioskMode) {
-                UiSnack.show(CommonMessages.kioskOtzarHachochmaBlocked);
-                return;
-              }
-              if (!await verifySaferModePassword(context)) return;
-              if (!context.mounted) return;
+            onPressed: () {
               Navigator.of(context).pop();
               OtzarUtils.launchOtzarLocal(book.id!);
             },
@@ -189,10 +182,8 @@ class OtzarBookDialog extends StatelessWidget {
           icon: const Icon(FluentIcons.open_24_regular),
           label: const Text('פתח באתר'),
           onPressed: () async {
-            if (!await verifySaferModePassword(context)) return;
-            if (!context.mounted) return;
             Navigator.of(context).pop();
-            if (await OtzarUtils.launchOtzarWeb(book.link, context: context)) {
+            if (await OtzarUtils.launchOtzarWeb(book.link)) {
               // Success
             } else {
               UiSnack.showError(LibraryMessages.cannotOpenLinkInBrowser);

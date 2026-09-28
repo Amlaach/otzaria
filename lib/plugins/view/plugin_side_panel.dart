@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:otzaria/widgets/misc/app_cursors.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -8,12 +10,13 @@ import 'package:otzaria/plugins/bloc/plugin_system_event.dart';
 import 'package:otzaria/plugins/bloc/plugin_system_state.dart';
 import 'package:otzaria/plugins/models/installed_plugin.dart';
 import 'package:otzaria/plugins/utils/plugin_icon_resolver.dart';
-import 'package:otzaria/plugins/services/plugin_management_actions.dart';
 import 'package:otzaria/plugins/view/plugin_actions.dart';
 import 'package:otzaria/plugins/view/plugin_settings_screen.dart';
 import 'package:otzaria/plugins/view/widgets/plugin_drop_zone.dart';
 import 'package:otzaria/settings/engine/settings_bloc.dart';
+import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/theme/theme_exports.dart';
+import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/misc/app_popup_menu.dart';
 
 class PluginSidePanel extends StatefulWidget {
@@ -42,14 +45,59 @@ class _PluginSidePanelState extends State<PluginSidePanel> {
     super.dispose();
   }
 
-  Future<void> _installPlugin(BuildContext context) =>
-      PluginManagementActions.installPlugin(context);
+  Future<void> _installPlugin(BuildContext context) async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !context.mounted) return;
 
-  Future<void> _loadDevPlugin(BuildContext context) =>
-      PluginManagementActions.loadDevPlugin(context);
+    final result = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['otzplugin'],
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
+    );
+    final path = result?.path;
+    if (path != null && context.mounted) {
+      context.read<PluginSystemBloc>().add(
+        InstallPluginRequested(path, isUserInitiated: true),
+      );
+    }
+  }
 
-  Future<void> _loadLocalhostPlugin(BuildContext context) =>
-      PluginManagementActions.loadLocalhostPlugin(context);
+  Future<void> _loadDevPlugin(BuildContext context) async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !context.mounted) return;
+
+    final rootPath = await FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
+    );
+    if (rootPath != null) {
+      if (context.mounted) {
+        context.read<PluginSystemBloc>().add(
+          LoadDevelopmentPluginRequested(rootPath),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadLocalhostPlugin(BuildContext context) async {
+    final verified = await verifySaferModePassword(context);
+    if (!verified || !context.mounted) return;
+
+    final bloc = context.read<PluginSystemBloc>();
+    final url = await showInputDialog(
+      context: context,
+      title: 'טעינת תוסף מ-localhost',
+      labelText: 'Base URL',
+      hintText: 'http://localhost:3000',
+      initialValue: 'http://localhost:3000',
+      cancelText: 'ביטול',
+      confirmText: 'טען',
+    );
+    if (url != null && url.isNotEmpty) {
+      bloc.add(LoadLocalhostPluginRequested(url));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

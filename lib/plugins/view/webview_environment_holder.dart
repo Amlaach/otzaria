@@ -7,7 +7,6 @@ import 'package:otzaria/core/app_paths.dart';
 import 'package:otzaria/core/directory_writability.dart';
 import 'package:otzaria/plugins/services/plugin_asset_scheme.dart';
 import 'package:otzaria/plugins/services/plugin_webview_failure_log.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
 
 /// מחזיק את ה-WebViewEnvironment הסינגלטוני עם userDataFolder הניתן לכתיבה.
 ///
@@ -185,9 +184,6 @@ class WebViewEnvironmentHolder {
   ) => WebViewEnvironmentSettings(
     userDataFolder: userDataFolder,
     exclusiveUserDataFolderAccess: true,
-    additionalBrowserArguments: isKioskMode
-        ? '--disable-features=msEdgeDevTools,PdfOopif --disable-print-preview'
-        : null,
     // בלי רישום ה-scheme אינו נטען כלל, ועם treatAsSecure מודולים ו-fetch עובדים בו.
     customSchemeRegistrations: [
       CustomSchemeRegistration(

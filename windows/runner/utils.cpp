@@ -63,19 +63,3 @@ std::string Utf8FromUtf16(const wchar_t* utf16_string) {
   }
   return utf8_string;
 }
-
-namespace {
-
-bool g_kiosk_mode_enabled = false;
-
-}  // namespace
-
-void SetKioskMode(bool enabled) {
-  g_kiosk_mode_enabled = enabled;
-}
-
-bool IsKioskModeEnabled() {
-  return g_kiosk_mode_enabled;
-}
-
-

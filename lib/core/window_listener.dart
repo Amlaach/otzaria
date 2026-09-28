@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:otzaria/app_report/services/app_crash_session.dart';
 import 'package:otzaria/core/http_client_registry.dart';
 import 'package:otzaria/core/pre_close_registry.dart';
+import 'package:otzaria/core/ui_snack.dart' show navigatorKey;
 import 'package:otzaria/core/window_persistence.dart';
 import 'package:otzaria/core/windowing/app_window_controller.dart';
 import 'package:otzaria/core/windowing/app_window_id.dart';
@@ -22,8 +24,7 @@ import 'package:otzaria/plugins/storage/plugin_system_database.dart';
 import 'package:otzaria/plugins/services/plugin_crash_guard.dart';
 import 'package:otzaria/plugins/services/plugin_runtime_dispatcher.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
-import 'package:otzaria/core/ui_snack.dart' show navigatorKey;
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
+import 'package:otzaria/settings/engine/settings_bloc.dart';
 import 'package:otzaria/tabs/utils/confirm_close_tabs.dart';
 import 'package:otzaria/tabs/tabs_repository.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -184,7 +185,6 @@ class AppWindowListener extends WindowListener {
   /// נקרא בכל אירוע resize רציף — מיועד ל-debounced restore.
   VoidCallback? onWindowResizeOccurred;
   bool _isClosing = false;
-  bool _isCloseAuthPending = false;
 
   Future<void> _runBestEffortShutdownStep(
     String stepName,
@@ -279,22 +279,14 @@ class AppWindowListener extends WindowListener {
     bool Function()? canClose,
     bool quit = false,
   }) async {
-    if (_isClosing || _isCloseAuthPending) {
+    if (_isClosing) {
       return;
     }
-    if (isKioskMode) {
-      final context = navigatorKey.currentContext;
-      if (context == null || !context.mounted) {
-        return;
-      }
-      _isCloseAuthPending = true;
-      try {
-        if (!await verifySaferModePassword(context)) {
-          return;
-        }
-      } finally {
-        _isCloseAuthPending = false;
-      }
+    final context = navigatorKey.currentContext;
+    if (context != null &&
+        context.mounted &&
+        context.read<SettingsBloc>().state.protectedModeEnabled) {
+      return;
     }
     if (canClose != null && !canClose()) return;
     // לפני _isClosing וכלב-השמירה: ביטול חייב להשאיר את התוכנה שלמה.

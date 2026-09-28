@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -38,9 +37,8 @@ import 'linux_installer.dart';
 import 'macos_installer.dart';
 import 'tree_swap.dart';
 import 'windows_installer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/settings_exports.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 export 'differential/swap_recovery.dart' show differentialWorkDirectory;
 
@@ -80,9 +78,7 @@ bool managesUpdatesInThisWindow({
   required bool isSecondaryWindow,
   required bool isWeb,
   required String operatingSystem,
-  bool isKiosk = false,
 }) {
-  if (isKiosk) return false;
   if (isDebug) return false;
   // בדיקה, הורדה והתקנה הן פר-תהליך: חלון נוסף היה בודק, מוריד לאותו נתיב
   // ומתקין במקביל לראשון.
@@ -690,7 +686,6 @@ class MyUpdatWidget extends StatelessWidget {
       isSecondaryWindow: WindowRole.isSecondary,
       isWeb: kIsWeb,
       operatingSystem: Platform.operatingSystem,
-      isKiosk: isKioskMode,
     )) {
       return child;
     }
@@ -1215,9 +1210,8 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
       final release = await _fetchRelease(
         _latestVersion!,
       ).timeout(_kGithubTimeout);
-      if (!mounted) return;
       final url = release['html_url'];
-      if (url is! String || !await saferLaunchUrl(context, Uri.parse(url))) {
+      if (url is! String || !await launchUrl(Uri.parse(url))) {
         throw Exception('the release page could not be opened');
       }
       if (!mounted) return;
@@ -1417,14 +1411,6 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   /// השקט ב-Windows): `true` בעדכון יזום ("התקן כעת"), `false` בעדכון
   /// בעת סגירת התוכנה.
   Future<bool> _launchInstaller({required bool relaunchApp}) async {
-    if (isKioskMode) {
-      UiSnack.show(CommonMessages.kioskSoftwareUpdateBlocked);
-      return false;
-    }
-    if (!mounted) return false;
-    if (!await verifySaferModePassword(context)) {
-      return false;
-    }
     if (_differentialUpdate != null) {
       return _launchDifferentialSwap(relaunchApp: relaunchApp);
     }
@@ -1440,10 +1426,6 @@ class _ManagedUpdatWidgetState extends State<_ManagedUpdatWidget> {
   }
 
   Future<void> _launchInstallerDirect({required bool relaunchApp}) async {
-    if (isKioskMode) {
-      UiSnack.show(CommonMessages.kioskSoftwareUpdateBlocked);
-      return;
-    }
     final installer = _installerFile;
     if (installer == null) return;
 

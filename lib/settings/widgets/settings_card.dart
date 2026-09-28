@@ -1,4 +1,5 @@
-import 'package:otzaria/settings/services/safer_file_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1019,8 +1020,9 @@ class _PathMenuButtonState extends State<_PathMenuButton> {
   bool _isLoading = false;
 
   Future<void> _pickAndChange() async {
-    final path = await SaferFilePicker.getDirectoryPath(
-      context: context,
+    final path = await FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     if (path == null || !mounted) return;
     setState(() => _isLoading = true);

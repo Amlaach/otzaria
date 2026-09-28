@@ -79,22 +79,4 @@ abstract class CommonMessages {
 
   static String shortcutAlreadyInUse(String actionName) =>
       'קיצור זה כבר בשימוש עבור: $actionName';
-
-  // ── אבטחה ומצב קיוסק ────────────────────────────────────────────────────
-  static const String kioskFileAttachmentBlocked = 'צירוף קבצים חסום במצב קיוסק';
-  static const String kioskExternalLinksBlocked = 'פתיחת קישורים חיצוניים חסומה במצב קיוסק';
-  static const String kioskSecondaryWindowBlocked = 'פתיחת חלון נוסף חסומה במצב קיוסק';
-  static const String kioskFilePickerBlocked = 'פתיחת בורר קבצים חסומה במצב קיוסק';
-  static const String kioskFileDownloadBlocked = 'הורדת קבצים חסומה במצב קיוסק';
-  static const String fileDownloadCancelled = 'הורדת הקובץ בוטלה';
-  static const String kioskPluginInstallBlocked = 'התקנת תוספים חסומה במצב קיוסק';
-  static const String kioskDevPluginBlocked = 'טעינת תוספי פיתוח חסומה במצב קיוסק';
-  static const String kioskLocalhostPluginBlocked = 'טעינת תוספי localhost חסומה במצב קיוסק';
-  static const String kioskPdfPrintBlocked = 'הדפסת PDF מערכתית חסומה במצב קיוסק';
-  static const String kioskFileManagerBlocked = 'פתיחת סייר הקבצים חסומה במצב קיוסק';
-  static const String kioskProcessLaunchBlocked = 'פתיחת תהליכים חיצוניים חסומה במצב קיוסק';
-  static const String kioskFileSaveBlocked = 'שמירת קבצים למערכת ההפעלה חסומה במצב קיוסק';
-  static const String kioskOtzarHachochmaBlocked = 'פתיחת תוכנת אוצר החכמה חסומה במצב קיוסק';
-  static const String noPhysicalPrinterConnected = 'אין מדפסת פיזית מחוברת בעמדה זו';
-  static const String kioskSoftwareUpdateBlocked = 'עדכון תוכנה חסום במצב קיוסק';
 }

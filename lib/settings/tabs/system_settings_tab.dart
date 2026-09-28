@@ -11,7 +11,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:otzaria/core/app_paths.dart';
@@ -27,8 +26,6 @@ import 'package:otzaria/settings/search/settings_search_models.dart';
 import 'package:otzaria/settings/view/settings_screen.dart';
 import 'package:otzaria/settings/dialogs/settings_dialogs_exports.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/settings/services/safer_process_guard.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/settings/services/offline_send_target.dart';
 import 'package:otzaria/settings/panels/app_reports_panel.dart';
 import 'package:otzaria/app_report/services/crash_report_decision.dart';
@@ -66,6 +63,7 @@ import 'package:otzaria/utils/file/save_file_with_extension.dart';
 import 'package:otzaria/plugins/view/webview_environment_holder.dart';
 import 'package:otzaria/widgets/misc/restart_widget.dart';
 import 'package:otzaria/update/app_release_version.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:otzaria/settings/widgets/settings_tab_scroll_view.dart';
 
 /// טאב "אוצריא" — גרסאות, נתיב ספרייה, גיבוי, מצב סייפר, איפוס.
@@ -887,13 +885,6 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsBloc, SettingsState>(
-      buildWhen: (previous, current) =>
-          previous.isOfflineMode != current.isOfflineMode ||
-          previous.softwareAndBookUpdatesEnabled !=
-              current.softwareAndBookUpdatesEnabled ||
-          previous.protectedModePasswordSet !=
-              current.protectedModePasswordSet ||
-          previous.protectedModeEnabled != current.protectedModeEnabled,
       builder: (context, state) {
         return BlocListener<LibraryBloc, LibraryState>(
           // הספרייה נטענת מחדש אחרי עדכון/החלפת מיקום — בלי ריענון כאן
@@ -2163,7 +2154,13 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
               return;
             }
             final dir = file.parent;
-            await SaferProcessGuard.openInFileManager(context, dir.path);
+            if (Platform.isWindows) {
+              await Process.run('explorer', [dir.path]);
+            } else if (Platform.isMacOS) {
+              await Process.run('open', [dir.path]);
+            } else if (Platform.isLinux) {
+              await Process.run('xdg-open', [dir.path]);
+            }
           },
           icon: FluentIcons.checkmark_circle_24_regular,
         );
@@ -2194,8 +2191,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// שחזור מקובץ גיבוי שהמשתמש בוחר — הדרך היחידה לשחזר אחרי התקנה מחדש
   /// במובייל, שבו תיקיית הגיבוי הפנימית נמחקת עם האפליקציה.
   Future<void> _restoreFromPickedFile() async {
-    final result = await SaferFilePicker.pickFile(
-      context: context,
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
@@ -2220,8 +2216,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
   /// ייבוא ממזג מגיבוי של מכשיר אחר — מוסיף פריטים ואינו מוחק דבר, ולכן
   /// דיאלוג רגיל ולא אזהרה.
   Future<void> _importMergeFromPickedFile() async {
-    final result = await SaferFilePicker.pickFile(
-      context: context,
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
@@ -2749,7 +2744,13 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
                 onOpenFolder: () {
                   final path = _resolvedBackupPath;
                   if (path.isEmpty) return;
-                  unawaited(SaferProcessGuard.openInFileManager(context, path));
+                  if (Platform.isWindows) {
+                    unawaited(Process.run('explorer', [path]));
+                  } else if (Platform.isMacOS) {
+                    unawaited(Process.run('open', [path]));
+                  } else if (Platform.isLinux) {
+                    unawaited(Process.run('xdg-open', [path]));
+                  }
                 },
                 onClearPath: () {
                   Settings.setValue<String>(
@@ -3018,7 +3019,7 @@ class _SystemSettingsTabState extends State<SystemSettingsTab> {
               child: MarkdownBody(
                 data: changelog,
                 onTapLink: (text, href, title) {
-                  if (href != null) saferLaunchUrl(ctx, Uri.parse(href));
+                  if (href != null) launchUrl(Uri.parse(href));
                 },
               ),
             ),

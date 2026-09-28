@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter/material.dart';
@@ -95,8 +94,7 @@ class _PersonalBooksImportPanelState extends State<PersonalBooksImportPanel> {
     final override = widget.pickFilesOverride;
     if (override != null) return override();
 
-    final files = await SaferFilePicker.pickFiles(
-      context: context,
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: kSupportedBookExtensions,
       dialogTitle: context.settingsText('בחר קבצי ספרים לייבוא'),

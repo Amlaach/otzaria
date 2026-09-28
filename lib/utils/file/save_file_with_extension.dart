@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
-import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/core/ui_snack.dart' show navigatorKey;
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 
@@ -22,15 +21,9 @@ Future<String?> saveFileWithExtension({
   String? initialDirectory,
   BuildContext? context,
 }) async {
-  if (isKioskMode) {
-    UiSnack.show(CommonMessages.kioskFileSaveBlocked);
-    return null;
-  }
   final effectiveContext = context ?? navigatorKey.currentContext;
-  if (effectiveContext == null || !effectiveContext.mounted) {
-    return null;
-  }
-  if (!await verifySaferModePassword(effectiveContext)) {
+  if (effectiveContext != null &&
+      !await verifySaferModePassword(effectiveContext)) {
     return null;
   }
   final uri = await FilePicker.saveFile(

@@ -7,11 +7,7 @@ import 'package:otzaria/navigation/bloc/navigation_state.dart';
 import 'package:otzaria/settings/engine/settings_engine_exports.dart';
 import 'package:otzaria/settings/l10n/settings_l10n_exports.dart';
 import 'package:otzaria/settings/dialogs/safer_mode_password_dialog.dart';
-import 'package:otzaria/settings/services/security_policy_service.dart';
 import 'package:otzaria/widgets/layout/centered_scrollable_state.dart';
-
-export 'package:otzaria/settings/services/security_policy_service.dart'
-    show AppSecurityConfig, ISecurityPolicyService, SecurityAction, SecurityDecision, SecurityGate;
 
 /// Wrapper שבודק סיסמה לפני כניסה למסך מוגן במצב סייפר
 class SaferModeGuard extends StatefulWidget {
@@ -43,7 +39,11 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
   }
 
   void _checkProtection() {
-    if (!shouldRequireSaferModePassword(context)) {
+    // נבדוק אם מצב סייפר מופעל
+    final state = context.read<SettingsBloc>().state;
+    final repository = context.read<SettingsRepository>();
+
+    if (!state.protectedModeEnabled || !repository.hasProtectedModePassword()) {
       // אין הגנה - נאפשר גישה ישירה
       if (mounted) {
         setState(() {
@@ -111,20 +111,23 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
               previous.protectedModeEnabled != current.protectedModeEnabled,
           listener: (context, state) {
             // אם המצב המוגן הופעל והמשתמש עדיין לא אומת
-            if (shouldRequireSaferModePassword(context) && !_isVerified) {
-              // נאפס את הסטטוס ונבקש אימות מחדש
-              setState(() {
-                _isVerified = false;
-                _isChecking = false;
-                _dialogShown = false;
-              });
-              // נציג את הדיאלוג
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && !_dialogShown) {
-                  _dialogShown = true;
-                  _showPasswordDialog();
-                }
-              });
+            if (state.protectedModeEnabled && !_isVerified) {
+              final repository = context.read<SettingsRepository>();
+              if (repository.hasProtectedModePassword()) {
+                // נאפס את הסטטוס ונבקש אימות מחדש
+                setState(() {
+                  _isVerified = false;
+                  _isChecking = false;
+                  _dialogShown = false;
+                });
+                // נציג את הדיאלוג
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && !_dialogShown) {
+                    _dialogShown = true;
+                    _showPasswordDialog();
+                  }
+                });
+              }
             }
           },
         ),
@@ -162,12 +165,9 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
       children: [
         Offstage(
           offstage: locked,
-          child: TickerMode(
-            enabled: !locked,
-            child: ExcludeFocus(
-              excluding: locked,
-              child: widget.child,
-            ),
+          child: ExcludeFocus(
+            excluding: locked,
+            child: widget.child,
           ),
         ),
         if (_isChecking)
@@ -230,32 +230,11 @@ class _SaferModeGuardState extends State<SaferModeGuard> {
   }
 }
 
-/// האם האפליקציה פועלת במצב קיוסק מנוהל (דגל `--kiosk` או `--safer`).
-/// מגובה על ידי [AppSecurityConfig] האימוטבילי (AP-01).
-bool get isKioskMode => AppSecurityConfig.instance.isKioskMode;
-set isKioskMode(bool value) {
-  AppSecurityConfig.initialize(
-    isKioskMode: value,
-    isSecondaryWindow: AppSecurityConfig.instance.isSecondaryWindow,
-  );
-}
-
 /// פונקציה עוזרת לבדיקה האם צריך אימות סיסמה במצב סייפר
 bool shouldRequireSaferModePassword(BuildContext context) {
-  if (isKioskMode) return true;
-  try {
-    final state = context.read<SettingsBloc>().state;
-    if (state.protectedModeEnabled) {
-      if (state.protectedModePasswordSet) return true;
-      try {
-        final repo = context.read<SettingsRepository>();
-        return repo.hasProtectedModePassword();
-      } catch (_) {}
-    }
-    return false;
-  } catch (_) {
-    return false;
-  }
+  final state = context.read<SettingsBloc>().state;
+  final repository = context.read<SettingsRepository>();
+  return state.protectedModeEnabled && repository.hasProtectedModePassword();
 }
 
 /// פונקציה עוזרת לאימות סיסמה לפני ביצוע פעולה מוגנת במצב סייפר
@@ -264,27 +243,23 @@ Future<bool> verifySaferModePassword(BuildContext context) async {
     return true; // אין הגנה - מאושר
   }
 
-  try {
-    final repository = context.read<SettingsRepository>();
+  final repository = context.read<SettingsRepository>();
 
-    final verified = await showDialog<bool>(
-      context: context,
-      builder: settingsDialogBuilder(
-        context,
-        (ctx) => SaferModePasswordDialog(
-          title: ctx.settingsText('אמת סיסמה'),
-          hint: ctx.settingsText(
-            'הנך במצב סייפר.\nהזן את הסיסמה כדי לבצע פעולה זו',
-          ),
-          onVerify: (password) async {
-            return repository.verifyProtectedModePassword(password);
-          },
+  final verified = await showDialog<bool>(
+    context: context,
+    builder: settingsDialogBuilder(
+      context,
+      (ctx) => SaferModePasswordDialog(
+        title: ctx.settingsText('אמת סיסמה'),
+        hint: ctx.settingsText(
+          'הנך במצב סייפר.\nהזן את הסיסמה כדי לבצע פעולה זו',
         ),
+        onVerify: (password) async {
+          return repository.verifyProtectedModePassword(password);
+        },
       ),
-    );
+    ),
+  );
 
-    return verified == true;
-  } catch (_) {
-    return false;
-  }
+  return verified == true;
 }

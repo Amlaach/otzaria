@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +16,7 @@ import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/settings/l10n/settings_text.dart';
 import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
 import 'package:otzaria/theme/theme_exports.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:otzaria/widgets/widgets_exports.dart';
 import 'package:path/path.dart' as p;
@@ -58,12 +58,13 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
 
   Future<void> _importFile() async {
     final bloc = context.read<AttachedLibrariesBloc>();
-    final files = await SaferFilePicker.pickFiles(
-      context: context,
+    final files = await FilePicker.pickFiles(
       // בורר המערכת במובייל אינו מכיר את הסיומת db; הקובץ נבדק לפי תוכנו.
       type: widget.supportsLinking ? FileType.custom : FileType.any,
       allowedExtensions: widget.supportsLinking ? const ['db'] : null,
       dialogTitle: context.settingsText('בחר קובץ מסד ספרים'),
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     final path = files.map((f) => f.path).whereType<String>().firstOrNull;
     if (path != null) bloc.add(ImportAttachedLibraryFile(path));
@@ -71,8 +72,9 @@ class _AttachedLibrariesPanelState extends State<AttachedLibrariesPanel> {
 
   Future<void> _addFolder() async {
     final bloc = context.read<AttachedLibrariesBloc>();
-    final path = await SaferFilePicker.getDirectoryPath(
-      context: context,
+    final path = await FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     if (path != null) bloc.add(AddAttachedLibraryFolder(path));
   }

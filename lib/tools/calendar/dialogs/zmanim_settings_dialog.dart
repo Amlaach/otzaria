@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 import 'package:otzaria/tools/calendar/models/zman_definition.dart';
 import 'package:otzaria/tools/calendar/helpers/zmanim_helpers.dart';
@@ -123,10 +122,9 @@ class _SourceCredit extends StatelessWidget {
 
   static final Uri _url = Uri.parse('https://itimlabina.co.il');
 
-  Future<void> _open(BuildContext context) async {
+  Future<void> _open() async {
     if (await canLaunchUrl(_url)) {
-      if (!context.mounted) return;
-      await saferLaunchUrl(context, _url, mode: LaunchMode.externalApplication);
+      await launchUrl(_url, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -136,7 +134,7 @@ class _SourceCredit extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
-        onTap: () => _open(context),
+        onTap: _open,
         borderRadius: AppTokens.borderRadiusAll,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),

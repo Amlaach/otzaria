@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:otzaria/core/messages/pdf_messages.dart';
@@ -24,57 +23,9 @@ Future<bool> printPdfWithSaferMode({
   bool usePrinterSettings = false,
   BuildContext? context,
 }) async {
-  if (isKioskMode) {
-    // במצב קיוסק — חסימה מוחלטת של דיאלוג מערכת Windows (Print Preview / Print to PDF).
-    // הדפסה מותרת אך ורק למדפסות פיזיות ישירות דרך directPrintPdf!
-    final printers = SaferPrinterFilter.allowed(
-      await Printing.listPrinters(),
-      await windowsPrinterPortsAsync(),
-    );
-    if (printers.isEmpty) {
-      UiSnack.show(CommonMessages.noPhysicalPrinterConnected);
-      return false;
-    }
-    final effectiveContext = context ?? navigatorKey.currentContext;
-    if (effectiveContext == null || !effectiveContext.mounted) {
-      return false;
-    }
-
-    final Printer? printer;
-    if (printers.length == 1) {
-      printer = printers.single;
-    } else {
-      printer = await showSelectionDialog<Printer>(
-        context: effectiveContext,
-        title: 'בחירת מדפסת',
-        items: [
-          for (final p in printers) SelectionItem(label: p.name, value: p),
-        ],
-        initialValue: printers.where((p) => p.isDefault).firstOrNull,
-        searchHint: 'חיפוש מדפסת...',
-      );
-    }
-    if (printer == null) return false;
-
-    final printed = await Printing.directPrintPdf(
-      printer: printer,
-      onLayout: onLayout,
-      name: name,
-      format: format,
-      dynamicLayout: dynamicLayout,
-      usePrinterSettings: usePrinterSettings,
-    );
-    if (!printed) UiSnack.showError(PdfMessages.printFailed(printer.name));
-    return printed;
-  }
-
   final effectiveContext = context ?? navigatorKey.currentContext;
-  if (effectiveContext == null) {
-    // Fail-closed בהיעדר Context
-    return false;
-  }
-
-  if (!shouldRequireSaferModePassword(effectiveContext)) {
+  if (effectiveContext == null ||
+      !shouldRequireSaferModePassword(effectiveContext)) {
     return Printing.layoutPdf(
       onLayout: onLayout,
       name: name,
@@ -86,7 +37,7 @@ Future<bool> printPdfWithSaferMode({
 
   final printers = SaferPrinterFilter.allowed(
     await Printing.listPrinters(),
-    await windowsPrinterPortsAsync(),
+    windowsPrinterPorts(),
   );
   if (!effectiveContext.mounted) return false;
 

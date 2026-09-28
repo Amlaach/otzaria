@@ -1,5 +1,4 @@
 import 'package:otzaria/bookmarks/bloc/bookmark_bloc.dart';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'package:otzaria/settings/services/custom_folders/bloc/custom_folders_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -40,10 +39,9 @@ import 'package:otzaria/find_ref/repository/find_ref_repository.dart';
 import 'package:otzaria/plugins/bridge/plugin_reference_resolver.dart';
 import 'package:otzaria/utils/navigation/book_open_coordinator.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/plugins/bridge/plugin_save_target.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:otzaria/widgets/misc/middle_click_autoscroll.dart';
 import 'package:otzaria/plugins/view/plugin_dev_error_view.dart';
@@ -201,7 +199,6 @@ bool shouldHandleCreationFailure({
 
 InAppWebViewSettings buildPluginTabWebViewSettings({
   required bool isDevelopment,
-  bool disableContextMenu = false,
 }) {
   return InAppWebViewSettings(
     allowFileAccessFromFileURLs: false,
@@ -217,8 +214,7 @@ InAppWebViewSettings buildPluginTabWebViewSettings({
     supportZoom: false,
     pinchZoomEnabled: false,
     cacheEnabled: !isDevelopment,
-    isInspectable: (isDevelopment || kDebugMode) && !isKioskMode,
-    disableContextMenu: disableContextMenu || isKioskMode,
+    isInspectable: isDevelopment || kDebugMode,
     resourceCustomSchemes: pluginAssetSchemeEnabled
         ? const [pluginAssetScheme]
         : const [],
@@ -422,18 +418,24 @@ class _PluginTabPageState extends State<PluginTabPage> {
       },
       pickFolder: ({String? title}) async {
         if (!mounted) return null;
-        return SaferFilePicker.getDirectoryPath(
-          context: context,
+        if (!await verifySaferModePassword(context)) return null;
+        if (!mounted) return null;
+        return FilePicker.getDirectoryPath(
+          windowsOptions: kModalWindowsOptions,
+          linuxOptions: kModalLinuxOptions,
           dialogTitle: title,
         );
       },
       pickFile: ({List<String>? allowedExtensions, String? title}) async {
         if (!mounted) return null;
+        if (!await verifySaferModePassword(context)) return null;
+        if (!mounted) return null;
         final hasExtensions =
             allowedExtensions != null && allowedExtensions.isNotEmpty;
-        final result = await SaferFilePicker.pickFile(
-          context: context,
+        final result = await FilePicker.pickFile(
           dialogTitle: title,
+          windowsOptions: kModalWindowsOptions,
+          linuxOptions: kModalLinuxOptions,
           type: hasExtensions ? FileType.custom : FileType.any,
           allowedExtensions: hasExtensions ? allowedExtensions : null,
         );
@@ -446,9 +448,12 @@ class _PluginTabPageState extends State<PluginTabPage> {
             String? title,
           }) async {
             if (!mounted) return null;
-            final folder = await SaferFilePicker.getDirectoryPath(
-              context: context,
+            if (!await verifySaferModePassword(context)) return null;
+            if (!mounted) return null;
+            final folder = await FilePicker.getDirectoryPath(
               dialogTitle: pluginSaveFolderDialogTitle(title),
+              windowsOptions: kModalWindowsOptions,
+              linuxOptions: kModalLinuxOptions,
             );
             if (folder == null || !mounted) return null;
             final typed = await showInputDialog(
@@ -887,7 +892,6 @@ class _PluginTabPageState extends State<PluginTabPage> {
       ),
       initialSettings: buildPluginTabWebViewSettings(
         isDevelopment: widget.plugin.isDevelopment,
-        disableContextMenu: shouldRequireSaferModePassword(context),
       ),
       gestureRecognizers: pluginTabWebViewGestureRecognizers(
         isTouchPlatform: Platform.isAndroid || Platform.isIOS,
@@ -901,12 +905,8 @@ class _PluginTabPageState extends State<PluginTabPage> {
         buildPluginDropGuardScript(),
         buildPluginLinkifyScript(auto: widget.plugin.manifest.autoLinkify),
       ]),
-      onCreateWindow: (controller, createWindowAction) async => false,
       onShowFileChooser: (controller, showFileChooserRequest) async {
-        if (!mounted || isKioskMode) {
-          if (isKioskMode) {
-            UiSnack.show(CommonMessages.kioskFilePickerBlocked);
-          }
+        if (!mounted) {
           return ShowFileChooserResponse(
             handledByClient: true,
             filePaths: null,

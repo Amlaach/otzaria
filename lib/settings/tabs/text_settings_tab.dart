@@ -216,20 +216,6 @@ class TextSettingsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SettingsBloc, SettingsState>(
-      buildWhen: (previous, current) =>
-          previous.fontSize != current.fontSize ||
-          previous.fontFamily != current.fontFamily ||
-          previous.fontBold != current.fontBold ||
-          previous.commentatorsFontSize != current.commentatorsFontSize ||
-          previous.commentatorsFontFamily != current.commentatorsFontFamily ||
-          previous.commentatorsFontBold != current.commentatorsFontBold ||
-          previous.lineHeight != current.lineHeight ||
-          previous.textMaxWidth != current.textMaxWidth ||
-          previous.defaultContinuousReadingMode !=
-              current.defaultContinuousReadingMode ||
-          previous.copyWithHeaders != current.copyWithHeaders ||
-          previous.copyHeaderFormat != current.copyHeaderFormat ||
-          previous.enablePerBookSettings != current.enablePerBookSettings,
       builder: (context, settingsState) {
         final content = SettingsTabScrollView(
           child: ToolPanelWrapper(

@@ -226,21 +226,16 @@ class PluginProtocolRegistrationService {
     String executable,
     List<String> arguments,
   ) async {
-    try {
-      final lookup = await Process.run('which', [executable]);
-      if (lookup.exitCode != 0) {
-        return;
-      }
-
-      final result = await Process.run(executable, arguments);
-      if (result.exitCode != 0) {
-        throw Exception(
-          'רישום פרוטוקול בלינוקס נכשל עבור $executable: ${result.stderr}'.trim(),
-        );
-      }
-    } on ProcessException {
-      // אם הפקודה אינה קיימת או אינה ניתנת להרצה, התעלם בבטחה
+    final lookup = await Process.run('which', [executable], runInShell: true);
+    if (lookup.exitCode != 0) {
       return;
+    }
+
+    final result = await Process.run(executable, arguments, runInShell: true);
+    if (result.exitCode != 0) {
+      throw Exception(
+        'רישום פרוטוקול בלינוקס נכשל עבור $executable: ${result.stderr}'.trim(),
+      );
     }
   }
 

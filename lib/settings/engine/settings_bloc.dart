@@ -9,7 +9,6 @@ import 'package:otzaria/settings/engine/settings_state.dart';
 import 'package:otzaria/text_display/text_display_exports.dart';
 import 'package:otzaria/settings/l10n/settings_language.dart';
 import 'package:otzaria/settings/services/per_book_settings_service.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
 
 class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
   final SettingsRepository _repository;
@@ -100,7 +99,6 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
       transformer: sequential(),
     );
     on<UpdateSettingsLanguageCode>(_onUpdateSettingsLanguageCode);
-    on<ForceKioskModeEnabled>(_onForceKioskMode);
   }
 
   Future<void> _onLoadSettings(
@@ -324,19 +322,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     UpdateProtectedModeEnabled event,
     Emitter<SettingsState> emit,
   ) async {
-    if (isKioskMode && !event.enabled) {
-      return;
-    }
     await _repository.updateProtectedModeEnabled(event.enabled);
     emit(state.copyWith(protectedModeEnabled: event.enabled));
-  }
-
-  Future<void> _onForceKioskMode(
-    ForceKioskModeEnabled event,
-    Emitter<SettingsState> emit,
-  ) async {
-    await _repository.updateProtectedModeEnabled(true);
-    emit(state.copyWith(protectedModeEnabled: true));
   }
 
   Future<void> _onUpdateProtectedModePassword(
@@ -351,8 +338,8 @@ class SettingsBloc extends Bloc<SettingsEvent, SettingsState> {
     ClearProtectedModePassword event,
     Emitter<SettingsState> emit,
   ) async {
-    // אי אפשר להסיר סיסמה כשמצב הסייפר פעיל או במצב קיוסק.
-    if (isKioskMode || state.protectedModeEnabled) return;
+    // אי אפשר להסיר סיסמה כשמצב הסייפר פעיל - יש להשבית אותו קודם.
+    if (state.protectedModeEnabled) return;
     await _repository.clearProtectedModePassword();
     emit(state.copyWith(protectedModePasswordSet: false));
   }

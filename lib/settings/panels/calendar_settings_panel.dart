@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/text/rtl_text_field.dart';
 import 'package:otzaria_icons/otzaria_icons.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -648,10 +648,11 @@ class _CalendarSettingsTabState extends State<CalendarSettingsTab> {
 
   Future<void> _importIcsFile(BuildContext context) async {
     final cubit = context.read<CalendarCubit>();
-    final result = await SaferFilePicker.pickFile(
-      context: context,
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['ics'],
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     final path = result?.path;
     if (path == null) return;

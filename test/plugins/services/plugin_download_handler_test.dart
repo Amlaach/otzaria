@@ -1,4 +1,3 @@
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:otzaria/core/messages/plugin_messages.dart';
 import 'package:otzaria/plugins/services/plugin_download_handler.dart';
@@ -22,16 +21,5 @@ void main() {
   test('ההודעה מתארת התחלה ולא הצלחה שטרם התרחשה', () {
     expect(PluginMessages.fileDownloadStarted, contains('החלה'));
     expect(PluginMessages.fileDownloadStarted, isNot(contains('נשמר')));
-  });
-
-  test('מצב קיוסק מבטל את ההורדה לחלוטין למניעת בריחה', () {
-    final response = PluginDownloadHandler.responseFor(
-      isWindows: true,
-      isKiosk: true,
-    );
-
-    expect(response, isNotNull);
-    expect(response!.handled, isTrue);
-    expect(response.action, equals(DownloadStartResponseAction.CANCEL));
   });
 }

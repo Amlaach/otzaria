@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:otzaria/core/messages/common_messages.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 // dart:io מגדיר Link משלו (קישור בקובץ־מערכת) שמתנגש ב-Link של הקישורים.
@@ -7,8 +6,8 @@ import 'dart:io' hide Link;
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:otzaria/settings/services/safer_file_picker.dart';
 import 'package:otzaria/models/book_source.dart';
+import 'package:otzaria/utils/file/file_picker_dialog_options.dart';
 import 'package:otzaria/widgets/dialogs/input_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -33,7 +32,6 @@ import 'package:otzaria/personal_notes/repository/personal_notes_repository.dart
 import 'package:otzaria/personal_notes/models/personal_note.dart';
 import 'package:otzaria/personal_notes/utils/personal_notes_book_key.dart';
 import 'package:otzaria/settings/services/safer_mode_guard.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
 import 'package:otzaria/core/connectivity_status_service.dart';
 import 'package:otzaria/core/ui_snack.dart';
 import 'package:otzaria/models/books.dart';
@@ -944,8 +942,7 @@ class PluginBridgeAdapter {
         if (uri.scheme != 'http' && uri.scheme != 'https') {
           throw Exception('error.forbidden: only http/https URLs are allowed');
         }
-        final launched = await saferLaunchUrl(
-          null,
+        final launched = await launchUrl(
           uri,
           mode: LaunchMode.externalApplication,
         );
@@ -3625,11 +3622,15 @@ class PluginBridgeAdapter {
     );
   }
 
-  /// בורר התיקיות המוגדר כברירת מחדל — דיאלוג המערכת דרך [SaferFilePicker].
+  /// בורר התיקיות המוגדר כברירת מחדל — דיאלוג המערכת דרך [FilePicker].
   Future<String?> _defaultPickFolder({String? title}) async {
     final context = navigatorKey.currentContext;
-    return SaferFilePicker.getDirectoryPath(
-      context: context,
+    if (context != null && !await verifySaferModePassword(context)) {
+      return null;
+    }
+    return FilePicker.getDirectoryPath(
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
       dialogTitle: title,
     );
   }
@@ -4094,17 +4095,21 @@ class PluginBridgeAdapter {
     };
   }
 
-  /// בורר הקבצים המוגדר כברירת מחדל — דיאלוג המערכת דרך [SaferFilePicker].
+  /// בורר הקבצים המוגדר כברירת מחדל — דיאלוג המערכת דרך [FilePicker].
   Future<String?> _defaultPickFile({
     List<String>? allowedExtensions,
     String? title,
   }) async {
     final context = navigatorKey.currentContext;
+    if (context != null && !await verifySaferModePassword(context)) {
+      return null;
+    }
     final hasExtensions =
         allowedExtensions != null && allowedExtensions.isNotEmpty;
-    final result = await SaferFilePicker.pickFile(
-      context: context,
+    final result = await FilePicker.pickFile(
       dialogTitle: title,
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
       type: hasExtensions ? FileType.custom : FileType.any,
       allowedExtensions: hasExtensions ? allowedExtensions : null,
     );
@@ -4336,21 +4341,14 @@ class PluginBridgeAdapter {
     List<String>? allowedExtensions,
     String? title,
   }) async {
-    if (isKioskMode) {
-      UiSnack.show(CommonMessages.kioskFilePickerBlocked);
-      return null;
-    }
     final context = navigatorKey.currentContext;
-    if (context == null || !context.mounted) {
+    if (context != null && !await verifySaferModePassword(context)) {
       return null;
     }
-    if (!await verifySaferModePassword(context)) {
-      return null;
-    }
-    if (!context.mounted) return null;
-    final folder = await SaferFilePicker.getDirectoryPath(
-      context: context,
+    final folder = await FilePicker.getDirectoryPath(
       dialogTitle: pluginSaveFolderDialogTitle(title),
+      windowsOptions: kModalWindowsOptions,
+      linuxOptions: kModalLinuxOptions,
     );
     if (folder == null) return null;
 
@@ -4826,21 +4824,10 @@ class PluginBridgeAdapter {
               'error.invalid_params: location must be "desktop" or "startMenu"',
             );
         }
+
         final placeLabel = location == ShortcutLocation.startMenu
             ? 'תפריט ההתחל'
             : 'שולחן העבודה';
-
-        if (isKioskMode) {
-          throw Exception(
-            'error.permission_denied: shortcut creation is disabled in kiosk mode',
-          );
-        }
-        final effectiveContext = navigatorKey.currentContext;
-        if (effectiveContext != null && effectiveContext.mounted) {
-          if (!await verifySaferModePassword(effectiveContext)) {
-            return {'created': false};
-          }
-        }
         final confirmed = await _dependencies.showConfirmDialog(
           title: 'יצירת קיצור דרך',
           content:
@@ -5221,8 +5208,7 @@ class PluginBridgeAdapter {
         );
 
         try {
-          final launched = await saferLaunchUrl(
-            null,
+          final launched = await launchUrl(
             emailUri,
             mode: LaunchMode.externalApplication,
           );

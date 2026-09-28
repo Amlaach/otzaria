@@ -415,11 +415,7 @@ bool CreateSecondaryWindowOnThisThread(const flutter::DartProject& base,
 
   flutter::DartProject project(base);
   project.set_dart_entrypoint("secondaryWindowMain");
-  std::vector<std::string> secondary_args = {payload};
-  if (IsKioskModeEnabled()) {
-    secondary_args.push_back("--kiosk");
-  }
-  project.set_dart_entrypoint_arguments(std::move(secondary_args));
+  project.set_dart_entrypoint_arguments({payload});
 
   auto window = std::make_unique<FlutterWindow>(project);
   // ⚠️ יורש את מידות החלון שפתח אותו. חלון בגודל קבוע נראה שרירותי —

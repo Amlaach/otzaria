@@ -9,7 +9,6 @@ import 'package:otzaria/utils/navigation/open_book.dart';
 import 'package:otzaria/widgets/controls/action_buttons.dart';
 import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:otzaria/settings/services/safer_url_guard.dart';
 
 /// המהדורות של [book] לרשימת הבחירה. לספר אישי — קובצי הגרסאות של קבוצתו.
 Future<List<BookVersionInfo>> loadBookVersions(Book book) async {
@@ -181,14 +180,13 @@ class _BookVersionsDialogState extends State<BookVersionsDialog> {
 
 /// פותח קישור מהערות גרסה; קישורים יחסיים (כמו '/adin-even-israel') נפתרים
 /// מול אתר ספריא — מקור המטא-דאטה.
-Future<bool> _openNoteUrl(BuildContext context, String url) async {
+Future<bool> _openNoteUrl(String url) async {
   final uri = Uri.parse(url);
   final resolved = uri.hasScheme
       ? uri
       : Uri.parse('https://www.sefaria.org').resolveUri(uri);
   if (await canLaunchUrl(resolved)) {
-    if (!context.mounted) return false;
-    await saferLaunchUrl(context, resolved);
+    await launchUrl(resolved);
   }
   return true;
 }
@@ -268,7 +266,7 @@ class BookVersionTile extends StatelessWidget {
                       };
                       return css.isEmpty ? null : css;
                     },
-                    onTapUrl: (url) => _openNoteUrl(context, url),
+                    onTapUrl: _openNoteUrl,
                   ),
               ],
             ),

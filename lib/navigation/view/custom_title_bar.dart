@@ -40,7 +40,6 @@ import 'package:otzaria/widgets/misc/app_menu_exports.dart';
 import 'package:otzaria/bookmarks/view/bookmark_screen.dart';
 import 'package:otzaria/workspaces/view/workspace_switcher_dialog.dart';
 import 'package:otzaria/utils/ui/fullscreen_helper.dart';
-import 'package:otzaria/settings/services/safer_mode_guard.dart';
 import 'package:otzaria/history/bloc/history_bloc.dart';
 import 'package:otzaria/history/bloc/history_event.dart';
 import 'package:otzaria/library/bloc/library_bloc.dart';
@@ -213,7 +212,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
 
   /// maximize/restore בלחיצה כפולה על האזור הריק שבשורת הטאבים (כמו DragToMoveArea).
   Future<void> _onTabsAreaDoubleTap() async {
-    if (isKioskMode) return;
     final window = AppWindowScope.controllerOf(context);
     final isMaximized = await window.isMaximized();
     if (isMaximized) {
@@ -250,9 +248,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
     return BlocBuilder<NavigationBloc, NavigationState>(
       builder: (context, navState) {
         return BlocBuilder<SettingsBloc, SettingsState>(
-          buildWhen: (previous, current) =>
-              previous.readingTabsOnSide != current.readingTabsOnSide ||
-              previous.isFullscreen != current.isFullscreen,
           builder: (context, settingsState) {
             final stackedTabs = _useStackedTabs(context, navState);
             // במסך עיון ללא טאבים פתוחים אין תוכן קריאה אמיתי, ולכן המסגרת
@@ -328,7 +323,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                   context,
                                   settingsState,
                                 ),
-                                if (settingsState.isFullscreen && !isKioskMode)
+                                if (settingsState.isFullscreen)
                                   _CaptionActionButton(
                                     brightness: Theme.of(context).brightness,
                                     tooltip: 'מזער',
@@ -358,26 +353,14 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
                                         ).close(),
                                   ),
                                 if (!settingsState.isFullscreen)
-                                  isKioskMode
-                                      ? _CaptionActionButton(
-                                          brightness:
-                                              Theme.of(context).brightness,
-                                          tooltip: 'סגור',
-                                          icon: FluentIcons.dismiss_24_regular,
-                                          onPressed: () =>
-                                              AppWindowScope.controllerOf(
-                                                context,
-                                              ).close(),
-                                        )
-                                      : SizedBox(
-                                          width: _kWindowCaptionButtonsWidth,
-                                          height: 50,
-                                          child: WindowCaption(
-                                            brightness:
-                                                Theme.of(context).brightness,
-                                            backgroundColor: Colors.transparent,
-                                          ),
-                                        ),
+                                  SizedBox(
+                                    width: _kWindowCaptionButtonsWidth,
+                                    height: 50,
+                                    child: WindowCaption(
+                                      brightness: Theme.of(context).brightness,
+                                      backgroundColor: Colors.transparent,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -602,7 +585,6 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
   }
 
   Widget _buildTabsContent(TabsState state) {
-    final closeTabShortcut = _shortcutOf('key-shortcut-close-tab');
     // בפריים הראשון עוד אין מדידה; אומדן לפי רוחב המסך, מתוקן בפריים הבא.
     final available = _tabsAreaWidth ?? MediaQuery.sizeOf(context).width;
     _lastComputedTabWidths = _computeTabWidths(available, state.tabs.length);
@@ -675,14 +657,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: tabWidth,
-          child: _buildTab(
-            context,
-            tab,
-            index,
-            state,
-            tabWidth,
-            closeTabShortcut: closeTabShortcut,
-          ),
+          child: _buildTab(context, tab, index, state, tabWidth),
         ),
       ),
     );
@@ -704,8 +679,10 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
         behavior: HitTestBehavior.translucent,
         // גרירה על טאב מסדרת אותו (reorder); רק גרירה על האזור הריק גוררת חלון.
         onPanStart: (details) {
-          if (isKioskMode) return;
           if (_hitTestTab(context, details.globalPosition)) return;
+          // ⚠️ ב-Windows זהו no-op במסך מלא — `window_manager.startDragging`
+          // יוצא מוקדם כש-`isFullScreen()` מחזיר true. גרירת החלון מסרגל
+          // הכותרת פשוט לא תקרה שם, וזו התנהגות הספרייה ולא באג כאן.
           AppWindowScope.controllerOf(context).startDragging();
         },
         child: RawGestureDetector(
@@ -988,14 +965,15 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
     OpenedTab tab,
     int index,
     TabsState state,
-    double tabWidth, {
-    String closeTabShortcut = 'ctrl+w',
-  }) {
+    double tabWidth,
+  ) {
     if (tabWidth < _kTabContentMinWidth) {
       return _buildNarrowTab(context, tab, index, state, tabWidth);
     }
 
     final isSelected = index == state.currentTabIndex;
+    final closeTabShortcut =
+        Settings.getValue<String>('key-shortcut-close-tab') ?? 'ctrl+w';
 
     final isTabHovered = identical(_hoveredTab, tab);
 
