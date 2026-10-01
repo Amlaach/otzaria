@@ -1843,7 +1843,6 @@ class MainWindowScreenState extends State<MainWindowScreen>
     final now = DateTime.now();
     if (_lastBackPressAt != null &&
         now.difference(_lastBackPressAt!) < const Duration(seconds: 2)) {
-      if (context.read<SettingsBloc>().state.protectedModeEnabled) return;
       SystemNavigator.pop();
       return;
     }
